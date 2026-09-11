@@ -1,0 +1,34 @@
+// DOM-level checks only; does not control a browser or contact Douyin.
+const fs=require('node:fs');
+const path=require('node:path');
+const assert=require('node:assert/strict');
+const {JSDOM}=require(process.env.DYFIRE_JSDOM||'jsdom');
+const dom=new JSDOM('<div id="app"></div><div id="toast"></div>',{url:'https://testserver/studio',runScripts:'outside-only'});
+const w=dom.window;
+w.CSS={escape:s=>s};w.HTMLCanvasElement.prototype.getContext=()=>null;
+w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
+const calls=[];
+const state={user:{name:'Test',role:'user'},csrf:'token',accounts:[{id:'account-uuid',name:'Account',health:{label:'已连接',blocked:false}}],tasks:[{id:'task-uuid',name:'Friend',accountId:'account-uuid',time:'09:30',kind:'原生续火花',enabled:true,confirmed:false,status:'submitted_unconfirmed'}],subscription:{can_add_task:true}};
+w.fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/enabled'))state.tasks[0].enabled=JSON.parse(options.body).enabled;return {ok:true,status:200,json:async()=>url==='/api/studio'?structuredClone(state):url.includes('conversations')?{items:[{name:'Friend',sec_uid:'uid'}]}:{saved:true}};};
+let shell=fs.readFileSync(path.join(__dirname,'main.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export const studio =','window.studio =');
+w.eval(shell);
+let app=fs.readFileSync(path.join(__dirname,'app.js'),'utf8').replace(/^import .*;\r?\n/gm,'');
+w.eval('const studio=window.studio;'+app);
+const flush=()=>new Promise(r=>setTimeout(r,20));
+(async()=>{
+ await flush();
+ assert.equal(w.document.querySelector('[data-toggle]').dataset.toggle,'task-uuid');
+ assert(w.document.querySelector('.state').textContent.includes('已提交，待核实'));
+ assert.equal(w.document.querySelector('#admin-link'),null);
+ w.document.querySelector('[data-toggle]').click();await flush();
+ assert.equal(state.tasks[0].enabled,false);
+ assert.equal(calls.filter(c=>c.url.endsWith('/enabled')).length,1);
+ assert(!/本地|模拟|示例/.test(w.document.body.textContent));
+ w.document.querySelector('#choose-friends').click();await flush();
+ w.document.querySelector('[name=friend]').click();
+ w.document.querySelector('#create-form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await flush();
+ const creation=calls.find(c=>c.url==='/api/studio/tasks');assert(creation);
+ assert.equal(JSON.parse(creation.options.body).targets[0].sec_uid,'uid');
+ assert.equal(creation.options.headers['X-CSRF-Token'],'token');
+ console.log('Production task DOM checks passed');dom.window.close();
+})().catch(error=>{console.error(error);dom.window.close();process.exitCode=1});

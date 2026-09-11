@@ -51,10 +51,10 @@ def latest():
     version(candidate)
     if release.get('draft') or release.get('prerelease'):
         raise ValueError('不安装草稿或预发行版本')
-    # GitHub Contents at the release tag, not a URL supplied by the web client.
-    import base64
-    content = github(f'repos/{REPOSITORY}/contents/release.json?ref={tag}')
-    manifest = json.loads(base64.b64decode(content['content']))
+    match = re.search(r'<!-- dyfire-manifest\s+(\{[^<>]+\})\s+-->', release.get('body') or '')
+    if not match:
+        raise ValueError('发行版缺少镜像清单')
+    manifest = json.loads(match.group(1))
     if manifest['version'] != candidate or manifest['schema'] != 1:
         raise ValueError('版本或数据结构不兼容，需要人工迁移')
     if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', manifest['image']):
@@ -64,9 +64,18 @@ def latest():
 
 def compose(image, *args):
     env = dict(os.environ, SPARK_IMAGE_NAME=image)
-    subprocess.run(['docker', 'compose', '--project-name', 'dyfire', '--file', str(ROOT / 'compose.console.yml'),
-                    *args], cwd=ROOT, env=env, check=True, timeout=600,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    process = subprocess.Popen(['docker', 'compose', '--project-name', 'dyfire', '--env-file', str(ROOT / '.env.console'),
+                    '--file', str(ROOT / 'compose.console.yml'), *args], cwd=ROOT, env=env,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    deadline = time.monotonic() + 600
+    while process.poll() is None:
+        write_state()
+        if time.monotonic() > deadline:
+            process.kill();process.wait()
+            raise TimeoutError('容器操作超时')
+        time.sleep(2)
+    if process.returncode:
+        raise RuntimeError('容器操作失败')
 
 
 def ready(expected):

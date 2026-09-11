@@ -7,7 +7,7 @@
 1. 首次部署经过验证，镜像为 `ghcr.io/dh666i/dyfire@sha256:...` 的完整摘要。
 2. `installed.json` 记录实际部署的 `version`、`schema`（目前为 1）、`image`。不得填写尚未部署的镜像。
 3. 私有 GitHub 仓库只读令牌置于 `secrets/github-token`，root 所有、0600 权限。令牌只需读取仓库内容与发行信息。另用有 read:packages 权限的凭据在主机完成 `docker login ghcr.io`，不写入网页或仓库。
-4. 每个可更新发行版使用 `vX.Y.Z` 标签，标签下的 `release.json` 内容与镜像实际版本一致：`{"version":"X.Y.Z","schema":1,"image":"ghcr.io/dh666i/dyfire@sha256:完整摘要"}`。
+4. 每个可更新发行版使用 `vX.Y.Z` 标签，发行说明包含发布流水线生成的 `dyfire-manifest` JSON 注释，记录与镜像实际一致的 version、schema、image 摘要。草稿不参与自动更新。
 5. 复制 `dyfire-updater.service` 到 systemd 服务目录并启用。没有完成上述配置，网页保持“更新服务暂未连接”。
 
 更新过程：从固定私有仓库读取版本 → 校验版本与数据结构 → 检查扫码/发送及空间 → 下载固定镜像 → 停止写入服务 → 备份 data → 启动新版本 → 校验健康与实际版本。失败恢复旧镜像。不会自动恢复旧数据库，避免回滚执行记录后重复发送。

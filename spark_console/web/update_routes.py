@@ -48,11 +48,19 @@ def build_update_router(engine, auth):
                 if not isinstance(target, str) or not re.fullmatch(r'\d+\.\d+\.\d+', target):
                     raise HTTPException(400, '请选择有效的发行版本')
             payload = {'action': action, 'version': target, 'requested_at': time.time()}
+            from uuid import uuid4
+            pending = directory() / 'requests' / (str(uuid4()) + '.tmp')
             try:
-                with (directory() / 'requests' / 'request.json').open('x', encoding='utf-8') as stream:
+                with pending.open('x', encoding='utf-8') as stream:
                     json.dump(payload, stream)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                # Atomic no-overwrite publish; updater cannot see partial JSON.
+                os.link(pending, directory() / 'requests' / 'request.json')
             except FileExistsError:
                 raise HTTPException(409, '已有更新操作正在等待处理')
+            finally:
+                pending.unlink(missing_ok=True)
             AuditService(db).write(user.id, 'system.update.' + action, 'release', detail=target)
         return {'accepted': True}
 
