@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-experience auth-experience-error">
+  <div class="mr-auth-wrap">
+    <header class="mr-auth-brand">
+      <a class="mr-auth-logo" href="/dashboard" aria-label="返回火花守护控制台">
+        <span class="brand-mark"><i aria-hidden="true"></i>{{ icon('flame', 23) }}</span>
+      </a>
+      <h1>火花守护</h1>
+      <p>本次操作已安全中止，已有数据不会受到影响</p>
+    </header>
+
+    <section class="auth-card auth-card-premium auth-error-card">
+      <div class="auth-error-symbol" aria-hidden="true"><span>!</span></div>
+      <div class="auth-card-heading">
+        <span class="eyebrow">操作未完成</span>
+        <h2>请检查后重试</h2>
+        <p class="auth-error-message" role="alert">{{ message }}</p>
+      </div>
+      <div class="auth-error-actions">
+        <a class="button auth-submit" href="/dashboard"><span>返回控制台</span>{{ icon('arrow', 18) }}</a>
+      </div>
+      <p class="fine">如果问题连续出现，请记录操作时间并联系管理员。</p>
+    </section>
+  </div>
+</div>
+{% endblock %}

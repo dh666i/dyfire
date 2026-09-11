@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-head"><div><span class="eyebrow">ADMIN CONTROL</span><h1>管理后台</h1><p>集中管理平台用户、会员凭证、定时任务与执行状态。</p></div></header>
+
+<nav class="admin-jump-nav" aria-label="后台页面分区"><a href="#admin-users">用户与会员</a><a href="#admin-codes">邀请码与兑换码</a><a href="#admin-tasks">定时任务</a><a href="#admin-runs">最近执行</a></nav>
+
+{% if one_time_password %}
+<div class="notice password-once"><strong>临时密码（仅显示这一次）</strong><code>{{ one_time_password }}</code><span>请通过安全方式交给用户；刷新后不再显示。</span></div>
+{% endif %}
+
+{% if one_time_codes is defined and one_time_codes %}
+<section class="notice one-time-codes" aria-label="新生成的会员兑换码">
+  <strong>会员兑换码（仅显示这一次）</strong>
+  <p>请立即保存并通过安全方式交给用户。</p>
+  <div class="code-reveal-list">
+    {% for code in one_time_codes %}
+    <div class="code-reveal"><code>{{ code }}</code><button type="button" class="quiet compact-button" data-copy-invite="{{ code }}" aria-live="polite">复制</button></div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="stats"><article><span>用户</span><strong>{{ users|length }}</strong><small>含管理员</small></article><article><span>全部任务</span><strong>{{ tasks|length }}</strong><small>可暂停或删除</small></article><article><span>最近执行</span><strong>{{ runs|length }}</strong><small>脱敏执行状态</small></article></section>
+
+<section id="admin-users" class="panel admin-wide-panel admin-users-panel">
+  <div class="section-head"><div><h2>用户与会员</h2><p>创建平台账号，开通会员并调整账号、任务额度。</p></div></div>
+  <form method="post" action="/admin/users" class="inline-form admin-create-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="sr-only" for="admin-new-username">新用户名</label><input id="admin-new-username" name="username" placeholder="新用户名" minlength="3" required><button type="submit">创建用户</button></form>
+  <div class="admin-user-list">
+    {% for item in users %}
+    {% set member = admin_memberships.get(item.id) if admin_memberships is defined else none %}
+    <article class="admin-user-card">
+      <div class="admin-user-head">
+        <div class="admin-user-copy"><strong>{{ item.username }}</strong><p class="muted">{{ item.role }} · {{ item.status }}</p></div>
+        {% if member %}<span class="pill {{ 'good' if member.active else 'off' }}">{{ member.status_label }}</span>{% else %}<span class="pill off">未开通</span>{% endif %}
+      </div>
+
+      {% if item.role != 'admin' %}
+      <div class="admin-membership-meta">
+        {% if member and member.valid_until %}<span>有效期至 {{ member.valid_until|shanghai_time }}</span>{% else %}<span>暂无有效期</span>{% endif %}
+        {% if member %}<span>账号 {{ member.account_count }}/{{ member.max_accounts }}</span><span>任务 {{ member.task_count }}/{{ member.max_tasks }}</span>{% endif %}
+      </div>
+      <form method="post" action="/admin/users/{{ item.id }}/subscription" class="admin-subscription-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>增加天数<input type="number" name="duration_days" value="30" min="1" required></label>
+        <label>账号上限<input type="number" name="max_accounts" value="{{ member.max_accounts if member and member.max_accounts else 1 }}" min="1" required></label>
+        <label>任务上限<input type="number" name="max_tasks" value="{{ member.max_tasks if member and member.max_tasks else 20 }}" min="1" required></label>
+        <button type="submit">保存并延长</button>
+      </form>
+      {% endif %}
+
+      {% if item.id != user.id %}
+      <div class="actions action-group admin-user-actions">
+        {% if item.role != 'admin' and member and member.active %}<form method="post" action="/admin/users/{{ item.id }}/subscription/revoke" onsubmit="return confirm('确定撤销该用户当前会员？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet">撤销会员</button></form>{% endif %}
+        <form method="post" action="/admin/users/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="quiet">{{ '停用' if item.status == 'active' else '启用' }}</button></form>
+        <form method="post" action="/admin/users/{{ item.id }}/delete" onsubmit="return confirm('确定永久删除该用户及任务？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="confirmation" value="{{ item.username }}"><button class="danger quiet">删除</button></form>
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<div id="admin-codes" class="admin-grid admin-code-grid">
+  <section class="panel">
+    <div class="section-head"><div><h2>注册邀请码</h2><p>仅用于注册平台账号，不包含会员时长。</p></div><button type="button" class="quiet compact-button" onclick="location.reload()">刷新状态</button></div>
+    <form method="post" action="/admin/invites" class="admin-primary-action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>生成注册邀请码</button></form>
+    {% for item in invites %}
+    <article class="item admin-item invite-item">
+      <div class="invite-copy"><strong>{% if item.code %}<code>{{ item.code }}</code>{% else %}旧邀请码（明文不可恢复）{% endif %}</strong>{% if item.code %}<button type="button" class="quiet compact-button" data-copy-invite="{{ item.code }}" aria-live="polite">复制</button>{% endif %}<p class="muted">{{ item.status }} · 有效期至 {{ item.invite.expires_at|shanghai_time }}{% if item.used_by_username %} · 使用者：{{ item.used_by_username }}{% endif %}</p></div>
+      <div class="actions action-group">{% if item.can_revoke %}<form method="post" action="/admin/invites/{{ item.invite.id }}/revoke"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet">失效</button></form>{% endif %}<form method="post" action="/admin/invites/{{ item.invite.id }}/delete" onsubmit="return confirm('确定删除这个注册邀请码？')"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet">删除</button></form></div>
+    </article>
+    {% else %}<div class="empty"><span aria-hidden="true">◇</span><h3>暂无注册邀请码</h3></div>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="section-head"><div><h2>会员兑换码</h2><p>兑换后增加会员有效期并设置使用额度。</p></div></div>
+    <form method="post" action="/admin/redemption-codes" class="redemption-create-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>有效天数<input type="number" name="duration_days" value="30" min="1" required></label>
+      <label>账号上限<input type="number" name="max_accounts" value="1" min="1" required></label>
+      <label>任务上限<input type="number" name="max_tasks" value="20" min="1" required></label>
+      <label>生成数量<input type="number" name="quantity" value="1" min="1" max="20" required></label>
+      <button type="submit">生成兑换码</button>
+    </form>
+    <div class="redemption-list">
+      {% if redemption_codes is defined %}{% for item in redemption_codes %}
+      <article class="redemption-item">
+        <div class="redemption-copy">
+          <div><strong>兑换码 {{ item.code.id[:8] }}</strong><span class="pill {{ 'good' if item.can_revoke else 'off' }}">{{ item.status }}</span></div>
+          <p class="muted">{{ item.code.duration_days }} 天 · 账号 {{ item.code.max_accounts }} · 任务 {{ item.code.max_tasks }}</p>
+          <p class="muted">有效期至 {{ item.code.expires_at|shanghai_time }}{% if item.used_by_username %} · 使用者：{{ item.used_by_username }}{% endif %}</p>
+        </div>
+        {% if item.can_revoke %}<form method="post" action="/admin/redemption-codes/{{ item.code.id }}/revoke"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet compact-button">撤销</button></form>{% endif %}
+      </article>
+      {% else %}<div class="empty"><span aria-hidden="true">￥</span><h3>暂无会员兑换码</h3></div>{% endfor %}{% endif %}
+    </div>
+  </section>
+</div>
+
+<section id="admin-tasks" class="panel admin-wide-panel">
+  <div class="section-head"><div><h2>所有定时任务</h2><p>“已启用”表示任务会在 Worker 在线时按计划执行。</p></div></div>
+  <div class="admin-task-grid">{% for task, owner in tasks %}<article class="task-card"><div class="task-top"><time class="time">{{ task.send_time }}</time><span class="pill {{ 'good' if task.enabled else 'off' }}">{{ '已启用' if task.enabled else '已暂停' }}</span></div><h3>{{ task.target_name }}</h3><p class="muted">归属：{{ owner.username }}</p><div class="actions action-group"><form method="post" action="/admin/tasks/{{ task.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="quiet">{{ '暂停' if task.enabled else '启用' }}</button></form><form method="post" action="/admin/tasks/{{ task.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet">删除</button></form></div></article>{% else %}<div class="empty"><span aria-hidden="true">◇</span><h3>暂无任务</h3></div>{% endfor %}</div>
+</section>
+
+<section id="admin-runs" class="panel admin-wide-panel recent-runs">
+  <div class="section-head"><div><h2>最近执行</h2><p>展示最近 20 次执行，失败原因已经脱敏。</p></div></div>
+  {% if runs %}<div class="recent-run-list">{% for run, task, owner in runs %}<article class="recent-run"><span class="run-status-mark run-{{ run.status }}" aria-hidden="true"></span><div><strong>{{ task.target_name }}</strong><p>{{ owner.username }} · {{ run.scheduled_for|shanghai_time }}</p></div><span class="pill {{ 'good' if run.status == 'success' else ('warn' if run.status == 'skipped' else 'off') }}">{{ run.status|run_status }}</span></article>{% endfor %}</div>{% else %}<div class="empty"><span aria-hidden="true">◷</span><h3>暂无执行记录</h3></div>{% endif %}
+</section>
+
+<script>document.addEventListener("click",function(event){var button=event.target.closest("[data-copy-invite]");if(!button)return;navigator.clipboard.writeText(button.dataset.copyInvite).then(function(){button.textContent="已复制";},function(){button.textContent="复制失败";});});</script>
+{% endblock %}

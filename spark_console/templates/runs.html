@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "admin_components.html" import icon as record_icon %}
+{% block content %}
+<header class="page-head records-page-head">
+  <div><h1>执行记录</h1></div>
+  <span class="records-count">共 {{ pagination.total }} 条</span>
+</header>
+<form method="get" action="/runs" class="records-filter" aria-label="筛选执行记录">
+  <label><span class="sr-only">发送账号</span><select name="account_id"><option value="">全部抖音账号</option>{% for account in accounts %}<option value="{{ account.id }}" {{ 'selected' if account_id==account.id }}>{{ account.display_name }}</option>{% endfor %}</select></label>
+  <label>开始日期<input type="date" name="start" value="{{ start }}"></label><label>结束日期<input type="date" name="end" value="{{ end }}"></label>
+  <label class="records-search"><span class="sr-only">目标好友</span><input type="search" name="q" value="{{ q }}" placeholder="搜索目标好友" maxlength="100"></label>
+  <label><span class="sr-only">执行状态</span><select name="status">
+    {% for value, label in [('', '全部状态'), ('attention', '需要关注'), ('success', '成功'), ('submitted_unconfirmed', '已提交，待核实'), ('failed', '失败'), ('running', '执行中'), ('retrying', '等待重试'), ('skipped', '已跳过')] %}
+    <option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select></label>
+  <label><span class="sr-only">每页条数</span><select name="page_size">{% for size in [12, 24, 48] %}<option value="{{ size }}"{% if pagination.page_size == size %} selected{% endif %}>每页 {{ size }} 条</option>{% endfor %}</select></label>
+  <button type="submit" class="quiet">筛选</button>
+  {% if q or status %}<a class="records-clear" href="/runs">清除</a>{% endif %}
+</form>
+<section class="records-list" aria-label="续火执行记录">
+  {% if runs %}
+  <div class="records-columns" aria-hidden="true"><span>计划时间</span><span>目标好友</span><span>发送账号</span><span>执行阶段</span><span>结果</span><span></span></div>
+  {% for run, task in runs %}
+  {% set run_view = run|run_view_status %}
+  {% set guidance = run|run_guidance %}
+  <details class="record-item" data-run-id="{{ run.id }}">
+    <summary class="record-summary" title="展开或收起执行详情">
+      <time class="record-time">{{ run.scheduled_for|shanghai_time }}</time>
+      <strong class="record-target">{{ task.target_name }}</strong>
+      <span class="record-account">{{ account_names.get(task.douyin_account_id, '账号不可用') }}</span>
+      <span class="record-stage">{{ run.stage|run_stage }}</span>
+      <span class="record-state"><span class="pill {{ run_view.tone }}">{{ run_view.label }}</span></span>
+      <span class="record-chevron" aria-hidden="true">{{ record_icon('chevron-down', 16) }}</span>
+    </summary>
+    <div class="record-detail">
+      <dl class="record-facts">
+        <div><dt>开始时间</dt><dd>{{ run.started_at|shanghai_time }}</dd></div>
+        <div><dt>完成时间</dt><dd>{{ run.finished_at|shanghai_time }}</dd></div>
+        <div><dt>执行耗时</dt><dd>{% if run.started_at and run.finished_at %}{{ [0, (run.finished_at - run.started_at).total_seconds()]|max|round(1) }} 秒{% else %}—{% endif %}</dd></div>
+        <div><dt>诊断编号</dt><dd>{{ run.id }} <button class="quiet" type="button" data-copy-text="{{ run.id }}" aria-label="复制诊断编号">复制</button></dd></div>
+      </dl>
+      {% if run.error_summary %}<p class="run-note{{ ' info' if run.status == 'success' else (' caution' if run.status == 'submitted_unconfirmed' else '') }}">{{ run.error_summary }}</p>{% endif %}
+      {% if guidance %}<div class="run-guidance"><p>{{ guidance.text }}</p>{% if guidance.action == 'account' %}<a href="/accounts">重新绑定账号</a>{% elif guidance.action == 'subscription' %}<a href="/subscription">查看会员</a>{% elif guidance.action == 'task' %}<a href="/tasks/{{ task.id }}/edit">检查任务设置</a>{% endif %}</div>{% endif %}
+    </div>
+  </details>
+  {% endfor %}
+  {% else %}
+  <div class="empty"><h3>{{ '没有匹配的执行记录' if q or status else '暂无执行记录' }}</h3>{% if q or status %}<a href="/runs">清除筛选</a>{% else %}<p>任务首次到点后，结果会显示在这里。</p>{% endif %}</div>
+  {% endif %}
+</section>
+<nav class="records-pagination" aria-label="执行记录分页">
+  <span>第 {{ pagination.page }} / {{ pagination.pages }} 页 · 共 {{ pagination.total }} 条</span>
+  <div>
+    {% if pagination.page > 1 %}<a class="icon-button" href="?{{ request.url.include_query_params(page=pagination.page - 1).query }}" aria-label="上一页" title="上一页">{{ record_icon('chevron-left', 18) }}</a>{% else %}<span class="icon-button records-disabled" aria-disabled="true" aria-label="上一页">{{ record_icon('chevron-left', 18) }}</span>{% endif %}
+    {% if pagination.page < pagination.pages %}<a class="icon-button" href="?{{ request.url.include_query_params(page=pagination.page + 1).query }}" aria-label="下一页" title="下一页">{{ record_icon('chevron-right', 18) }}</a>{% else %}<span class="icon-button records-disabled" aria-disabled="true" aria-label="下一页">{{ record_icon('chevron-right', 18) }}</span>{% endif %}
+  </div>
+</nav>
+{% endblock %}

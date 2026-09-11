@@ -1,0 +1,146 @@
+{% extends "base.html" %}{% block content %}
+{% set can_add_account = true %}
+{% if membership is defined and membership %}{% set can_add_account = membership.can_add_account %}{% endif %}
+<header class="page-head compact-hero">
+  <div>
+    <span class="eyebrow">账号管理</span>
+    <h1>抖音账号</h1>
+    <p>{{ accounts|length }} 个已绑定账号 · 登录状态与验证记录</p>
+  </div>
+  <div class="page-head-signal" aria-hidden="true"><span></span><span></span><i>{{ accounts|length }}</i><small>已绑定</small></div>
+</header>
+
+<div data-account-scan data-csrf-token="{{ csrf_token }}">
+  <div class="split accounts-layout">
+    <section class="panel account-list">
+      <div class="section-head"><div><h2>已绑定账号</h2><p>共 {{ accounts|length }} 个账号</p></div></div>
+      {% if accounts %}
+        {% for account in accounts %}
+        {% set profile = account_profiles.get(account.id) if account_profiles is defined else none %}
+        {% set health = account_health.get(account.id) if account_health is defined else none %}
+        {% set health_state = health.state if health else account.validation_state %}
+        <article id="account-{{ account.id }}" class="item account-item" data-health="{{ health_state }}" data-health-account="{{ account.id }}">
+          <div class="account-identity">
+          <span class="account-avatar" aria-hidden="true">{{ account.display_name[0]|upper }}{% if profile and profile.avatar_url %}<img data-avatar-image src="{{ profile.avatar_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</span>
+          <div class="account-summary">
+            <div class="account-heading">
+              <strong>{{ profile.nickname if profile and profile.nickname else account.display_name }}</strong>
+              <span class="account-health account-health-{{ health_state }}" data-health-label>
+                健康状态：{{ health.label if health else '待验证' }}
+              </span>
+            </div>
+            {% if profile and profile.nickname and account.display_name != profile.nickname %}<p class="account-profile-note">备注：{{ account.display_name }}</p>{% endif %}
+            <p class="account-profile-note" data-health-reason>{{ health.reason if health and health.reason else '' }}</p>
+            <p class="account-profile-note" data-health-progress>{% if health and health.checking %}正在进行第 {{ health.attempts }} 次登录复核…{% elif health and health.next_check_at %}已安排第 {{ health.attempts + 1 }} 次复核，预计 {{ health.next_check_at|shanghai_time }}{% elif health_state == 'temporary' %}自动复核已结束，仍无法确认，请稍后复核或重新登录。{% elif health_state == 'verification' %}请点击“完成验证”，系统不会自动尝试密码或验证码。{% endif %}</p>
+            {% if health and health.blocked %}<p class="account-profile-note">已启用的计划等待账号恢复，错过的消息不自动补发；已暂停的任务需要手动启用。</p>{% endif %}
+            <p class="account-verified">最近验证：{% if account.last_verified_at %}{{ account.last_verified_at|shanghai_time }}{% else %}尚未验证{% endif %}</p>
+          </div>
+          </div>
+          <div class="account-controls">
+            <button
+              class="account-relogin{% if health_state == 'invalid' %} account-relogin-urgent{% else %} quiet{% endif %}"
+              type="button"
+              data-scan-account-id="{{ account.id }}"
+              data-scan-account-name="{{ account.display_name }}"
+            >{{ '完成验证' if health_state == 'verification' else '重新登录' }}</button>
+            <form method="post" action="/accounts/{{ account.id }}/rename" class="account-rename" data-submit-lock data-submitting-label="保存中…">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label class="sr-only" for="account-name-{{ account.id }}">新账号备注</label>
+              <input id="account-name-{{ account.id }}" name="display_name" value="{{ account.display_name }}" maxlength="64" required>
+              <button class="quiet" type="submit">修改备注</button>
+            </form>
+            <form method="post" action="/accounts/{{ account.id }}/delete" data-submit-lock data-submitting-label="正在删除…" data-confirm="删除后该账号的云端登录状态将被清除，相关任务也无法继续执行。" data-confirm-title="删除这个抖音账号？">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="danger quiet" type="submit">删除</button>
+            </form>
+          </div>
+          <div class="account-maintenance">
+          <div class="account-health-actions"><button type="button" class="quiet" data-health-check{% if health_state in ['verification','relogin'] %} disabled{% endif %}>复核登录状态</button><span data-health-feedback role="status"></span></div>
+          <div data-profile-sync="{{ account.id }}"></div>
+          </div>
+          <div class="product-actions"><a href="/tasks?account={{ account.id }}">关联任务</a><a href="/runs?account_id={{ account.id }}">发送记录</a><a href="/attention">待处理事项</a></div>
+        </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty">
+          <span aria-hidden="true">◎</span>
+          <h3>暂无账号</h3>
+          <p>从右侧开始扫码绑定。</p>
+        </div>
+      {% endif %}
+    </section>
+
+    {% if can_add_account %}
+    <section class="panel scan-entry">
+      <span class="scan-kicker">绑定流程</span>
+      <h2>绑定新账号</h2>
+      <p class="muted">登录由抖音验证，可能需要短信或其他安全验证。</p>
+      <ol class="scan-steps">
+        <li><span>1</span>打开抖音 App</li>
+        <li><span>2</span>扫描页面二维码</li>
+        <li><span>3</span>在手机上确认登录</li>
+      </ol>
+      <button id="scan-start" type="button"><span aria-hidden="true">＋</span>扫码绑定抖音账号<span class="button-arrow" aria-hidden="true">↗</span></button>
+    </section>
+    {% else %}
+    <section class="panel quota-panel">
+      <span class="scan-kicker">账号额度</span>
+      <h2>暂时无法绑定新账号</h2>
+      {% if membership is defined and membership and membership.active %}
+        <p class="muted">当前账号额度已用完（{{ membership.account_count }}/{{ membership.max_accounts }}）。</p>
+        {% if accounts %}<p class="quota-relogin-hint">已有账号仍可点击“重新登录”更新登录状态，不占用新账号额度。</p>{% endif %}
+      {% elif membership is defined and membership %}
+        <p class="muted">当前会员状态为“{{ membership.status_label }}”，开通或续费后可绑定账号。</p>
+      {% else %}
+        <p class="muted">当前账号没有可用的绑定额度。</p>
+      {% endif %}
+      <a class="button" href="/subscription">查看会员订阅</a>
+    </section>
+    {% endif %}
+  </div>
+
+  <dialog id="scan-dialog" class="scan-dialog" data-frame-ready="false" aria-labelledby="scan-dialog-title" aria-describedby="scan-status">
+    <div class="scan-dialog-card">
+      <button id="scan-close" class="scan-close quiet" type="button" aria-label="关闭扫码窗口">×</button>
+      <div class="scan-dialog-head">
+        <div><span class="eyebrow">抖音安全登录</span><h2 id="scan-dialog-title">登录抖音账号</h2></div>
+      </div>
+
+      <div id="scan-stage" class="scan-stage" aria-busy="true">
+        <div id="scan-qr-panel" class="scan-stage-panel scan-qr-panel" hidden>
+          <div id="scan-qr-shell" class="scan-qr-shell" data-loading="true">
+            <img id="scan-qr" class="scan-qr" alt="云端抖音登录页面">
+            <span id="scan-qr-loading" class="scan-qr-loading" aria-hidden="true">
+              <span class="scan-loader"></span>
+            </span>
+          </div>
+          <p id="scan-browser-hint" class="scan-browser-hint">直接点击云端页面中的输入框，键入内容后按回车或点击下方按钮；每次操作只发送一次。</p>
+          <div class="scan-input-row">
+            <label class="sr-only" for="scan-text">云端安全输入</label>
+            <input id="scan-text" type="password" inputmode="text" autocomplete="current-password" maxlength="256" placeholder="点击云端输入框后直接键入内容">
+            <button id="scan-type" type="button">发送到云端</button>
+          </div>
+          <p id="scan-interaction-status" class="scan-interaction-status" role="status" aria-live="polite" hidden></p>
+        </div>
+
+        <div id="scan-result" class="scan-stage-panel scan-result" hidden>
+          <span class="scan-result-mark" aria-hidden="true"></span>
+          <strong id="scan-result-title">本次登录已结束</strong>
+        </div>
+      </div>
+
+      <div class="scan-dialog-foot">
+        <div class="scan-session-state">
+          <p id="scan-status" class="scan-status" role="status" aria-live="polite">正在创建扫码会话</p>
+          <p id="scan-countdown" class="scan-countdown"></p>
+        </div>
+        <div class="scan-dialog-actions">
+          <button id="scan-cancel" class="quiet" type="button">取消登录</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+</div>
+<script defer src="/static/account_scan.js?v=20260905-1"></script>
+<script defer src="/static/account_health.js?v=20260910-6"></script>
+{% endblock %}

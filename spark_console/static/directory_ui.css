@@ -1,0 +1,41 @@
+.directory-controls { padding: 10px 20px; border-bottom: 1px solid var(--studio-rule); }
+.account-health-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; grid-column:1/-1; }
+.account-health-actions button { min-height:40px; font-size:12px; }
+.account-health-actions span { color:var(--studio-secondary); font-size:12px; }
+.account-health-temporary, .account-health-verification, .account-health-relogin { color:var(--studio-warning); background:var(--studio-warning-soft); }
+.account-profile-note:empty { display:none; }
+.task-health-note { display:block; color:var(--studio-warning); font-size:11px; line-height:1.5; }
+.directory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.directory-actions button { min-height: 36px; font-size: 12px; }
+.directory-status { margin: 8px 0 0; color: var(--studio-secondary); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.directory-avatar, .studio-initial, .account-avatar { position: relative; overflow: hidden; flex-shrink: 0; }
+.directory-avatar { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--studio-inset); color: var(--studio-secondary); }
+[data-avatar-image] { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.directory-person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.directory-person > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.account-summary .account-profile-note { margin: 4px 0; color: var(--studio-secondary); font-size: 12px; overflow-wrap: anywhere; }
+[data-profile-sync] { grid-column: 1 / -1; min-width: 0; }
+[data-profile-sync] .directory-controls { padding: 8px 0 0; border: 0; }
+.admin-task-group { border-top: 1px solid var(--studio-rule); }
+.admin-task-group > summary { display: flex; align-items: center; gap: 12px; padding: 18px 22px; list-style: none; cursor: pointer; }
+.admin-task-group > summary::-webkit-details-marker { display: none; }
+.admin-task-group > summary:hover { background: var(--studio-inset); }
+.admin-task-group > summary:focus-visible { outline: 2px solid var(--studio-focus); outline-offset: -3px; }
+.group-identity { min-width: 0; flex: 1; }
+.group-identity strong, .group-identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-identity small, .group-count small { color: var(--studio-secondary); font-size: 12px; margin-top: 4px; }
+.group-count { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.group-count small { display: block; }
+.group-chevron { display: block; color: var(--studio-muted); }
+.admin-task-group[open] .group-chevron { transform: rotate(180deg); }
+.directory-select-loaded { display: flex; align-items: center; gap: 8px; padding: 10px 22px; font-size: 12px; color: var(--studio-secondary); }
+.directory-select-loaded input { width: 16px; height: 16px; }
+[data-group-content] > .directory-status { padding: 12px 22px; }
+@media (max-width: 640px) {
+  .directory-controls { padding: 10px 14px; }
+  .directory-actions button { min-height: 40px; flex: 1 1 auto; }
+  .admin-task-group > summary { padding: 14px; gap: 8px; }
+  .group-count { font-size: 12px; }
+  .directory-person { gap: 6px; }
+  .directory-person .directory-avatar { width: 28px; height: 28px; }
+}

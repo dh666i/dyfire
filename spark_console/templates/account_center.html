@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block content %}
+<header class="page-head"><div><h1>账户中心</h1><p>{{ user.username }} · 登录安全与个人设置</p></div></header>
+<section class="panel">
+<h2>账户设置</h2>
+<div class="product-row"><div><strong>登录密码</strong><p>修改本网站的登录密码。</p></div><a class="button quiet" href="/change-password">修改密码</a></div>
+<div class="product-row"><div><strong>邮件通知</strong><p>管理接收邮箱、通知类型和免打扰时段。</p></div><a class="button quiet" href="/notifications">通知设置</a></div>
+<div class="product-row"><div><strong>{{ '管理员权益' if is_admin else '会员订阅' }}</strong><p>{{ '不受会员期限和额度限制。' if is_admin else '查看额度、有效期及兑换记录。' }}</p></div><a class="button quiet" href="{{ '/admin/subscriptions' if is_admin else '/subscription' }}">{{ '管理客户订阅' if is_admin else '管理会员' }}</a></div>
+<div class="product-row"><div><strong>使用帮助</strong><p>绑定、续火任务与常见问题说明。</p></div><a class="button quiet" href="/help">查看帮助</a></div>
+</section>
+<section class="panel">
+<header class="section-head"><div><h2>有效登录会话 · {{ sessions|length }}</h2><p>按登录时间区分；退出网站会话不会影响云端抖音任务。</p></div></header>
+{% if request.query_params.get('revoked') %}<p role="status">其他登录会话已退出。</p>{% endif %}
+{% for session in sessions %}<div class="product-row"><div><strong>{{ '当前会话' if session.id==current_session else '其他登录会话' }}</strong><p>登录于 {{ session.created_at|shanghai_time }} · 到期 {{ session.expires_at|shanghai_time }}</p></div>{% if session.id==current_session %}<span class="pill good">正在使用</span>{% endif %}</div>{% endfor %}
+<form class="session-actions" method="post" action="/account-center/revoke-sessions" data-submit-lock data-confirm="将退出除当前会话之外的所有网站登录，不影响云端抖音绑定和任务。"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="quiet" type="submit"{% if sessions|length<=1 %} disabled{% endif %}>退出其他登录会话</button></form>
+</section>
+{% endblock %}

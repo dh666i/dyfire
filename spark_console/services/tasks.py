@@ -1,0 +1,385 @@
+from __future__ import annotations
+
+import re
+from collections.abc import Iterable
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from spark_console.models import (
+    DouyinContactIdentity,
+    SparkTask,
+    SparkTaskTargetIdentity,
+    TaskRun,
+)
+from spark_console.services import Conflict, NotFound, ValidationError
+from spark_console.services.accounts import AccountService
+from spark_console.services.audits import AuditService
+from spark_console.task_targets import (
+    TARGET_IDENTITY_LENGTH,
+    TARGET_NAME_LENGTH,
+    normalize_target_identity,
+    normalize_target_name,
+    targets_conflict,
+    task_target_key,
+)
+
+
+_TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+TEXT_MESSAGE_KIND = "text"
+DOUYIN_STICKER_MESSAGE_KIND = "douyin_sticker"
+DOUYIN_SPARK_STICKER = "续火花"
+
+
+def _normalize_message_payload(
+    message_kind: str, message_template: str
+) -> tuple[str, str]:
+    kind = str(message_kind or TEXT_MESSAGE_KIND).strip().lower()
+    message = str(message_template or "").strip()
+    if kind == TEXT_MESSAGE_KIND:
+        if not message or len(message) > 500:
+            raise ValidationError("消息内容须为 1–500 个字符")
+        return kind, message
+    if kind == DOUYIN_STICKER_MESSAGE_KIND:
+        if message and message != DOUYIN_SPARK_STICKER:
+            raise ValidationError("当前仅支持抖音原生续火花表情")
+        return kind, DOUYIN_SPARK_STICKER
+    raise ValidationError("不支持的消息类型")
+
+
+class TaskService:
+    def __init__(self, session: Session, accounts: AccountService, audit: AuditService):
+        self.session = session
+        self.accounts = accounts
+        self.audit = audit
+
+    def get_owned(self, owner_id: str, task_id: str) -> SparkTask:
+        task = self.session.scalar(
+            select(SparkTask).where(
+                SparkTask.id == task_id, SparkTask.owner_user_id == owner_id
+            )
+        )
+        if task is None:
+            raise NotFound("task not found")
+        return task
+
+    def list_owned(self, owner_id: str) -> list[SparkTask]:
+        return list(
+            self.session.scalars(
+                select(SparkTask)
+                .where(SparkTask.owner_user_id == owner_id)
+                .order_by(SparkTask.send_time, SparkTask.created_at)
+            ).all()
+        )
+
+    def create(
+        self,
+        owner_id: str,
+        account_id: str,
+        target_name: str,
+        send_time: str,
+        message_template: str,
+        target_sec_uid: str | None = None,
+        message_kind: str = TEXT_MESSAGE_KIND,
+    ) -> SparkTask:
+        return self.create_many(
+            owner_id,
+            account_id,
+            ((target_name, target_sec_uid),),
+            send_time,
+            message_template,
+            message_kind=message_kind,
+        )[0]
+
+    @staticmethod
+    def normalize_targets(
+        targets: Iterable[tuple[str, str | None]],
+    ) -> list[tuple[str, str]]:
+        normalized: list[list[str] | None] = []
+        manual_index_by_name: dict[str, int] = {}
+        index_by_sec_uid: dict[str, int] = {}
+        stable_name_keys: set[str] = set()
+        for raw_name, raw_sec_uid in targets:
+            target = str(raw_name or "").strip()
+            stable_target = normalize_target_identity(raw_sec_uid)
+            if not target or len(target) > TARGET_NAME_LENGTH:
+                raise ValidationError(
+                    f"好友名称须为 1–{TARGET_NAME_LENGTH} 个字符"
+                )
+            if len(stable_target) > TARGET_IDENTITY_LENGTH:
+                raise ValidationError(
+                    f"好友身份标识不得超过 {TARGET_IDENTITY_LENGTH} 个字符"
+                )
+
+            name_key = normalize_target_name(target)
+            if stable_target:
+                identity_index = index_by_sec_uid.get(stable_target)
+                if identity_index is not None:
+                    stable_name_keys.add(name_key)
+                    manual_index = manual_index_by_name.pop(name_key, None)
+                    if manual_index is not None and manual_index != identity_index:
+                        normalized[manual_index] = None
+                    continue
+
+                manual_index = manual_index_by_name.pop(name_key, None)
+                if manual_index is not None:
+                    normalized[manual_index] = [target, stable_target]
+                    index = manual_index
+                else:
+                    index = len(normalized)
+                    normalized.append([target, stable_target])
+                index_by_sec_uid[stable_target] = index
+                stable_name_keys.add(name_key)
+                continue
+
+            if name_key in stable_name_keys or name_key in manual_index_by_name:
+                continue
+            index = len(normalized)
+            normalized.append([target, ""])
+            manual_index_by_name[name_key] = index
+
+        result = [item for item in normalized if item is not None]
+        if not result:
+            raise ValidationError("请至少选择一位目标好友")
+        return [(target, stable_target) for target, stable_target in result]
+
+    def _active_schedule_targets(
+        self,
+        account_id: str,
+        send_time: str,
+        *,
+        exclude_task_id: str | None = None,
+    ) -> list[tuple[str, str | None]]:
+        statement = (
+            select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
+            .outerjoin(
+                SparkTaskTargetIdentity,
+                SparkTaskTargetIdentity.task_id == SparkTask.id,
+            )
+            .where(
+                SparkTask.douyin_account_id == account_id,
+                SparkTask.send_time == send_time,
+                SparkTask.enabled.is_(True),
+            )
+        )
+        if exclude_task_id is not None:
+            statement = statement.where(SparkTask.id != exclude_task_id)
+        return list(self.session.execute(statement).all())
+
+    @staticmethod
+    def _has_target_conflict(
+        existing_targets: Iterable[tuple[str, str | None]],
+        target_name: str,
+        target_sec_uid: str | None,
+    ) -> bool:
+        return any(
+            targets_conflict(
+                existing_name,
+                existing_sec_uid,
+                target_name,
+                target_sec_uid,
+            )
+            for existing_name, existing_sec_uid in existing_targets
+        )
+
+    def create_many(
+        self,
+        owner_id: str,
+        account_id: str,
+        targets: Iterable[tuple[str, str | None]],
+        send_time: str,
+        message_template: str,
+        message_kind: str = TEXT_MESSAGE_KIND,
+    ) -> list[SparkTask]:
+        normalized_targets = self.normalize_targets(targets)
+        kind, message = _normalize_message_payload(message_kind, message_template)
+        if not _TIME_RE.fullmatch(send_time):
+            raise ValidationError("发送时间格式必须为 HH:MM")
+        account = self.accounts.get_owned(owner_id, account_id)
+        if account.validation_state == "invalid":
+            raise ValidationError("抖音账号登录状态已失效，请先重新登录")
+
+        for _target, stable_target in normalized_targets:
+            if stable_target and self.session.get(
+                DouyinContactIdentity, (account.id, stable_target)
+            ) is None:
+                raise ValidationError("所选好友不属于当前抖音账号")
+
+        existing_targets = self._active_schedule_targets(account.id, send_time)
+        if any(
+            self._has_target_conflict(existing_targets, target, stable_target)
+            for target, stable_target in normalized_targets
+        ):
+            raise Conflict("相同账号、好友和时间的启用任务已存在")
+
+        local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        hour, minute = map(int, send_time.split(":"))
+        candidate = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= local_now:
+            from datetime import timedelta
+            candidate += timedelta(days=1)
+
+        next_run_at = candidate.astimezone(timezone.utc)
+        tasks = [
+            SparkTask(
+                owner_user_id=owner_id,
+                douyin_account_id=account.id,
+                target_name=target,
+                target_key=task_target_key(target, _stable_target),
+                send_time=send_time,
+                message_template=message,
+                message_kind=kind,
+                enabled=True,
+                next_run_at=next_run_at,
+            )
+            for target, _stable_target in normalized_targets
+        ]
+        try:
+            with self.session.begin_nested():
+                self.session.add_all(tasks)
+                self.session.flush()
+                self.session.add_all(
+                    SparkTaskTargetIdentity(task_id=task.id, sec_uid=stable_target)
+                    for task, (_target, stable_target) in zip(
+                        tasks, normalized_targets, strict=True
+                    )
+                    if stable_target
+                )
+                self.session.flush()
+        except IntegrityError as error:
+            raise Conflict("相同账号、好友和时间的启用任务已存在") from error
+        for task in tasks:
+            self.audit.write(owner_id, "task.created", "spark_task", task.id)
+        return tasks
+
+    def set_enabled_owned(self, owner_id: str, task_id: str, enabled: bool) -> SparkTask:
+        task = self.get_owned(owner_id, task_id)
+        if enabled and task.douyin_account_id is None:
+            raise ValidationError("账号已删除，无法启用任务")
+        enabled_target_key: str | None = None
+        if enabled:
+            account = self.accounts.get_owned(owner_id, task.douyin_account_id)
+            if account.validation_state == "invalid":
+                raise ValidationError("抖音账号登录状态已失效，请先重新登录")
+            binding = self.session.get(SparkTaskTargetIdentity, task.id)
+            stable_target = binding.sec_uid if binding is not None else ""
+            existing_targets = self._active_schedule_targets(
+                account.id, task.send_time, exclude_task_id=task.id
+            )
+            if self._has_target_conflict(
+                existing_targets, task.target_name, stable_target
+            ):
+                raise Conflict("相同账号、好友和时间的启用任务已存在")
+            enabled_target_key = task_target_key(task.target_name, stable_target)
+        try:
+            with self.session.begin_nested():
+                if enabled_target_key is not None:
+                    task.target_key = enabled_target_key
+                task.enabled = enabled
+                self.session.flush()
+        except IntegrityError as error:
+            raise Conflict("相同账号、好友和时间的启用任务已存在") from error
+        self.audit.write(owner_id, "task.enabled" if enabled else "task.disabled", "spark_task", task.id)
+        return task
+
+    def update_owned(
+        self,
+        owner_id: str,
+        task_id: str,
+        account_id: str,
+        target_name: str,
+        send_time: str,
+        message_template: str,
+        target_sec_uid: str | None = None,
+        message_kind: str = TEXT_MESSAGE_KIND,
+    ) -> SparkTask:
+        task = self.get_owned(owner_id, task_id)
+        target = target_name.strip()
+        kind, message = _normalize_message_payload(message_kind, message_template)
+        if not target or len(target) > TARGET_NAME_LENGTH:
+            raise ValidationError(f"好友名称须为 1–{TARGET_NAME_LENGTH} 个字符")
+        if not _TIME_RE.fullmatch(send_time):
+            raise ValidationError("发送时间格式必须为 HH:MM")
+        account = self.accounts.get_owned(owner_id, account_id)
+        if task.enabled and account.validation_state == "invalid":
+            raise ValidationError("抖音账号登录状态已失效，请先重新登录")
+        stable_target = normalize_target_identity(target_sec_uid)
+        if len(stable_target) > TARGET_IDENTITY_LENGTH:
+            raise ValidationError(
+                f"好友身份标识不得超过 {TARGET_IDENTITY_LENGTH} 个字符"
+            )
+        if stable_target and self.session.get(
+            DouyinContactIdentity, (account.id, stable_target)
+        ) is None:
+            raise ValidationError("所选好友不属于当前抖音账号")
+        binding = self.session.get(SparkTaskTargetIdentity, task.id)
+        old_stable_target = binding.sec_uid if binding is not None else ""
+        old_canonical_key = task_target_key(task.target_name, old_stable_target)
+        new_canonical_key = task_target_key(target, stable_target)
+        schedule_identity_unchanged = (
+            task.douyin_account_id == account.id
+            and task.send_time == send_time
+            and old_canonical_key == new_canonical_key
+        )
+        if task.enabled and not schedule_identity_unchanged:
+            existing_targets = self._active_schedule_targets(
+                account.id, send_time, exclude_task_id=task.id
+            )
+            if self._has_target_conflict(existing_targets, target, stable_target):
+                raise Conflict("相同账号、好友和时间的启用任务已存在")
+
+        local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        hour, minute = map(int, send_time.split(":"))
+        candidate = local_now.replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        if candidate <= local_now:
+            from datetime import timedelta
+
+            candidate += timedelta(days=1)
+        try:
+            with self.session.begin_nested():
+                task.douyin_account_id = account.id
+                task.target_name = target
+                task.target_key = (
+                    task.target_key
+                    if schedule_identity_unchanged
+                    and task.target_key.startswith("legacy:")
+                    else new_canonical_key
+                )
+                task.send_time = send_time
+                task.message_template = message
+                task.message_kind = kind
+                task.next_run_at = candidate.astimezone(timezone.utc)
+
+                if stable_target:
+                    if binding is None:
+                        self.session.add(
+                            SparkTaskTargetIdentity(
+                                task_id=task.id, sec_uid=stable_target
+                            )
+                        )
+                    else:
+                        binding.sec_uid = stable_target
+                elif binding is not None:
+                    self.session.delete(binding)
+                self.session.flush()
+        except IntegrityError as error:
+            raise Conflict("相同账号、好友和时间的启用任务已存在") from error
+        self.audit.write(owner_id, "task.updated", "spark_task", task.id)
+        return task
+
+    def delete_owned(self, owner_id: str, task_id: str) -> None:
+        task = self.get_owned(owner_id, task_id)
+        running = self.session.scalar(
+            select(TaskRun.id)
+            .where(TaskRun.task_id == task.id, TaskRun.status == "running")
+            .limit(1)
+        )
+        if running is not None:
+            raise Conflict("任务正在执行，请完成后再删除")
+        self.session.delete(task)
+        self.audit.write(owner_id, "task.deleted", "spark_task", task_id)

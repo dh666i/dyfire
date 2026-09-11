@@ -1,0 +1,17 @@
+[Unit]
+Description=Dyfire release updater
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dyfire
+Environment=DYFIRE_DEPLOY_DIR=/opt/dyfire
+Environment=DYFIRE_GITHUB_TOKEN_FILE=/opt/dyfire/secrets/github-token
+ExecStart=/usr/bin/python3 /opt/dyfire/deploy/updater.py
+Restart=on-failure
+RestartSec=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

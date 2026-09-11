@@ -1,0 +1,28 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const {JSDOM} = require('../../.artifacts/ui-check/node_modules/jsdom');
+(async () => {
+  const dom = new JSDOM('<form method="post" data-task-create-form data-submit-lock><input name="target_name" value="小张"><button type="submit">创建任务</button></form><details data-run-id="one"></details>', {url:'https://example.test/tasks',runScripts:'outside-only',pretendToBeVisual:true});
+  const w=dom.window,d=w.document;
+  w.matchMedia=()=>({matches:true});
+  let calls=0, finish;
+  w.fetch=()=>{calls++;return new Promise(resolve=>{finish=resolve;});};
+  w.eval(fs.readFileSync('spark_console/static/app_ui.js','utf8'));
+  w.eval(fs.readFileSync('spark_console/static/experience.js','utf8'));
+  const form=d.querySelector('form'),button=d.querySelector('button');
+  const submit=()=>form.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:button}));
+  submit();submit();assert.equal(calls,1);assert.equal(button.disabled,true);
+  finish({ok:false,status:409,redirected:false,text:async()=>'<p class="auth-error-message">该好友已有任务</p>'});
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(button.disabled,false);assert.equal(button.textContent,'创建任务');
+  assert.equal(form.elements.target_name.value,'小张');assert.match(form.textContent,/该好友已有任务/);
+  w.fetch=async()=>{calls++;throw new Error('network');};
+  submit();await new Promise(resolve=>setTimeout(resolve,0));submit();
+  assert.equal(calls,2);assert.equal(button.disabled,true);assert.match(form.textContent,/无法确认保存结果/);
+  assert.equal(form.querySelector('[data-create-feedback] a').target,'_blank');
+  d.querySelector('details').open=true;w.dispatchEvent(new w.Event('pagehide'));
+  const saved=JSON.parse(w.sessionStorage.getItem('spark-view:/tasks'));assert.deepEqual(saved.open,['one']);
+  assert.ok(!JSON.stringify(saved).includes('小张'));
+  w.dispatchEvent(new w.PageTransitionEvent('pageshow',{persisted:true}));assert.equal(button.disabled,false);
+  dom.window.close();console.log('PASS: duplicate submit blocked, validation retains draft, uncertain POST never retried, view-only persistence, back navigation unlock');
+})().catch(error=>{console.error(error);process.exitCode=1;});

@@ -1,0 +1,438 @@
+import hashlib
+import unittest
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from spark_console.db import create_schema
+from spark_console.models import (
+    AuditEvent,
+    DouyinAccount,
+    RedemptionCode,
+    SparkTask,
+    SubscriptionGrant,
+    User,
+    UserSubscription,
+)
+from spark_console.services import Conflict, NotFound, ValidationError
+from spark_console.services.audits import AuditService
+from spark_console.services.subscriptions import SubscriptionService
+
+
+def aware(value):
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+class SubscriptionServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.now = datetime(2026, 8, 30, 6, 0, tzinfo=timezone.utc)
+        self.engine = create_engine("sqlite:///:memory:")
+        create_schema(self.engine)
+        self.session = Session(self.engine)
+        self.admin = User(
+            username="admin",
+            password_hash="hash",
+            role="admin",
+            must_change_password=False,
+        )
+        self.user = User(
+            username="customer",
+            password_hash="hash",
+            role="user",
+            must_change_password=False,
+        )
+        self.other = User(
+            username="other",
+            password_hash="hash",
+            role="user",
+            must_change_password=False,
+        )
+        self.session.add_all((self.admin, self.user, self.other))
+        self.session.flush()
+        self.service = SubscriptionService(
+            self.session, AuditService(self.session), now=lambda: self.now
+        )
+
+    def tearDown(self):
+        self.session.close()
+        self.engine.dispose()
+
+    def create_code(self, **kwargs):
+        return self.service.create_redemption_code(self.admin.id, **kwargs)
+
+    def test_redemption_code_returns_plaintext_once_and_persists_only_sha256(self):
+        code, plaintext = self.create_code(
+            duration_days=45,
+            max_accounts=2,
+            max_tasks=12,
+            lifetime=timedelta(days=7),
+        )
+
+        self.assertGreaterEqual(len(plaintext), 24)
+        self.assertEqual(
+            hashlib.sha256(plaintext.encode("utf-8")).hexdigest(), code.code_hash
+        )
+        self.assertNotIn("plaintext", RedemptionCode.__table__.columns)
+        self.assertNotIn("ciphertext", RedemptionCode.__table__.columns)
+        self.assertEqual(self.now + timedelta(days=7), aware(code.expires_at))
+        self.assertEqual(45, code.duration_days)
+        self.assertIsNotNone(code.id)
+        audit_text = " ".join(
+            event.detail or ""
+            for event in self.session.scalars(select(AuditEvent)).all()
+        )
+        self.assertNotIn(plaintext, audit_text)
+        self.assertFalse(hasattr(self.service, "reveal_redemption_code"))
+
+    def test_redeem_creates_subscription_and_append_only_grant(self):
+        code, plaintext = self.create_code(
+            duration_days=30, max_accounts=2, max_tasks=8
+        )
+
+        subscription = self.service.redeem(self.user.id, plaintext)
+
+        self.assertEqual(self.now, aware(subscription.valid_from))
+        self.assertEqual(self.now + timedelta(days=30), aware(subscription.valid_until))
+        self.assertEqual(2, subscription.max_accounts)
+        self.assertEqual(8, subscription.max_tasks)
+        self.assertEqual(1, subscription.version)
+        self.assertEqual(self.user.id, code.redeemed_by_user_id)
+        self.assertEqual(self.now, aware(code.redeemed_at))
+        grant = self.session.scalar(
+            select(SubscriptionGrant).where(
+                SubscriptionGrant.redemption_code_id == code.id
+            )
+        )
+        self.assertEqual("redemption", grant.source)
+        self.assertEqual(self.user.id, grant.user_id)
+        self.assertEqual(self.user.id, grant.actor_user_id)
+        self.assertEqual(30, grant.duration_days)
+        self.assertEqual(self.now, aware(grant.valid_from))
+        self.assertEqual(self.now + timedelta(days=30), aware(grant.valid_until))
+        actions = set(self.session.scalars(select(AuditEvent.action)).all())
+        self.assertIn("redemption_code.created", actions)
+        self.assertIn("subscription.redeemed", actions)
+
+    def test_active_renewal_starts_from_existing_expiry_and_preserves_old_grant(self):
+        _first_code, first_plaintext = self.create_code(
+            duration_days=30, max_accounts=1, max_tasks=5
+        )
+        subscription = self.service.redeem(self.user.id, first_plaintext)
+        original_expiry = aware(subscription.valid_until)
+        first_grant = self.session.scalar(
+            select(SubscriptionGrant).where(
+                SubscriptionGrant.user_id == self.user.id
+            )
+        )
+        original_grant = (
+            first_grant.source,
+            aware(first_grant.valid_from),
+            aware(first_grant.valid_until),
+            first_grant.max_accounts,
+            first_grant.max_tasks,
+        )
+        self.now += timedelta(days=5)
+        _second_code, second_plaintext = self.create_code(
+            duration_days=10, max_accounts=3, max_tasks=20
+        )
+
+        renewed = self.service.redeem(self.user.id, second_plaintext)
+
+        self.assertEqual(original_expiry + timedelta(days=10), aware(renewed.valid_until))
+        self.assertEqual(
+            datetime(2026, 8, 30, 6, 0, tzinfo=timezone.utc),
+            aware(renewed.valid_from),
+        )
+        self.assertEqual(
+            (3, 20, 2),
+            (renewed.max_accounts, renewed.max_tasks, renewed.version),
+        )
+        self.assertEqual(
+            original_grant,
+            (
+                first_grant.source,
+                aware(first_grant.valid_from),
+                aware(first_grant.valid_until),
+                first_grant.max_accounts,
+                first_grant.max_tasks,
+            ),
+        )
+        self.assertEqual(
+            2,
+            len(
+                self.session.scalars(
+                    select(SubscriptionGrant).where(
+                        SubscriptionGrant.user_id == self.user.id
+                    )
+                ).all()
+            ),
+        )
+
+    def test_expired_renewal_restarts_from_now(self):
+        _code, plaintext = self.create_code(duration_days=1)
+        self.service.redeem(self.user.id, plaintext)
+        self.now += timedelta(days=2)
+        _renewal, renewal_plaintext = self.create_code(duration_days=3)
+
+        subscription = self.service.redeem(self.user.id, renewal_plaintext)
+
+        self.assertEqual(self.now, aware(subscription.valid_from))
+        self.assertEqual(self.now + timedelta(days=3), aware(subscription.valid_until))
+
+    def test_code_can_be_redeemed_once_and_revoked_code_cannot_be_redeemed(self):
+        used_code, used_plaintext = self.create_code()
+        self.service.redeem(self.user.id, used_plaintext)
+
+        with self.assertRaisesRegex(ValidationError, "兑换码无效或已使用"):
+            self.service.redeem(self.other.id, used_plaintext)
+        with self.assertRaisesRegex(Conflict, "已使用或已撤销"):
+            self.service.revoke_redemption_code(self.admin.id, used_code.id)
+
+        revoked_code, revoked_plaintext = self.create_code()
+        returned = self.service.revoke_redemption_code(self.admin.id, revoked_code.id)
+        self.assertIs(returned, revoked_code)
+        self.assertEqual(self.now, aware(revoked_code.revoked_at))
+        with self.assertRaisesRegex(ValidationError, "兑换码无效或已使用"):
+            self.service.redeem(self.other.id, revoked_plaintext)
+        with self.assertRaisesRegex(Conflict, "已使用或已撤销"):
+            self.service.revoke_redemption_code(self.admin.id, revoked_code.id)
+        with self.assertRaises(NotFound):
+            self.service.revoke_redemption_code(
+                self.admin.id, "00000000-0000-0000-0000-000000000000"
+            )
+
+    def test_expired_code_is_rejected_without_creating_subscription(self):
+        _code, plaintext = self.create_code(lifetime=timedelta(minutes=1))
+        self.now += timedelta(minutes=1)
+
+        with self.assertRaisesRegex(ValidationError, "兑换码无效或已使用"):
+            self.service.redeem(self.user.id, plaintext)
+
+        self.assertIsNone(self.session.get(UserSubscription, self.user.id))
+        self.assertEqual([], self.session.scalars(select(SubscriptionGrant)).all())
+
+    def test_admin_can_open_extend_and_set_limits_with_a_grant_per_change(self):
+        subscription = self.service.extend(
+            self.admin.id,
+            self.user.id,
+            duration_days=30,
+            max_accounts=2,
+            max_tasks=10,
+        )
+        first_expiry = aware(subscription.valid_until)
+        self.now += timedelta(days=1)
+
+        subscription = self.service.extend(
+            self.admin.id, self.user.id, duration_days=15
+        )
+        self.assertEqual(first_expiry + timedelta(days=15), aware(subscription.valid_until))
+        self.assertEqual(
+            (2, 10, 2),
+            (
+                subscription.max_accounts,
+                subscription.max_tasks,
+                subscription.version,
+            ),
+        )
+        expiry_before_limits = aware(subscription.valid_until)
+
+        subscription = self.service.set_limits(
+            self.admin.id, self.user.id, max_accounts=4, max_tasks=25
+        )
+
+        self.assertEqual(expiry_before_limits, aware(subscription.valid_until))
+        self.assertEqual(
+            (4, 25, 3),
+            (
+                subscription.max_accounts,
+                subscription.max_tasks,
+                subscription.version,
+            ),
+        )
+        grants = self.session.scalars(
+            select(SubscriptionGrant).where(
+                SubscriptionGrant.user_id == self.user.id
+            )
+        ).all()
+        self.assertEqual(
+            {"admin_extend", "admin_limits"}, {grant.source for grant in grants}
+        )
+        self.assertEqual(3, len(grants))
+        actions = set(self.session.scalars(select(AuditEvent.action)).all())
+        self.assertIn("subscription.extended", actions)
+        self.assertIn("subscription.limits_updated", actions)
+
+    def test_non_admin_cannot_manage_codes_or_subscriptions(self):
+        code, _plaintext = self.create_code()
+        with self.assertRaisesRegex(ValidationError, "需要管理员权限"):
+            self.service.create_redemption_code(self.user.id)
+        with self.assertRaisesRegex(ValidationError, "需要管理员权限"):
+            self.service.extend(
+                self.user.id, self.other.id, duration_days=30
+            )
+        with self.assertRaisesRegex(ValidationError, "需要管理员权限"):
+            self.service.revoke_redemption_code(self.user.id, code.id)
+        with self.assertRaisesRegex(ValidationError, "需要管理员权限"):
+            self.service.set_limits(
+                self.user.id, self.other.id, max_accounts=1, max_tasks=1
+            )
+        with self.assertRaisesRegex(ValidationError, "需要管理员权限"):
+            self.service.revoke_subscription(self.user.id, self.other.id)
+
+    def test_admin_revoke_is_immediate_and_appends_a_zero_length_grant(self):
+        subscription = self.service.extend(
+            self.admin.id,
+            self.user.id,
+            duration_days=30,
+            max_accounts=2,
+            max_tasks=10,
+        )
+
+        revoked = self.service.revoke(self.admin.id, self.user.id)
+
+        self.assertIs(subscription, revoked)
+        self.assertEqual(self.now, aware(revoked.valid_from))
+        self.assertEqual(self.now, aware(revoked.valid_until))
+        self.assertEqual(2, revoked.version)
+        self.assertFalse(self.service.active(self.user.id))
+        grant = self.session.scalar(
+            select(SubscriptionGrant).where(
+                SubscriptionGrant.source == "admin_revoke"
+            )
+        )
+        self.assertEqual(self.now, aware(grant.valid_from))
+        self.assertEqual(self.now, aware(grant.valid_until))
+        self.assertEqual((2, 10), (grant.max_accounts, grant.max_tasks))
+        actions = set(self.session.scalars(select(AuditEvent.action)).all())
+        self.assertIn("subscription.revoked", actions)
+        with self.assertRaisesRegex(Conflict, "已过期或已撤销"):
+            self.service.revoke_subscription(self.admin.id, self.user.id)
+        with self.assertRaises(NotFound):
+            self.service.revoke_subscription(self.admin.id, self.other.id)
+
+    def test_active_and_require_active_include_user_status_and_exact_expiry(self):
+        self.assertFalse(self.service.active(self.user.id))
+        with self.assertRaisesRegex(ValidationError, "会员未开通或已过期"):
+            self.service.require_active(self.user.id)
+
+        subscription = self.service.extend(
+            self.admin.id, self.user.id, duration_days=1
+        )
+        self.assertTrue(self.service.active(self.user.id))
+        self.assertIs(subscription, self.service.require_active(self.user.id))
+
+        self.now = aware(subscription.valid_until)
+        self.assertFalse(self.service.active(self.user.id))
+        with self.assertRaises(ValidationError):
+            self.service.require_active(self.user.id)
+
+        self.now -= timedelta(seconds=1)
+        self.user.status = "disabled"
+        self.assertFalse(self.service.active(self.user.id))
+        with self.assertRaises(ValidationError):
+            self.service.require_active(self.user.id)
+
+    def test_account_and_task_capacity_count_only_the_requested_owner(self):
+        self.service.extend(
+            self.admin.id,
+            self.user.id,
+            duration_days=30,
+            max_accounts=1,
+            max_tasks=1,
+        )
+        self.session.add(
+            DouyinAccount(
+                owner_user_id=self.other.id,
+                display_name="other-account",
+                encrypted_cookies=b"encrypted",
+                cookie_nonce=b"nonce",
+            )
+        )
+        self.session.flush()
+        self.service.require_account_capacity(self.user.id)
+        self.service.require_task_capacity(self.user.id)
+
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="customer-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
+        with self.assertRaisesRegex(Conflict, "账号数量已达套餐上限"):
+            self.service.require_account_capacity(self.user.id)
+
+        self.session.add(
+            SparkTask(
+                owner_user_id=self.user.id,
+                douyin_account_id=account.id,
+                target_name="好友",
+                send_time="09:00",
+                message_template="今日火花",
+                enabled=True,
+            )
+        )
+        self.session.flush()
+        with self.assertRaisesRegex(Conflict, "任务数量已达套餐上限"):
+            self.service.require_task_capacity(self.user.id)
+
+    def test_task_capacity_checks_the_full_batch_size(self):
+        self.service.extend(
+            self.admin.id,
+            self.user.id,
+            duration_days=30,
+            max_accounts=1,
+            max_tasks=3,
+        )
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="customer-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
+        self.session.add(
+            SparkTask(
+                owner_user_id=self.user.id,
+                douyin_account_id=account.id,
+                target_name="已有好友",
+                send_time="09:00",
+                message_template="今日火花",
+                enabled=True,
+            )
+        )
+        self.session.flush()
+
+        self.assertIsNotNone(self.service.require_task_capacity(self.user.id, 2))
+        with self.assertRaisesRegex(Conflict, "任务数量已达套餐上限"):
+            self.service.require_task_capacity(self.user.id, 3)
+        with self.assertRaises(ValidationError):
+            self.service.require_task_capacity(self.user.id, 0)
+
+    def test_invalid_parameters_and_missing_records_use_service_errors(self):
+        for field, kwargs in (
+            ("days", {"duration_days": 0}),
+            ("days-too-large", {"duration_days": 36_501}),
+            ("accounts", {"max_accounts": 0}),
+            ("tasks", {"max_tasks": 0}),
+            ("lifetime", {"lifetime": timedelta(0)}),
+        ):
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                self.create_code(**kwargs)
+        with self.assertRaises(NotFound):
+            self.service.extend(
+                self.admin.id,
+                "00000000-0000-0000-0000-000000000000",
+                duration_days=30,
+            )
+        with self.assertRaises(NotFound):
+            self.service.set_limits(
+                self.admin.id, self.other.id, max_accounts=1, max_tasks=1
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,132 @@
+{% from "admin_components.html" import icon %}
+<!doctype html>
+<html lang="zh-CN" class="no-js" data-app-surface="admin" data-theme-light-color="#f3f3f4" data-theme-dark-color="#101112">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f3f3f4" data-theme-color>
+  <title>{{ title }} · 火花守护运营后台</title>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      let saved = null;
+      try { saved = localStorage.getItem('spark-console-theme'); } catch (_) {}
+      const mode = saved === 'dark' ? 'dark' : 'light';
+
+      const theme = mode;
+      root.dataset.themeMode = mode;
+      root.dataset.theme = theme;
+      root.style.colorScheme = theme;
+      const themeColor = document.querySelector('[data-theme-color]');
+      if (themeColor) themeColor.setAttribute('content', theme === 'dark' ? root.dataset.themeDarkColor : root.dataset.themeLightColor);
+      root.classList.remove('no-js');
+      root.classList.add('js');
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/admin.css?v=20260903-1">
+  <link rel="stylesheet" href="/static/mineradio_admin.css?v=20260905-2">
+  {% block admin_styles %}{% endblock %}
+  <link rel="stylesheet" href="/static/console_studio.css?v=20260906-2">
+  <link rel="stylesheet" href="/static/directory_ui.css?v=20260909-2">
+  <link rel="stylesheet" href="/static/smoke_fonts.css?v=20260910-1">
+  <link rel="stylesheet" href="/static/smoke_cards.css?v=20260910-1">
+  <link rel="stylesheet" href="/static/smoke_production.css?v=20260910-2">
+  <link rel="stylesheet" href="/static/ui_select.css?v=20260910-1">
+  <script type="module" src="/static/smoke_ui.js?v=20260910-1"></script>
+  <link rel="stylesheet" href="/static/experience.css?v=20260910-3">
+  <script defer src="/static/ui_select.js?v=20260910-3"></script>
+  <script defer src="/static/experience.js?v=20260910-3"></script>
+  <link rel="stylesheet" href="/static/reliability.css?v=20260910-5">
+  <script defer src="/static/mail_ui.js?v=20260910-6"></script>
+  <link rel="stylesheet" href="/static/product.css?v=20260910-6">
+  <script defer src="/static/product_ui.js?v=20260910-6"></script>
+  <script defer src="/static/workflow_polish.js?v=20260910-5"></script>
+  <link rel="icon" type="image/png" href="/static/spark-flame.png?v=20260909-1">
+  <script defer src="/static/directory_ui.js?v=20260910-3"></script>
+  <script src="/static/admin.js?v=20260909-1" defer></script>
+  <script src="/static/mineradio_ui.js?v=20260910-2" defer></script>
+  {% block admin_scripts %}{% endblock %}
+  <script src="/static/console_studio.js?v=20260910-3" defer></script>
+</head>
+{% set section = admin_section|default('overview') %}
+<body class="admin-body" data-admin-section="{{ section }}" data-ui="mineradio-admin" data-design="studio">
+<a class="admin-skip-link" href="#admin-main">跳到主要内容</a>
+
+<aside class="admin-sidebar" id="admin-sidebar" aria-label="运营后台导航">
+  <a class="admin-brand" href="/admin/overview" aria-label="火花守护运营后台首页">
+    <span class="admin-brand-mark"><img class="brand-symbol" src="/static/spark-flame.png?v=20260909-1" width="32" height="32" alt=""></span>
+    <span><strong>火花守护</strong><small>运营工作台</small></span>
+  </a>
+
+  <nav class="admin-nav" aria-label="后台功能">
+    <span class="admin-nav-label">客户与业务</span>
+    <a class="{{ 'active' if section == 'overview' else '' }}" href="/admin/overview"{% if section == 'overview' %} aria-current="page"{% endif %}>{{ icon('overview') }}<span>业务概览</span></a>
+    <a class="{{ 'active' if section == 'users' else '' }}" href="/admin/users"{% if section == 'users' %} aria-current="page"{% endif %}>{{ icon('users') }}<span>用户管理</span></a>
+    <a class="{{ 'active' if section == 'subscriptions' else '' }}" href="/admin/subscriptions"{% if section == 'subscriptions' %} aria-current="page"{% endif %}>{{ icon('subscriptions') }}<span>订阅管理</span></a>
+    <a class="{{ 'active' if section == 'codes' else '' }}" href="/admin/codes"{% if section == 'codes' %} aria-current="page"{% endif %}>{{ icon('codes') }}<span>兑换与邀请</span></a>
+    <span class="admin-nav-label admin-nav-label-spaced">运行与系统</span>
+    <a class="{{ 'active' if section == 'tasks' else '' }}" href="/admin/tasks"{% if section == 'tasks' %} aria-current="page"{% endif %}>{{ icon('tasks') }}<span>任务管理</span></a>
+    <a class="{{ 'active' if section == 'runs' else '' }}" href="/admin/runs"{% if section == 'runs' %} aria-current="page"{% endif %}>{{ icon('runs') }}<span>执行记录</span></a>
+    <a class="{{ 'active' if section == 'operations' else '' }}" href="/admin/operations"{% if section == 'operations' %} aria-current="page"{% endif %}>{{ icon('server') }}<span>运维监控</span></a>
+    <a class="{{ 'active' if section == 'audit' else '' }}" href="/admin/audit"{% if section == 'audit' %} aria-current="page"{% endif %}>{{ icon('audit') }}<span>审计日志</span></a>
+    <a class="{{ 'active' if section == 'settings' else '' }}" href="/admin/settings"{% if section == 'settings' %} aria-current="page"{% endif %}>{{ icon('settings') }}<span>系统设置</span></a>
+  </nav>
+
+  <div class="admin-sidebar-footer">
+    <a class="admin-back-link" href="/dashboard">{{ icon('arrow-left', 17) }}<span>返回用户端</span></a>
+    <div class="admin-profile">
+      <span class="admin-avatar" aria-hidden="true">{{ user.username[0]|upper if user is defined else 'A' }}</span>
+      <span><strong>{{ user.username if user is defined else 'Administrator' }}</strong><small>超级管理员</small></span>
+      <form action="/logout" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="admin-icon-button dark" type="submit" aria-label="退出登录" title="退出登录">{{ icon('logout', 17) }}</button></form>
+    </div>
+  </div>
+</aside>
+<button class="admin-sidebar-backdrop" type="button" aria-label="关闭导航" data-sidebar-close></button>
+
+<div class="admin-app">
+  <header class="admin-topbar">
+    <div class="admin-topbar-start">
+      <button class="admin-icon-button admin-menu-button" type="button" aria-controls="admin-sidebar" aria-expanded="false" aria-label="打开导航" title="打开导航" data-sidebar-open>{{ icon('menu', 19) }}</button>
+      <span class="admin-breadcrumb"><span>管理后台</span><i>/</i><strong>{% block breadcrumb %}业务概览{% endblock %}</strong></span>
+    </div>
+    <div class="admin-topbar-end">
+      <button class="admin-icon-button admin-theme-toggle theme-toggle" type="button" data-theme-toggle aria-label="切换显示主题" title="切换显示主题"><span class="theme-icon theme-icon-light">{{ icon('sun', 17) }}</span><span class="theme-icon theme-icon-dark">{{ icon('moon', 17) }}</span></button>
+      <a class="admin-icon-button" href="/dashboard" aria-label="打开用户端" title="打开用户端">{{ icon('external', 17) }}</a>
+      <span class="admin-topbar-avatar" aria-hidden="true">{{ user.username[0]|upper if user is defined else 'A' }}</span>
+    </div>
+  </header>
+
+  <main class="admin-main" id="admin-main" tabindex="-1">
+    <div class="admin-content">{% block content %}{% endblock %}</div>
+  </main>
+</div>
+
+{% if one_time_password %}
+<dialog class="admin-dialog admin-credential-dialog" open data-admin-dialog="credential-result">
+  <div class="admin-dialog-head"><span class="admin-dialog-icon success">{{ icon('key', 20) }}</span><button class="admin-icon-button" type="button" data-dialog-close aria-label="关闭" title="关闭">{{ icon('x', 18) }}</button></div>
+  <h2>临时密码已生成</h2>
+  <p>该密码只显示一次，请通过安全方式交给用户。</p>
+  <div class="admin-secret"><code>{{ one_time_password }}</code><button class="admin-icon-button" type="button" data-copy-value="{{ one_time_password }}" data-copy-invite="{{ one_time_password }}" aria-label="复制临时密码" title="复制">{{ icon('copy', 17) }}</button></div>
+  <button class="admin-button admin-button-primary admin-dialog-done" type="button" data-dialog-close>完成</button>
+</dialog>
+{% endif %}
+
+{% if one_time_codes is defined and one_time_codes %}
+<dialog class="admin-dialog admin-credential-dialog" open data-admin-dialog="codes-result">
+  <div class="admin-dialog-head"><span class="admin-dialog-icon success">{{ icon('codes', 20) }}</span><button class="admin-icon-button" type="button" data-dialog-close aria-label="关闭" title="关闭">{{ icon('x', 18) }}</button></div>
+  <h2>兑换码已生成</h2>
+  <p>兑换码只显示一次，请立即保存。</p>
+  <div class="admin-secret-list">{% for code in one_time_codes %}<div class="admin-secret"><code>{{ code }}</code><button class="admin-icon-button" type="button" data-copy-value="{{ code }}" data-copy-invite="{{ code }}" aria-label="复制兑换码" title="复制">{{ icon('copy', 17) }}</button></div>{% endfor %}</div>
+  <button class="admin-button admin-button-primary admin-dialog-done" type="button" data-dialog-close>完成</button>
+</dialog>
+{% endif %}
+
+<dialog class="admin-dialog admin-confirm-dialog" data-confirm-dialog>
+  <div class="admin-dialog-head"><span class="admin-dialog-icon danger">{{ icon('alert', 20) }}</span><button class="admin-icon-button" type="button" data-confirm-cancel aria-label="关闭" title="关闭">{{ icon('x', 18) }}</button></div>
+  <h2 data-confirm-title>确认操作</h2>
+  <p data-confirm-message>此操作可能无法撤销。</p>
+  <div class="admin-dialog-actions"><button class="admin-button admin-button-ghost" type="button" data-confirm-cancel>取消</button><button class="admin-button admin-button-danger" type="button" data-confirm-accept>确认</button></div>
+</dialog>
+<div class="admin-toast-region" aria-live="polite" aria-atomic="true"></div>
+</body>
+</html>

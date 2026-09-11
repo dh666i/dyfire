@@ -1,0 +1,12 @@
+<section aria-label="业务健康">
+  <div class="admin-panel-head"><h2>业务健康</h2><span class="muted">与下方资源指标同步更新</span></div>
+  <div class="business-kpis">
+    <article><small>等待绑定</small><strong data-business-value="queued_logins">{{ business.queued_logins }}</strong><small>最久等待 <span data-business-value="login_wait_seconds">{{ business.login_wait_seconds }}</span> 秒</small></article>
+    <article><small>需要关注的账号</small><strong data-business-value="attention_accounts">{{ business.attention_accounts }}</strong><small>包含自动复核与待验证</small></article>
+    <article><small>24 小时待核实比例</small><strong data-business-value="unconfirmed_percent">{{ (business.unconfirmed_percent|string)+'%' if business.unconfirmed_percent is not none else '—' }}</strong><small>分母为已结束的执行记录</small></article>
+    <article><small>24 小时邮件异常</small><strong data-business-value="mail_attention">{{ business.mail_attention }}</strong><a href="/admin/settings/mail">查看发送记录</a></article>
+  </div>
+  <details><summary>最近 24 小时失败原因</summary><ul data-business-failures>{% for reason,count in business.failures %}<li>{{ reason or '未分类' }} · {{ count }} 次</li>{% else %}<li>最近 24 小时暂无失败记录</li>{% endfor %}</ul></details>
+  <div class="business-kpis"><article><small>执行耗时 P95（秒）</small><strong data-business-value="duration_p95">{{ business.duration_p95 if business.duration_p95 is not none else '—' }}</strong><small>24 小时内最近 <span data-business-value="duration_samples">{{ business.duration_samples }}</span> 个完成样本</small></article><article><small>最密集发送时间</small><strong data-business-value="peak_time">{{ business.peak_time }}</strong><small><span data-business-value="peak_tasks">{{ business.peak_tasks }}</span> 个已启用任务</small></article><article><small>排期落后超过 5 分钟</small><strong data-business-value="overdue_tasks">{{ business.overdue_tasks }}</strong><small>包含因账号状态暂缓的计划，请结合账号健康判断</small></article><article><small>绑定排队上限</small><strong>20</strong><small>每用户限一个有效绑定会话，按可执行顺序处理</small></article></div>
+  <p class="muted">容量需要结合真实发送耗时与高峰队列判断，这些指标不代表承诺的账号容量。建议错开大量相同分钟的计划。</p>
+</section>

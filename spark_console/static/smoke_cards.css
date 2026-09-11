@@ -1,0 +1,145 @@
+/* Single source of truth for light/dark smoked-glass material. */
+:root {
+  --bg: #f3f3f4;
+  --surface: #fafafb;
+  --side: #f7f7f8;
+  --text: #27282b;
+  --muted: #666970;
+  --line: rgba(35, 37, 41, .12);
+  --accent: #4e5055;
+  --soft: #eaeaec;
+  --raised: #f0f0f2;
+  --green: #496654;
+  --card-radius: 8px;
+  --card-fill: rgba(255, 255, 255, .80);
+  --card-fallback: #fafafb;
+  --card-highlight: rgba(255, 255, 255, .65);
+  --card-border: rgba(35, 37, 41, .12);
+  --card-shadow: 0 3px 14px rgba(25, 27, 31, .035);
+  --card-spot: rgba(110, 113, 120, .055);
+  --card-spot-radius: 300px;
+  --card-blur: 20px;
+  --card-pad: clamp(16px, 2vw, 26px);
+  --hero-ink: var(--text);
+  --hero-muted: var(--muted);
+  --hero-line: var(--line);
+  --shadow: var(--card-shadow);
+  --rim: transparent;
+}
+:root[data-theme='dark'] {
+  --bg: #101112;
+  --surface: #222325;
+  --side: #151617;
+  --text: #f2f2f3;
+  --muted: #96989d;
+  --line: rgba(220, 223, 228, .12);
+  --accent: #c4c6ca;
+  --soft: #2c2d30;
+  --raised: #27282a;
+  --green: #a2b4a6;
+  --card-fill: rgba(34, 35, 37, .78);
+  --card-fallback: #222325;
+  --card-highlight: rgba(190, 193, 198, .08);
+  --card-border: rgba(220, 223, 228, .12);
+  --card-shadow: 0 4px 16px rgba(0, 0, 0, .10);
+  --card-spot: rgba(205, 208, 214, .07);
+  --hero-ink: var(--text);
+  --hero-muted: var(--muted);
+  --hero-line: var(--line);
+  --shadow: var(--card-shadow);
+  --rim: transparent;
+}
+/* Only decoration is clipped. Content, menus and focus rings may escape the card. */
+.card, .metrics > button.card, .metrics > button.card:last-child {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background: transparent;
+  box-shadow: var(--card-shadow);
+  overflow: visible;
+  min-width: 0;
+  color: var(--text);
+  cursor: default;
+  opacity: 1;
+  transition: none;
+}
+.card::before, .card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  clip-path: inset(0 round var(--card-radius));
+  pointer-events: none;
+}
+.card::before {
+  z-index: -2;
+  background: radial-gradient(ellipse at 0 0, var(--card-highlight), transparent 68%), var(--card-fallback);
+}
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .card::before {
+    background: radial-gradient(ellipse at 0 0, var(--card-highlight), transparent 68%), var(--card-fill);
+    -webkit-backdrop-filter: blur(var(--card-blur));
+    backdrop-filter: blur(var(--card-blur));
+  }
+  .card.card-nested::before { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+.card::after {
+  z-index: -1;
+  background: radial-gradient(circle var(--card-spot-radius) at var(--spot-x, 50%) var(--spot-y, 50%), var(--card-spot), transparent 100%);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .card[data-spot='on']::after { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce), (hover: none), (pointer: coarse) {
+  .card::after { display: none; transition: none; }
+}
+button.card, a.card, .metrics > button.card { cursor: pointer; }
+.card:hover, .metrics > button.card:hover {
+  background: transparent;
+  border-color: var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.panel.card, .today-card.card { padding: var(--card-pad); }
+.card :is(h2, h3) { font-weight: 550; }
+.card :is(p, h2, h3, .muted) { overflow-wrap: anywhere; }
+.card .hero-status, .card .hero-number>span, .card .hero-content p, .card .hero-bottom, .membership-hero.card p, .membership-hero.card .tiny-label, .card .price span { color: var(--muted); }
+.card .hero-bottom b, .card .hero-link { color: var(--text); }
+.hero.card { min-height: 0; display: flex; flex-direction: column; }
+.hero.card .hero-content { padding: var(--card-pad); flex: 1; }
+.hero.card .hero-bottom { position: static; background: none; border-color: var(--line); gap: 12px; flex-wrap: wrap; padding: 15px var(--card-pad); }
+.hero.card .orbital { display: none; }
+.hero.card .hero-number { margin: 18px 0; }
+.hero.card .hero-number strong { font-size: clamp(58px, 6vw, 86px); }
+.metrics > button.card strong::after { content: none; }
+.metrics > button.card>span>svg { display: none; }
+.hero-content p { max-width: 100%; }
+.price { display: flex; align-items: baseline; gap: .12em; flex-wrap: nowrap; white-space: nowrap; font-size: clamp(36px, 5vw, 65px); font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.03em; }
+.price .currency { font-size: .48em; color: var(--text); }
+.price .amount { min-width: 0; font: inherit; color: inherit; }
+.price .price-unit { flex-shrink: 0; font-size: 12px; letter-spacing: 0; margin-left: 8px; }
+.metrics strong, .hero-number, .account-stats strong, time { font-variant-numeric: tabular-nums lining-nums; }
+.metrics strong { overflow-wrap: anywhere; }
+.account-notice { background: none; box-shadow: none; border: 0; padding: 0; color: var(--muted); }
+.account-notice.warning { border: 0; color: var(--muted); }
+.member-note.card { padding: 18px; }
+.plan-row:hover { background: transparent; }
+.workspace.card { cursor: default; }
+label.account-choice.card { cursor: pointer; }
+dialog { border-radius: var(--card-radius); border-color: var(--card-border); background: var(--card-fallback); box-shadow: 0 8px 35px #0002; }
+dialog::backdrop { backdrop-filter: none; }
+.drawer-header, .drawer-footer { background: var(--card-fallback); box-shadow: none; }
+.sidebar, .topbar { background: var(--side); }
+.primary, .primary:hover { background: #303135; border-color: #303135; box-shadow: none; }
+[data-theme=dark] .primary, [data-theme=dark] .primary:hover { background: #e8e8ea; color: #252629; border-color: #e8e8ea; box-shadow: none; }
+.avatar, .avatar-1, .avatar-2, .avatar-3, .avatar-4, .avatar-5 { background: var(--soft); box-shadow: none; }
+@media (max-width:650px) {
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metrics > button.card, .metrics > button.card:last-child { padding: 16px; }
+  .hero-bottom>span { white-space: normal; }
+  .hero.card .hero-number strong { font-size: 64px; }
+  .price { font-size: clamp(32px, 11vw, 54px); }
+}

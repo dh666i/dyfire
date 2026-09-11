@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-experience auth-experience-register">
+  <div class="mr-auth-wrap mr-auth-wrap-wide">
+    <header class="mr-auth-brand">
+      <a class="mr-auth-logo" href="/login" aria-label="火花守护登录页">
+        <span class="brand-mark"><img class="brand-symbol" src="/static/spark-flame.png?v=20260909-1" width="44" height="44" alt=""></span>
+      </a>
+      <h1>火花守护</h1>
+      <p>创建你的平台账号</p>
+    </header>
+
+    <section class="auth-card auth-card-premium register-card">
+      <nav class="studio-auth-tabs" aria-label="账户入口"><a href="/login">登录</a><a href="/register" aria-current="page">注册</a></nav>
+      <div class="auth-card-heading">
+        <h2>创建账号</h2>
+        <p class="muted">邀请码为选填项；开通会员后即可绑定抖音账号。</p>
+      </div>
+      {% if error %}<div class="form-error auth-feedback" role="alert"><span aria-hidden="true">!</span><span>{{ error }}</span></div>{% endif %}
+      <form method="post" class="stack auth-form" data-submit-lock data-submitting-label="正在创建账号…">
+        <label class="auth-field">登录账号<input name="username" value="{{ form.username if form is defined else '' }}" autocomplete="username" minlength="3" placeholder="设置用户名或邮箱" required autofocus><small class="muted">3–32 位字母、数字、@、点、下划线或短横线</small></label>
+        <div class="form-field auth-field">
+          <label for="register-password">密码</label>
+          <span class="password-field" data-password-field>
+            <input id="register-password" type="password" name="password" autocomplete="new-password" placeholder="设置登录密码" data-password-input required>
+            <button class="password-visibility-toggle" type="button" data-password-toggle aria-controls="register-password" aria-label="显示密码" aria-pressed="false" title="显示密码"><span class="password-eye-show">{{ icon('eye', 18) }}</span><span class="password-eye-hide">{{ icon('eye-off', 18) }}</span></button>
+          </span>
+          <small class="muted">需同时包含字母和数字</small>
+        </div>
+        <div class="form-field auth-field">
+          <label for="register-password-confirmation">确认密码</label>
+          <span class="password-field" data-password-field>
+            <input id="register-password-confirmation" type="password" name="password_confirmation" autocomplete="new-password" placeholder="再次输入密码" data-password-input required>
+            <button class="password-visibility-toggle" type="button" data-password-toggle aria-controls="register-password-confirmation" aria-label="显示密码" aria-pressed="false" title="显示密码"><span class="password-eye-show">{{ icon('eye', 18) }}</span><span class="password-eye-hide">{{ icon('eye-off', 18) }}</span></button>
+          </span>
+        </div>
+        <label class="auth-field">注册邀请码（选填）<input name="invite_code" value="{{ form.invite_code if form is defined else '' }}" autocomplete="off" placeholder="有邀请码时填写"><small class="muted">由管理员提供时填写</small></label>
+        <button class="auth-submit" type="submit"><span>注册并返回登录</span>{{ icon('arrow', 18) }}</button>
+      </form>
+      <div class="auth-card-footer">
+        <p class="auth-link">已有账号？<a href="/login">返回登录</a></p>
+        <p class="fine">创建账号即代表你将妥善保管平台及抖音登录信息。</p>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
