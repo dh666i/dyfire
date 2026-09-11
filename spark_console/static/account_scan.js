@@ -207,7 +207,25 @@
     }
   }
 
+  let loadingStarted = null;
+  const viewRetry = document.querySelector('#scan-view-retry');
+  const loadingCopy = document.querySelector('.scan-loading-copy');
+  viewRetry?.addEventListener('click', () => {
+    if (!scanId || isTerminal()) return;
+    if (viewRequest) { viewRequest.onload = null; viewRequest.onerror = null; viewRequest.src = ''; viewRequest = null; }
+    viewRetry.hidden = true;
+    if (loadingCopy) loadingCopy.textContent = '正在重新读取当前会话，不会重复提交登录验证。';
+    refreshBrowserView(scanId);
+  });
   function setViewLoading(loading) {
+    if (loading && loadingStarted === null) loadingStarted = Date.now();
+    if (loading && Date.now() - loadingStarted >= 20000) {
+      if (!viewLoaded && scanId && !isTerminal()) {
+        if (loadingCopy) loadingCopy.textContent = '连接耗时较长，尚未收到云端画面。可重新读取，或取消后稍后再试。';
+        if (viewRetry) viewRetry.hidden = false;
+      }
+    }
+    if (!loading) loadingStarted = null;
     if (dialog) dialog.dataset.frameReady = viewLoaded ? "true" : "false";
     if (qrShellNode) qrShellNode.dataset.loading = loading ? "true" : "false";
     if (qrLoadingNode) qrLoadingNode.hidden = !loading;
@@ -216,6 +234,9 @@
   }
 
   function clearView() {
+    loadingStarted = null;
+    if (viewRetry) viewRetry.hidden = true;
+    if (loadingCopy) loadingCopy.textContent = '首次连接需要一点时间，页面就绪后会自动显示。';
     if (viewRequest) {
       viewRequest.onload = null;
       viewRequest.onerror = null;

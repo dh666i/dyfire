@@ -110,9 +110,14 @@
         <div id="scan-qr-panel" class="scan-stage-panel scan-qr-panel" hidden>
           <div id="scan-qr-shell" class="scan-qr-shell" data-loading="true">
             <img id="scan-qr" class="scan-qr" alt="云端抖音登录页面">
-            <span id="scan-qr-loading" class="scan-qr-loading" aria-hidden="true">
-              <span class="scan-loader"></span>
-            </span>
+            <div id="scan-qr-loading" class="scan-qr-loading" role="status" aria-live="polite">
+              <span class="scan-loading-mark" aria-hidden="true">{% include "studio_logo.html" %}</span>
+              <span class="eyebrow">SECURE CONNECTION</span>
+              <strong>正在准备抖音登录页面</strong>
+              <span class="scan-loading-copy">首次连接需要一点时间，页面就绪后会自动显示。</span>
+              <span class="scan-loading-track" aria-hidden="true"></span>
+              <button id="scan-view-retry" type="button" hidden>重新读取画面</button>
+            </div>
           </div>
           <p id="scan-browser-hint" class="scan-browser-hint">直接点击云端页面中的输入框，键入内容后按回车或点击下方按钮；每次操作只发送一次。</p>
           <div class="scan-input-row">

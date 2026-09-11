@@ -2,6 +2,7 @@ import {studio} from './main.js';
 import './pages.css';
 import '../spark_console/static/ui_select.css';
 import '../spark_console/static/ui_select.js';
+import '../spark_console/static/interaction_polish.css';
 import {installPages} from './src/connected-pages.js';
 const {esc,toast} = studio;
 const $ = s => document.querySelector(s);
@@ -76,19 +77,38 @@ $('#create-form').onsubmit=async e=>{
   const text=$('#kind').value==='文字消息';
   if(text&&!$('#message').value.trim()){$('#form-feedback').textContent='请填写发送内容';return;}
   busy=true;$('#create-form .submit').disabled=true;
+  const submit=$('#create-form .submit'),submitLabel=submit.innerHTML;
+  submit.textContent='正在创建…';submit.setAttribute('aria-busy','true');
   try{
     await request('/api/studio/tasks',{account_id:$('#account').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''})),send_time:$('#time').value,message_kind:text?'text':'douyin_sticker',message_template:text?$('#message').value.trim():'续火花'});
     $('#clear-selection').click();await load();toast('续火任务已创建');
   }catch(error){$('#form-feedback').textContent=error.message;}
-  finally{busy=false;$('#create-form .submit').disabled=!state.subscription.can_add_task;}
+  finally{busy=false;submit.innerHTML=submitLabel;submit.removeAttribute('aria-busy');submit.disabled=!state.subscription.can_add_task;}
 };
 document.addEventListener('click',async e=>{
   const button=e.target.closest('[data-toggle]');if(!button||busy)return;
   const task=studio.tasks.find(t=>t.id===button.dataset.toggle);if(!task)return;
-  busy=true;button.disabled=true;
-  try{await request('/api/studio/tasks/'+encodeURIComponent(task.id)+'/enabled',{enabled:!task.enabled});await load();toast(task.enabled?'任务已暂停':'任务已恢复');}
-  catch(error){toast(error.message);}
-  finally{busy=false;button.disabled=false;}
+  busy=true;button.disabled=true;const label=button.textContent;button.textContent='保存中…';button.setAttribute('aria-busy','true');
+  try{
+    const enabled=!task.enabled;
+    await request('/api/studio/tasks/'+encodeURIComponent(task.id)+'/enabled',{enabled});
+    task.enabled=enabled;
+    // Preserve the other rows, images, and focus; reconcile filters only when needed.
+    const row=button.closest('.task-row'),selectedFilter=document.querySelector('[data-filter].selected')?.dataset.filter;
+    if(selectedFilter==='on'||selectedFilter==='off') originalRender();
+    else {
+      button.textContent=enabled?'暂停':'恢复';
+      button.setAttribute('aria-label',`${enabled?'暂停':'恢复'} ${task.name} 的任务`);
+      const status=row.querySelector('.state');
+      status.className='state '+(!enabled?'paused':task.confirmed?'confirmed':'waiting');
+      status.textContent=!enabled?'已暂停':task.confirmed?'发送已确认':task.status==='submitted_unconfirmed'?'已提交，待核实':task.status==='failed'?'执行失败':task.status==='running'?'执行中':'等待执行';
+      status.prepend(document.createElement('i'));
+      $('#active-count').textContent=String(studio.tasks.filter(t=>t.enabled).length).padStart(2,'0');
+    }
+    toast(enabled?'任务已恢复':'任务已暂停');
+  }
+  catch(error){button.textContent=label;toast(error.message);}
+  finally{busy=false;button.disabled=false;button.removeAttribute('aria-busy');}
 });
 load().then(()=>installPages({state,studio,request})).catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
 document.addEventListener('studio:render-tasks',decorateTasks);

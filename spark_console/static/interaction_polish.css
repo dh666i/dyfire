@@ -1,0 +1,23 @@
+/* Shared, quiet feedback for the connected application. */
+dialog{max-height:calc(100dvh - 32px);overflow:auto}
+dialog[open]{animation:dialog-reveal .16s ease-out}
+dialog::backdrop{background:#0009}
+button[aria-busy=true]{cursor:wait;opacity:.7}
+@keyframes dialog-reveal{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.scan-qr-shell[data-loading=true]{min-height:280px;background:var(--panel);border:1px solid var(--line)}
+.scan-qr-shell[data-loading=true]::before,.scan-qr-shell[data-loading=true]::after{content:none!important}
+.scan-qr-shell[data-loading=true] .scan-qr{visibility:hidden;height:0}
+.scan-qr-shell .scan-qr-loading{position:relative;inset:auto;width:100%;height:auto;min-height:280px;border-radius:0;background:none;pointer-events:auto;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:28px;color:var(--ink);text-align:center}
+.scan-loading-mark{width:28px;height:35px;color:var(--accent)}
+.scan-loading-mark svg{width:100%;height:100%}
+.scan-qr-loading .eyebrow{font-size:9px;letter-spacing:1.5px;margin:0}
+.scan-qr-loading strong{font-size:17px;font-weight:500}
+.scan-loading-copy{color:var(--muted);font-size:12px;line-height:1.8;max-width:380px}
+.scan-loading-track{width:130px;height:2px;background:var(--line);overflow:hidden;margin-top:6px}
+.scan-loading-track:after{content:'';display:block;width:38%;height:100%;background:var(--accent);animation:scan-track 1.6s ease-in-out infinite}
+@keyframes scan-track{from{transform:translateX(-110%)}to{transform:translateX(370%)}}
+.scan-dialog[data-frame-ready=false] .scan-input-row,.scan-dialog[data-frame-ready=false] .scan-browser-hint{display:none}
+.scan-dialog-foot{gap:16px}.scan-dialog-actions{display:flex;gap:10px;flex-wrap:wrap}
+.task-row .person>div{min-width:0}.task-row h3{overflow-wrap:anywhere}
+@media(max-width:650px){button,.small-action{min-height:44px}.scan-dialog-actions button{min-height:44px}.scan-qr-shell[data-loading=true],.scan-qr-shell .scan-qr-loading{min-height:250px}.scan-qr-shell .scan-qr-loading{padding:22px 16px}.scan-dialog-foot{align-items:flex-start;flex-wrap:wrap}.task-row{grid-template-columns:minmax(0,1fr) auto!important;gap:10px 16px!important}.task-row .person{grid-column:1;grid-row:1}.task-row .task-time{grid-column:2;grid-row:1}.task-row .state{grid-column:1;grid-row:2}.task-row>div:last-child{grid-column:2;grid-row:2;justify-content:flex-end}.table-heading{display:none}.dialog-bottom{position:sticky;bottom:0;background:var(--panel);padding-bottom:10px}.dialog-top button{min-width:44px}}
+@media(prefers-reduced-motion:reduce){dialog[open],.scan-loading-track:after{animation:none}.scan-loading-track:after{width:45%}}
