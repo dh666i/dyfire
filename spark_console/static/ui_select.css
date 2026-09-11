@@ -1,4 +1,5 @@
-.ui-select { position:relative; display:block; min-width:0; width:100%; font:inherit; }
+.ui-select { position:relative; display:block; min-width:0; width:100%; font:inherit; --card-border:var(--line); --raised:var(--field); --soft:var(--field); --text:var(--ink); }
+.ui-select-popup { --card-border:var(--line); --card-fallback:var(--panel); --card-fill:var(--panel); --soft:var(--field); --text:var(--ink); }
 select.ui-select-source { position:absolute!important; width:1px!important; height:1px!important; min-height:0!important; padding:0!important; border:0!important; margin:0!important; clip-path:inset(50%); overflow:hidden; opacity:0; pointer-events:none; }
 .ui-select .ui-select-trigger { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:44px; padding:10px 12px; margin:0; border:1px solid var(--card-border,var(--studio-rule,#ddd)); border-radius:8px; background:var(--raised,var(--studio-inset,#f4f4f5)); color:var(--text,var(--studio-ink,#252629)); font:inherit; font-size:13px; font-weight:400; text-align:left; cursor:pointer; box-shadow:none; transform:none; }
 .ui-select .ui-select-trigger:hover { background:var(--soft,var(--studio-inset,#ececee)); }
@@ -7,7 +8,9 @@ select.ui-select-source { position:absolute!important; width:1px!important; heig
 .ui-select .ui-select-trigger:disabled { opacity:.5; cursor:not-allowed; }
 .ui-select .ui-select-trigger[aria-invalid=true] { border-color:var(--studio-danger,#ad5555); }
 .ui-select-caption { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-.ui-select-chevron { flex:none; width:7px; height:7px; border:solid currentColor; border-width:0 1px 1px 0; transform:rotate(45deg); opacity:.65; margin:0 3px 4px; }
+.ui-select-chevron { flex:none; width:7px; height:7px; border:solid currentColor; border-width:0 1px 1px 0; transform:rotate(45deg); opacity:.65; margin:0 3px 4px; transition:transform .15s ease; }
+.composer .ui-select-trigger{min-height:45px;border-radius:3px;padding:12px 16px;font-size:12px}
+.composer form>.ui-select{grid-column:1}
 [aria-expanded=true]>.ui-select-chevron { transform:rotate(225deg); margin:4px 3px 0; }
 .ui-select-popup { position:fixed; inset:auto; z-index:2147483000; box-sizing:border-box; margin:0; padding:5px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--line,#9995) transparent; border-radius:8px; border:1px solid var(--card-border,var(--studio-rule,#ddd)); background:var(--card-fallback,var(--studio-sheet,#fff)); color:var(--text,var(--studio-ink,#252629)); box-shadow:0 5px 20px #00000012; font-family:var(--font-body,Inter,"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif); font-size:13px; line-height:1.6; }
 .ui-select-popup[hidden] { display:none!important; }

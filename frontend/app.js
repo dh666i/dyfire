@@ -1,5 +1,7 @@
 import {studio} from './main.js';
 import './pages.css';
+import '../spark_console/static/ui_select.css';
+import '../spark_console/static/ui_select.js';
 import {installPages} from './src/connected-pages.js';
 const {esc,toast} = studio;
 const $ = s => document.querySelector(s);

@@ -9,7 +9,8 @@ import urllib.request
 ROOT=Path('/opt/henng-spark-console')
 SOURCE=Path(__file__).resolve().parents[1]
 COMPOSE=ROOT/'compose.console.yml'
-IMAGE='dyfire:0.1.1'
+VERSION=(SOURCE/'VERSION').read_text().strip()
+IMAGE='dyfire:'+VERSION
 
 
 def run(*args):
@@ -18,7 +19,7 @@ def run(*args):
 
 def main():
     previous=run('docker','inspect','douyin-spark-console-spark-web-1','--format','{{.Image}}')
-    backup=ROOT/'source-backups'/('dyfire-0.1.1-'+time.strftime('%Y%m%d-%H%M%S'))
+    backup=ROOT/'source-backups'/('dyfire-'+VERSION+'-'+time.strftime('%Y%m%d-%H%M%S'))
     backup.mkdir(parents=True)
     shutil.copy2(COMPOSE,backup/'compose.console.yml')
     shutil.copytree(ROOT/'spark_console',backup/'spark_console')
@@ -27,7 +28,7 @@ def main():
     original=COMPOSE.read_text()
     # Existing services, keys, named volume, ports and project name are retained.
     import re
-    updated=re.sub(r'\$\{SPARK_IMAGE_NAME:-[^}]+\}', '${SPARK_IMAGE_NAME:-dyfire:0.1.1}', original, count=1)
+    updated=re.sub(r'\$\{SPARK_IMAGE_NAME:-[^}]+\}', '${SPARK_IMAGE_NAME:-'+IMAGE+'}', original, count=1)
     if updated==original:raise RuntimeError('Unexpected original image configuration')
     try:
         COMPOSE.write_text(updated)
@@ -36,7 +37,7 @@ def main():
         for attempt in range(30):
             try:
                 with urllib.request.urlopen('http://127.0.0.1:8899/api/version',timeout=3) as response:
-                    assert json.load(response)['version']=='0.1.1'
+                    assert json.load(response)['version']==VERSION
                 with urllib.request.urlopen('http://127.0.0.1:8899/health/ready',timeout=3) as response:
                     assert response.status==200
                 with urllib.request.urlopen('http://127.0.0.1:8899/studio',timeout=3) as response:
@@ -51,7 +52,7 @@ def main():
         shutil.copy2(SOURCE/'spark_console/version.py',ROOT/'spark_console/version.py')
         shutil.copy2(SOURCE/'VERSION',ROOT/'VERSION')
         shutil.copytree(SOURCE/'frontend/dist',ROOT/'frontend/dist',dirs_exist_ok=True)
-        print('Deployed 0.1.1; backup: '+str(backup))
+        print('Deployed '+VERSION+'; backup: '+str(backup))
     except Exception:
         COMPOSE.write_text(original)
         # Restore exact original image even if mutable tags changed meanwhile.
