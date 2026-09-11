@@ -64,7 +64,7 @@
         }), token);
         if (!job || token !== version || id !== getAccount()) return;
         if (!query) currentLimit = job.limit;
-        status.textContent = `${query ? '搜索' : '同步'}完成，读取 ${job.items?.length || 0} 位好友 · ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}${profileOnly ? '。刷新页面查看最新昵称和头像。' : ''}`;
+        status.textContent = query && !job.items?.length ? '未读取到匹配结果，不代表好友不存在。请尝试昵称或抖音号，或同步更多最近会话。' : `${query ? '搜索' : '同步'}完成，读取 ${job.items?.length || 0} 位好友 · ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}${profileOnly ? '。刷新页面查看最新昵称和头像。' : ''}`;
         document.dispatchEvent(new CustomEvent('directory-updated', {detail: {accountId: id, query, items: job.items}}));
         if (more && !query) more.hidden = !job.has_more;
       } catch (error) {

@@ -42,7 +42,8 @@ ROWS_SCRIPT = r"""() => {
     const link = n.matches('a[href*="/user/"]') ? n : n.querySelector('a[href*="/user/"]');
     const match = link && link.getAttribute('href').match(/\/user\/([^/?#]+)/);
     const name = (title && title.textContent || n.getAttribute('data-nickname') || link?.innerText || '').trim();
-    return {name, sec_uid: n.getAttribute('data-sec-uid') || (match && match[1]) || '',
+    const remark = n.querySelector('[class*="remark"], [class*="Remark"]');
+    return {name, remark_name:(remark?.textContent || '').trim(), sec_uid: n.getAttribute('data-sec-uid') || (match && match[1]) || '',
       avatar_url: n.querySelector('img')?.src || ''};
   }).filter(x => x.name);
 }"""
@@ -65,7 +66,19 @@ async def collect_directory(page, limit=20, query=""):
         if not await field.count():
             raise ValueError("当前抖音页面未提供好友搜索入口，请使用已同步好友或稍后重试")
         await field.fill(query)
-        await asyncio.sleep(1.5)
+        # Results may arrive after the search debounce and a network round trip.
+        # Do not report an unrendered response as a completed empty search.
+        for _ in range(20):
+            await asyncio.sleep(.5)
+            rows = await page.evaluate(ROWS_SCRIPT)
+            matched = [row for row in rows if query.casefold() in ' '.join(str(row.get(k) or '') for k in ('name','remark_name','nickname')).casefold()]
+            if matched:
+                return matched[:limit]
+        if rows:
+            # Some result rows display only the nickname; the captured identity
+            # response supplies its remark later during the merge below.
+            return rows[:limit]
+        raise ValueError('当前抖音页面未读取到匹配结果，无法确认好友不存在。请尝试昵称或抖音号，或同步更多最近会话。')
     else:
         await page.wait_for_selector('.conversationConversationItemwrapper', timeout=15000)
     found = {}
@@ -126,12 +139,18 @@ async def read_directory(payload_bytes, version, limit, query):
                               or (not row.get("sec_uid") and row["name"] in i.aliases)]
                 identity = candidates[0] if len(candidates) == 1 else None
                 value = asdict(identity) if identity else dict(row)
-                value["name"] = (identity.remark_name or identity.nickname) if identity else row["name"]
+                # The visible search label can be the user's remark even when
+                # the identity endpoint contains only the original nickname.
+                value["name"] = row["name"]
+                if row.get('remark_name'):
+                    value['remark_name'] = row['remark_name']
                 if not value.get('avatar_url'):
                     value['avatar_url'] = row.get('avatar_url')
-                if query and query.casefold() not in " ".join(str(v or "") for v in (value.get("name"), value.get("nickname"), value.get("remark_name"), value.get("unique_id"))).casefold():
+                if query and query.casefold() not in " ".join(str(v or "") for v in (row.get('name'), row.get('remark_name'), value.get("name"), value.get("nickname"), value.get("remark_name"), value.get("unique_id"))).casefold():
                     continue
                 items.append(value)
+            if query and not items:
+                raise ValueError('当前抖音页面未读取到匹配结果，无法确认好友不存在。请尝试昵称或抖音号，或同步更多最近会话。')
             return {"items": items, "profile": profile, "has_more": len(rows) >= limit and limit < 100}
         finally:
             await browser.close()

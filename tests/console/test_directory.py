@@ -166,6 +166,26 @@ class DirectoryTests(unittest.TestCase):
 
 
 class DirectoryBrowserTests(unittest.IsolatedAsyncioTestCase):
+    async def test_waits_for_delayed_remark_search_result(self):
+        from unittest.mock import MagicMock
+        page=AsyncMock();field=AsyncMock()
+        page.locator=MagicMock(return_value=MagicMock(first=field))
+        field.count.return_value=1
+        page.evaluate.side_effect=[[],[],[{'name':'原昵称','remark_name':'郭琪','sec_uid':'friend'}]]
+        with patch('spark_console.directory_browser.asyncio.sleep',new=AsyncMock()):
+            rows=await collect_directory(page,20,'郭琪')
+        self.assertEqual('friend',rows[0]['sec_uid'])
+        self.assertEqual(3,page.evaluate.await_count)
+
+    async def test_unreadable_search_is_not_successful_empty_result(self):
+        from unittest.mock import MagicMock
+        page=AsyncMock();field=AsyncMock()
+        page.locator=MagicMock(return_value=MagicMock(first=field));field.count.return_value=1
+        page.evaluate.return_value=[]
+        with patch('spark_console.directory_browser.asyncio.sleep',new=AsyncMock()):
+            with self.assertRaisesRegex(ValueError,'无法确认好友不存在'):
+                await collect_directory(page,20,'郭琪')
+
     async def test_accumulates_twenty_across_virtual_scroll(self):
         page = AsyncMock()
         chunks = iter([[{'name':str(i)} for i in range(14)], [{'name':str(i)} for i in range(10,24)]])

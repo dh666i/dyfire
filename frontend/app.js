@@ -70,7 +70,8 @@ async function loadContacts(searchItems=null){
     if(generation!==contactGeneration)return;
     contacts=[...data.items,...chosen.filter(c=>!data.items.some(item=>identity(item)===identity(c)))];studio.friends.push(...contacts.map(c=>c.name));
     $('#friend-list').innerHTML=contacts.map((c,i)=>`<label class="friend-option" data-name="${esc([c.name,c.nickname,c.remark_name].filter(Boolean).join(' ').toLowerCase())}"><input type="checkbox" value="${i}" name="friend"><span class="avatar">${c.avatar_url?`<img src="${esc(c.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`:esc(c.name[0])}</span><span>${esc(c.name)}<small>${esc(c.nickname||'抖音好友')}</small></span><span class="checkmark">✓</span></label>`).join('')||'暂无好友记录，请在账号页同步好友后刷新。';
-    $('#friend-search').value='';
+    if(!searchItems)$('#friend-search').value='';
+    $('#friend-empty').hidden=contacts.length>0;
     document.querySelectorAll('[name=friend]').forEach(el=>{el.checked=chosenIds.has(identity(contacts[Number(el.value)]));});studio.syncSelection();
   }catch(error){if(generation===contactGeneration)$('#friend-list').textContent=error.message;}
 }
