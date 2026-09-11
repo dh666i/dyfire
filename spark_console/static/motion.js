@@ -1,6 +1,9 @@
 (() => {
   'use strict';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const viewport=window.visualViewport;
+  const resize=()=>document.documentElement.style.setProperty('--visible-height',(viewport?.height||innerHeight)+'px');
+  viewport?.addEventListener('resize',resize);resize();
   window.sparkReveal = node => {
     if (!node || reduced.matches || !node.animate) return;
     node.getAnimations().forEach(animation => animation.cancel());
@@ -28,6 +31,15 @@
   // Represent only observed login states, never an invented completion percentage.
   const dialog = document.querySelector('#scan-dialog');
   if (dialog) {
+    const elapsed=document.createElement('p');elapsed.className='scan-elapsed';
+    dialog.querySelector('.scan-dialog-head')?.after(elapsed);
+    let timer=null,started=0;
+    function elapsedState(){
+      const active=dialog.open&&!['succeeded','failed','expired','cancelled'].includes(dialog.dataset.status);
+      if(active&&!timer){started=Date.now();elapsed.textContent='本次窗口已打开 0 秒';timer=setInterval(()=>{elapsed.textContent=`本次窗口已打开 ${Math.floor((Date.now()-started)/1000)} 秒 · 验证需本人完成`;},1000);}
+      if(!active&&timer){clearInterval(timer);timer=null;}
+    }
+    new MutationObserver(elapsedState).observe(dialog,{attributes:true,attributeFilter:['open','data-status']});elapsedState();
     const progress = document.createElement('ol');progress.className='scan-progress';progress.setAttribute('aria-label','绑定进度');
     for (const label of ['连接登录页','扫码或验证','保存账号']) {const li=document.createElement('li');li.textContent=label;progress.append(li);}
     dialog.querySelector('.scan-dialog-head')?.after(progress);

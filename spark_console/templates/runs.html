@@ -37,6 +37,8 @@
       <dl class="record-facts">
         <div><dt>开始时间</dt><dd>{{ run.started_at|shanghai_time }}</dd></div>
         <div><dt>完成时间</dt><dd>{{ run.finished_at|shanghai_time }}</dd></div>
+        <div><dt>提交时间</dt><dd>{{ run.submitted_at|shanghai_time }}</dd></div>
+        <div><dt>提交后等待</dt><dd>{% if run.submitted_at and run.finished_at %}{{ [0,(run.finished_at-run.submitted_at).total_seconds()]|max|round(1) }} 秒{% else %}未记录{% endif %}</dd></div>
         <div><dt>执行耗时</dt><dd>{% if run.started_at and run.finished_at %}{{ [0, (run.finished_at - run.started_at).total_seconds()]|max|round(1) }} 秒{% else %}—{% endif %}</dd></div>
         <div><dt>诊断编号</dt><dd>{{ run.id }} <button class="quiet" type="button" data-copy-text="{{ run.id }}" aria-label="复制诊断编号">复制</button></dd></div>
       </dl>

@@ -95,6 +95,10 @@ def build_studio_router(engine, auth, cipher):
             auth.csrf(record, request.headers.get('X-CSRF-Token',''))
             audit = AuditService(db)
             try:
+                if payload.enabled and user.role!='admin':SubscriptionService(db,audit).require_active(user.id)
+                owned=db.scalar(select(SparkTask).where(SparkTask.id==task_id,SparkTask.owner_user_id==user.id))
+                if not owned:raise NotFound('任务不存在')
+                if db.scalar(select(TaskRun.id).where(TaskRun.task_id==task_id,TaskRun.status=='running').limit(1)):raise Conflict('任务正在执行，请稍后修改')
                 TaskService(db,AccountService(db,cipher,audit),audit).set_enabled_owned(user.id,task_id,payload.enabled)
             except NotFound:
                 raise HTTPException(404, '任务不存在')

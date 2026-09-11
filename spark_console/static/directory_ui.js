@@ -79,14 +79,7 @@
     }
     button(profileOnly ? '更新资料与好友' : '同步最近 20 个', () => run(20));
     const more = profileOnly ? null : button('加载更多', () => run(Math.min(100, currentLimit + 20)));
-    if (getQuery) button('搜索已同步会话', () => {
-      const query = getQuery().trim();
-      if (!query) { status.textContent = '先输入好友昵称、备注或抖音号，再搜索'; return; }
-      // Do not call Douyin Web search. The picker filters the locally synced
-      // conversation snapshot in tasks.js / the page UI.
-      document.dispatchEvent(new CustomEvent('directory-local-search', {detail: {query}}));
-      status.textContent = '已在当前同步的最近会话中筛选';
-    });
+    // Both pickers filter as the user types; no redundant search button.
     bar.append(actions, status); host.append(bar);
     async function resume() {
       const id = getAccount(), token = ++version;
@@ -108,6 +101,7 @@
   if (account && csrf) {
     const studioToolbar = document.querySelector('#friends-dialog .selection-tools');
     if (studioToolbar) {
+      const input=document.querySelector('#friend-search');if(input)input.placeholder='搜索已同步昵称、备注或抖音号';
       const host = document.createElement('div'); studioToolbar.before(host);
       controls(host, () => account.value, () => document.querySelector('#friend-search').value);
     }
@@ -116,7 +110,7 @@
     if (toolbar) {
       const host = document.createElement('div'); toolbar.after(host);
       const search = document.querySelector('#target-search-input');
-      search.placeholder = '搜索昵称、备注或抖音号';
+      search.placeholder = '搜索已同步昵称、备注或抖音号';
       controls(host, () => account.value, () => search.value);
     } else if (single) {
       const host = document.createElement('div'); single.parentElement.after(host);

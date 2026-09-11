@@ -79,6 +79,7 @@
       count.hidden = !query && mode === "all" && !accountFilter?.value;
     }
     document.dispatchEvent(new Event('task-filter-updated'));
+    const list=document.querySelector('.task-overview-body');window.sparkReveal?.(list);
   };
   order.addEventListener('change',()=>{pageIndex=1;apply();});size.addEventListener('change',()=>{pageIndex=1;apply();});
   pager.querySelector('[data-prev]').addEventListener('click',()=>{pageIndex--;apply();});pager.querySelector('[data-next]').addEventListener('click',()=>{pageIndex++;apply();});
@@ -97,6 +98,7 @@
     search.focus();
   });
   toolbar.hidden = false;
+  document.addEventListener('task-state-updated',apply);
   apply();
   accountFilter?.dispatchEvent(new Event('change',{bubbles:true}));
 })();

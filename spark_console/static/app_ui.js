@@ -138,11 +138,13 @@
           if (button.dataset.originalHtml) button.innerHTML = button.dataset.originalHtml;
         });
       };
-      fetch(form.action, {method:'POST',body:payload,credentials:'same-origin'}).then(async response => {
-        if (response.redirected && response.ok) { feedback.textContent = '已收到服务器响应，正在打开任务列表…'; window.location.assign(response.url); return; }
+      fetch(form.action, {method:'POST',body:payload,credentials:'same-origin',headers:{Accept:'application/json'}}).then(async response => {
+        if(response.status===201){const result=await response.json();window.location.assign(result.url);return;}
+        if (response.redirected && response.ok) { feedback.textContent = '登录或账号状态已变化，请在新窗口核对后重试，当前内容仍保留。'; feedback.setAttribute('role','alert'); unlock(); return; }
         if ([400,403,409,422].includes(response.status)) {
-          const html = new DOMParser().parseFromString(await response.text(), 'text/html');
-          feedback.textContent = html.querySelector('.auth-error-message,.form-error')?.textContent.trim() || '提交未通过，请检查好友选择、发送时间和账号状态后重试。';
+          const content=await response.text();let message='';
+          try{message=JSON.parse(content).detail;}catch(_){message=new DOMParser().parseFromString(content,'text/html').querySelector('.auth-error-message,.form-error')?.textContent.trim();}
+          feedback.textContent = typeof message==='string'&&message ? message : '提交未通过，请检查好友选择、发送时间和账号状态后重试。';
           feedback.setAttribute('role','alert'); unlock(); return;
         }
         throw new Error('unknown-result');

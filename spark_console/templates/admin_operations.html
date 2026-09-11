@@ -14,6 +14,7 @@
 <div class="admin-operations" data-operations-monitor data-endpoint="/admin/operations/snapshot" data-refresh-seconds="{{ operations.refresh_interval_seconds }}">
   {{ page_header('运维监控', '服务器资源、核心服务与业务队列。', '运行与系统') }}
   {% include 'business_health_panel.html' %}
+  <section class="panel" data-diagnostics><div class="section-head"><h2>执行耗时与备份</h2><button class="quiet" type="button">刷新诊断</button></div><p role="status">正在读取诊断</p><p class="muted">最近 30 次执行。启动至提交包含浏览器启动与页面操作；未记录的阶段显示“未记录”，不会推算成真实耗时。</p><div data-diagnostic-list></div></section><script defer src="/static/diagnostics.js?v=0.1.10"></script>
 
   <div class="ops-toolbar" role="status" aria-live="polite">
     <span class="ops-live-dot" aria-hidden="true"></span>

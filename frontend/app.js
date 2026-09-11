@@ -3,8 +3,12 @@ import './pages.css';
 import '../spark_console/static/ui_select.css';
 import '../spark_console/static/ui_select.js';
 import '../spark_console/static/interaction_polish.css';
+import '../spark_console/static/motion.css';
+import '../spark_console/static/motion.js';
+import '../spark_console/static/task_experience.js';
 import {installPages} from './src/connected-pages.js';
 const {esc,toast} = studio;
+window.sparkToast=toast;
 const $ = s => document.querySelector(s);
 let state, contacts=[], busy=false, contactGeneration=0, contactsAccount='';
 async function request(path, body) {
@@ -57,11 +61,13 @@ document.addEventListener('click',e=>{if(!e.target.closest('.profile-menu'))$('.
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('.profile-menu').open=false;});
 async function loadContacts(searchItems=null){
   const generation=++contactGeneration;
-  const chosen=contactsAccount===$('#account').value ? [...document.querySelectorAll('[name=friend]:checked')].map(el=>contacts[Number(el.value)]).filter(Boolean) : [];
+  const sameAccount=contactsAccount===$('#account').value;
+  const previousMarkup=$('#friend-list').innerHTML,previousContacts=contacts;
+  const chosen=sameAccount ? [...document.querySelectorAll('[name=friend]:checked')].map(el=>contacts[Number(el.value)]).filter(Boolean) : [];
   const identity=c=>c.sec_uid||c.name;
   const chosenIds=new Set(chosen.map(identity));
   contactsAccount=$('#account').value;
-  contacts=[];studio.friends.splice(0);studio.syncSelection();
+  if(!sameAccount){contacts=[];studio.friends.splice(0);studio.syncSelection();}
   const account=$('#account').value;
   $('#friend-list').textContent=account?'正在读取好友列表…':'请先绑定抖音账号';
   if(!account)return;
@@ -73,7 +79,7 @@ async function loadContacts(searchItems=null){
     if(!searchItems)$('#friend-search').value='';
     $('#friend-empty').hidden=contacts.length>0;
     document.querySelectorAll('[name=friend]').forEach(el=>{el.checked=chosenIds.has(identity(contacts[Number(el.value)]));});studio.syncSelection();
-  }catch(error){if(generation===contactGeneration)$('#friend-list').textContent=error.message;}
+  }catch(error){if(generation===contactGeneration){if(sameAccount){contacts=previousContacts;$('#friend-list').innerHTML=previousMarkup;document.querySelectorAll('[name=friend]').forEach(el=>el.checked=chosenIds.has(identity(contacts[Number(el.value)])));studio.syncSelection();toast('读取未完成，保留上次列表和选择。');}else $('#friend-list').textContent=error.message;}}
 }
 $('#friend-list').addEventListener('change',studio.syncSelection);
 $('#account').addEventListener('change',()=>loadContacts());
@@ -89,6 +95,10 @@ $('#create-form').onsubmit=async e=>{
   const submit=$('#create-form .submit'),submitLabel=submit.innerHTML;
   submit.textContent='正在创建…';submit.setAttribute('aria-busy','true');
   try{
+    const preview=await request('/tasks/preview',{csrf_token:state.csrf,account_id:$('#account').value,time:$('#time').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''}))});
+    if(preview.conflicts.length)throw Error('同一时间已有任务：'+preview.conflicts.join('、'));
+    if(preview.blocked)throw Error('请先完成账号复核或验证');
+    if(!await window.sparkReview('确认每日计划',[`账号：${preview.account}`,`每天 ${preview.time}（北京时间） · ${preview.count} 位好友`,selected.map(c=>c.name).join('、'),text?$('#message').value:'抖音原生续火花表情','从下一次计划时间开始执行，不补发历史消息。']))return;
     await request('/api/studio/tasks',{account_id:$('#account').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''})),send_time:$('#time').value,message_kind:text?'text':'douyin_sticker',message_template:text?$('#message').value.trim():'续火花'});
     $('#clear-selection').click();await load();toast('续火任务已创建');
   }catch(error){$('#form-feedback').textContent=error.message;}
@@ -100,7 +110,8 @@ document.addEventListener('click',async e=>{
   busy=true;button.disabled=true;const label=button.textContent;button.textContent='保存中…';button.setAttribute('aria-busy','true');
   try{
     const enabled=!task.enabled;
-    await request('/api/studio/tasks/'+encodeURIComponent(task.id)+'/enabled',{enabled});
+    const changed=await request('/tasks/batch',{csrf_token:state.csrf,ids:[task.id],action:enabled?'enable':'pause'});
+    if(!changed.results[0].ok)throw Error(changed.results[0].error);
     task.enabled=enabled;
     // Preserve the other rows, images, and focus; reconcile filters only when needed.
     const row=button.closest('.task-row'),selectedFilter=document.querySelector('[data-filter].selected')?.dataset.filter;
@@ -125,3 +136,8 @@ load().then(()=>{
   installPages({state,studio,request});
 }).catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
 document.addEventListener('studio:render-tasks',decorateTasks);
+document.querySelector('#friend-search').addEventListener('input',event=>{
+  const query=event.target.value.trim().toLocaleLowerCase();let count=0;
+  document.querySelectorAll('.friend-option').forEach((row,i)=>{const c=contacts[i];const match=c&&[c.name,c.nickname,c.remark_name,c.unique_id,c.short_id].some(v=>String(v||'').toLocaleLowerCase().includes(query));row.hidden=!match;if(match)count++;});
+  $('#friend-empty').hidden=count>0;$('#friend-empty').textContent='没有匹配的已同步会话，可以同步更多最近会话后再试。';
+});

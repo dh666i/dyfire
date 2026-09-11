@@ -3,9 +3,9 @@ from zoneinfo import ZoneInfo
 import re
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
 from spark_console.db import session_scope
-from spark_console.models import SparkTask, SparkTaskTargetIdentity, TaskRun
+from spark_console.models import SparkTask, SparkTaskTargetIdentity, TaskRun, DouyinAccount, DouyinContactIdentity
 from spark_console.services import ValidationError, Conflict, NotFound
 from spark_console.services.tasks import TaskService
 from spark_console.services.accounts import AccountService
@@ -15,10 +15,49 @@ from spark_console.services.subscriptions import SubscriptionService
 
 def build_reliability_router(engine,auth,cipher):
     router=APIRouter()
+    @router.get('/admin/diagnostics')
+    def diagnostics(request:Request):
+        from pathlib import Path
+        import json,os
+        from spark_console.models import DouyinLoginSession,ContactDirectoryJob
+        with session_scope(engine) as db:
+            auth.admin_context(request,db)
+            rows=db.execute(select(TaskRun,SparkTask).join(SparkTask).order_by(TaskRun.scheduled_for.desc()).limit(30)).all()
+            def seconds(a,b):return round(max(0,(b-a).total_seconds()),1) if a and b else None
+            items=[{'id':r.id,'name':t.target_name,'status':r.status,'stage':r.stage,'queue':seconds(r.scheduled_for,r.started_at),'before_submit':seconds(r.started_at,r.submitted_at),'confirmation':seconds(r.submitted_at,r.finished_at),'total':seconds(r.started_at,r.finished_at)} for r,t in rows]
+            backup={'status':'unconfigured','message':'尚未配置备份任务'}
+            try:backup=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-status.json').read_text())
+            except (OSError,ValueError):pass
+            return JSONResponse({'items':items,'backup':backup},headers={'Cache-Control':'no-store'})
+    @router.post('/tasks/preview')
+    async def preview(request:Request):
+        data=await request.json()
+        if not isinstance(data,dict):raise HTTPException(400,'请求格式不正确')
+        with session_scope(engine) as db:
+            user,record=auth.current(request,db);auth.csrf(record,data.get('csrf_token',''))
+            service=TaskService(db,AccountService(db,cipher,AuditService(db)),AuditService(db))
+            try:
+                account=service.accounts.get_owned(user.id,str(data.get('account_id','')))
+                raw=data.get('targets',[])
+                if not isinstance(raw,list) or len(raw)>100 or any(not isinstance(t,dict) for t in raw):raise ValidationError('请选择 1–100 位好友')
+                targets=service.normalize_targets((t.get('name'),t.get('sec_uid')) for t in raw)
+                send_time=str(data.get('time',''))
+                if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',send_time):raise ValidationError('请选择发送时间')
+                if user.role!='admin':SubscriptionService(db,AuditService(db)).require_task_capacity(user.id,len(targets))
+                for name,uid in targets:
+                    if uid and not db.get(DouyinContactIdentity,(account.id,uid)):raise ValidationError('所选好友不属于当前账号')
+                existing=service._active_schedule_targets(account.id,send_time)
+                conflicts=[name for name,uid in targets if service._has_target_conflict(existing,name,uid)]
+                return JSONResponse({'account':account.display_name,'count':len(targets),'time':send_time,'conflicts':conflicts,'blocked':account.validation_state in ('invalid','verification','temporary'),'manual_count':sum(not uid for _,uid in targets)},headers={'Cache-Control':'no-store'})
+            except NotFound:raise HTTPException(404,'账号不存在')
+            except (ValidationError,Conflict) as error:raise HTTPException(400,str(error))
+
     @router.post('/tasks/batch')
     async def batch(request:Request):
         data=await request.json()
+        if not isinstance(data,dict):raise HTTPException(400,'请求格式不正确')
         with session_scope(engine) as db:
+            if engine.dialect.name=='sqlite':db.execute(text('BEGIN IMMEDIATE'))
             user,record=auth.current(request,db);auth.csrf(record,data.get('csrf_token',''))
             identifiers=data.get('ids',[])
             if not isinstance(identifiers,list) or not identifiers or len(identifiers)>100 or any(not isinstance(i,str) for i in identifiers): raise HTTPException(400,'请选择 1–100 个任务')
@@ -49,7 +88,7 @@ def build_reliability_router(engine,auth,cipher):
                                 next_at=now.replace(hour=hour,minute=minute,second=0,microsecond=0)
                                 if next_at<=now: next_at+=timedelta(days=1)
                                 task.next_run_at=next_at.astimezone(timezone.utc)
-                    results.append({'id':identifier,'name':name,'ok':True})
+                    results.append({'id':identifier,'name':name,'ok':True,'enabled':task.enabled,'time':task.send_time,'next_run_at':task.next_run_at.replace(tzinfo=timezone.utc).isoformat() if task.next_run_at else None})
                 except (ValidationError,Conflict,NotFound) as error:
                     results.append({'id':identifier,'name':name,'ok':False,'error':str(error)})
             return JSONResponse({'results':results})

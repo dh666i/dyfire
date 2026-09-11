@@ -10,13 +10,26 @@ from spark_console.services.account_health import views as health_views
 def build_product_router(engine,auth,page):
     router=APIRouter()
 
+    @router.post('/attention/read')
+    def read_attention(request:Request,csrf_token:str=Form(''),item_id:str=Form('')):
+        from spark_console.web.inbox import entries
+        from spark_console.services.audits import AuditService
+        with session_scope(engine) as db:
+            user,record=auth.current(request,db);auth.csrf(record,csrf_token)
+            items=entries(db,user.id)
+            if item_id!='all' and not any(i['id']==item_id for i in items):raise HTTPException(404,'通知不存在')
+            for item in items:
+                if not item['read'] and (item_id=='all' or item['id']==item_id):AuditService(db).write(user.id,'inbox.read','notification',item['id'])
+        return RedirectResponse('/attention',status_code=303)
+
     @router.get('/attention')
     def attention(request:Request):
         with session_scope(engine) as db:
             user,_,context=auth.user_context(request,db)
             accounts=db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id==user.id,DouyinAccount.validation_state.in_(['temporary','verification','invalid']))).all()
             runs=db.execute(select(TaskRun,SparkTask).join(SparkTask).where(SparkTask.owner_user_id==user.id,TaskRun.status.in_(['failed','submitted_unconfirmed']),TaskRun.scheduled_for>=datetime.now(timezone.utc)-timedelta(days=7)).order_by(TaskRun.scheduled_for.desc()).limit(50)).all()
-            return page(request,'attention.html',title='待处理事项',accounts=accounts,account_health=health_views(db,accounts),runs=runs,**context)
+            from spark_console.web.inbox import entries
+            return page(request,'attention.html',title='待处理事项',accounts=accounts,account_health=health_views(db,accounts),runs=runs,inbox=entries(db,user.id),**context)
 
     @router.get('/account-center')
     def account_center(request:Request):

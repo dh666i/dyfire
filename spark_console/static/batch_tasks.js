@@ -17,16 +17,19 @@
     const targets=selected();if(!targets.length || targets.length>100){result.textContent='请选择 1–100 个任务';return;}
     if(action.value==='time'&&!time.value){result.textContent='请选择新的发送时间';return;}
     const names=targets.slice(0,5).map(c=>c.getAttribute('aria-label').replace(/^选择 | 的任务$/g,'')).join('、');
-    if(!confirm(`将对 ${targets.length} 个任务执行「${action.options[action.selectedIndex].text}」${action.value==='time'?'：'+time.value:''}。\n${names}${targets.length>5?'等':''}\n恢复后仅执行后续计划，不补发错过的消息。确认继续？`))return;
+    const operation=action.value,sendTime=time.value;
+    if(button.disabled)return;
+    button.disabled=true;
+    if(!await window.sparkReview('确认批量操作',[`${targets.length} 个任务 · ${action.options[action.selectedIndex].text}${action.value==='time'?' '+time.value:''}`,names,'恢复后仅执行后续计划，不补发错过的消息。'])){button.disabled=false;return;}
     button.disabled=true;result.textContent='正在处理，请勿重复提交…';
     try{
-      const response=await fetch('/tasks/batch',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:toolbar.dataset.csrf,ids:targets.map(c=>c.value),action:action.value,time:time.value})});
+      const response=await fetch('/tasks/batch',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:toolbar.dataset.csrf,ids:targets.map(c=>c.value),action:operation,time:sendTime})});
       if(!response.ok||response.redirected)throw Error('结果无法确认，请刷新列表核对后再操作。');
-      const payload=await response.json();result.replaceChildren();
-      const summary=document.createElement('p');summary.textContent=`已完成 ${payload.results.filter(r=>r.ok).length} / ${payload.results.length} 个。刷新列表查看最新状态。`;result.append(summary);
+      const payload=await response.json();window.sparkApplyTasks(payload.results);result.replaceChildren();
+      const summary=document.createElement('p');summary.textContent=`已完成 ${payload.results.filter(r=>r.ok).length} / ${payload.results.length} 个，列表已更新。`;result.append(summary);
       payload.results.filter(r=>!r.ok).forEach(r=>{const item=document.createElement('p');item.textContent=`${r.name}：${r.error}`;result.append(item);});
       const refresh=document.createElement('a');refresh.href='/tasks';refresh.textContent='刷新任务列表';result.append(refresh);
     }catch(error){result.textContent=error.message;}
-    // A refresh is required to avoid operating on stale row state.
+    button.disabled=false;
   });
 })();

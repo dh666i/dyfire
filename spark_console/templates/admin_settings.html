@@ -9,6 +9,7 @@
   <div class="admin-panel-body"><p role="status">正在读取更新服务状态</p><button class="admin-button" type="button" data-update-check disabled>检查更新</button> <button class="admin-button admin-button-primary" type="button" data-update-install disabled>安装更新</button></div>
 </section>
 <script src="/static/system_updates.js" defer></script>
+<div class="action-summary"><div><strong>备份与执行诊断</strong><p>查看最近备份状态、执行阶段耗时及未记录的采集项。</p></div><a class="button quiet" href="/admin/operations">查看运维状态</a></div>
 
 <div class="admin-notice">{{ icon('alert', 17) }}<span>此页为只读运行快照。修改环境变量或部署配置后，需要重启对应服务才能生效。</span></div>
 <div class="action-summary"><div><strong>邮件通知</strong><p>SMTP、测试邮件、通知模板和最近发送记录。</p></div><a class="admin-button admin-button-primary" href="/admin/settings/mail">邮件设置</a></div>

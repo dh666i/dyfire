@@ -1,0 +1,11 @@
+const {JSDOM}=require('jsdom');
+const fs=require('fs'),assert=require('node:assert/strict');
+const dom=new JSDOM(`<main><article data-task-id="one" data-task-enabled="true"><div class="task-overview-time"><time>12:00</time></div><div class="task-overview-state"><span class="pill">已启用</span></div><div class="task-overview-next"><span></span><span></span></div><form action="/tasks/one/toggle"><input name="csrf_token" value="test"><button>暂停</button></form></article></main>`,{url:'https://example.test/tasks',runScripts:'outside-only'});
+const w=dom.window;w.CSS={escape:x=>x};w.sparkToast=()=>{};
+w.eval(fs.readFileSync('spark_console/static/task_experience.js','utf8'));
+let calls=0;w.fetch=async()=>{calls++;return {ok:true,redirected:false,json:async()=>({results:[{id:'one',ok:true,enabled:false,time:'13:00',next_run_at:null}]})};};
+const form=w.document.querySelector('form');
+const event=new w.Event('submit',{bubbles:true,cancelable:true});form.dispatchEvent(event);
+assert.equal(event.defaultPrevented,true);
+form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+setTimeout(()=>{assert.equal(calls,1);assert.equal(w.document.querySelector('article').dataset.taskEnabled,'false');assert.equal(w.document.querySelector('time').textContent,'13:00');assert.equal(w.document.querySelector('button').disabled,false);assert.equal(w.document.querySelector('.pill').textContent,'已暂停');dom.window.close();console.log('local task update and duplicate click protection passed');},0);

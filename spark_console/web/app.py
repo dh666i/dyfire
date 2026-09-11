@@ -619,12 +619,14 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                         db, AuditService(db)
                     ).require_task_capacity(user.id, len(targets))
                 except (ValidationError, Conflict):
+                    if request.headers.get('accept')=='application/json':
+                        raise HTTPException(403,'会员额度不足或已到期，请查看订阅后重试；填写内容仍保留')
                     return RedirectResponse(
                         "/subscription?required=1", status_code=303
                     )
             service = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db))
             try:
-                service.create_many(
+                created = service.create_many(
                     user.id,
                     account_id,
                     targets,
@@ -634,12 +636,17 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 )
             except ValidationError as error:
                 if "重新登录" in str(error):
+                    if request.headers.get('accept')=='application/json':
+                        raise HTTPException(409,str(error)) from error
                     return RedirectResponse(
                         "/accounts?notice=account-relogin", status_code=303
                     )
                 raise HTTPException(400, str(error)) from error
             except Conflict as error:
                 raise HTTPException(409, str(error)) from error
+            created_id=created[0].id
+        if request.headers.get('accept')=='application/json':
+            return JSONResponse({'url':'/tasks?notice=task-created#task-'+created_id},status_code=201)
         return RedirectResponse("/tasks?notice=task-created", status_code=303)
 
     @app.get("/tasks/{task_id}/edit")

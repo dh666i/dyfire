@@ -321,6 +321,9 @@
 
     function renderOptions() {
       const items = visibleContacts();
+      let resultCount=root.querySelector('[data-search-result-count]');
+      if(!resultCount){resultCount=document.createElement('small');resultCount.dataset.searchResultCount='';resultCount.setAttribute('role','status');optionList.before(resultCount);}
+      resultCount.textContent=`当前列表 ${contacts.size} 位 · 匹配 ${items.length} 位 · 已选 ${selected.size} 位`;
       if (!items.length) {
         renderEmpty(contacts.size ? "没有匹配的已同步会话" : "好友列表尚未读取", contacts.size ? "换一个关键词，或先同步更多最近会话" : "关闭抽屉并点击“读取好友列表”");
         return;
