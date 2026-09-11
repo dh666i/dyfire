@@ -16,7 +16,7 @@ REPO = ROOT / 'repository'
 QUEUE = ROOT / 'updates'
 APP = Path('/opt/henng-spark-console')
 STATE = {}
-ENV = dict(os.environ, GIT_SSH_COMMAND='ssh -i /opt/dyfire-web-updater/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/opt/dyfire-web-updater/known_hosts')
+ENV = dict(os.environ, GIT_SSH_COMMAND='ssh -p 443 -o Hostname=ssh.github.com -o HostKeyAlias=github.com -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -i /opt/dyfire-web-updater/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/opt/dyfire-web-updater/known_hosts')
 
 def status(**values):
     STATE.update(values, heartbeat=time.time())

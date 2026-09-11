@@ -16,7 +16,7 @@ with urllib.request.urlopen('https://api.github.com/meta',timeout=20) as respons
     keys=json.load(response)['ssh_keys']
 (root/'known_hosts').write_text(''.join('github.com '+key+'\n' for key in keys))
 env=__import__('os').environ.copy()
-env['GIT_SSH_COMMAND']='ssh -i /opt/dyfire-web-updater/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/opt/dyfire-web-updater/known_hosts'
+env['GIT_SSH_COMMAND']='ssh -p 443 -o Hostname=ssh.github.com -o HostKeyAlias=github.com -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -i /opt/dyfire-web-updater/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/opt/dyfire-web-updater/known_hosts'
 if not (root/'repository').exists():
     subprocess.run(['git','clone','--bare','git@github.com:dh666i/dyfire.git',str(root/'repository')],env=env,check=True)
 queue=root/'updates';queue.mkdir(exist_ok=True,mode=0o755)
