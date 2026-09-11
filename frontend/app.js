@@ -46,7 +46,7 @@ async function load(){
   $('.profile-popover').append(logout);
   $('#admin-link')?.remove();if(state.user.role==='admin')$('.profile-popover').insertAdjacentHTML('beforeend','<div id="admin-link"><a href="/admin/overview">管理后台 ↗</a><a href="/studio?view=updates">版本更新 ↗</a></div>');
 }
-$('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01</sup></a><a href="/studio?view=accounts">抖音账号 <sup>02</sup></a><a href="/studio?view=runs">执行记录 <sup>03</sup></a>';
+$('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01</sup></a><a href="/accounts">抖音账号 <sup>02</sup></a><a href="/runs">执行记录 <sup>03</sup></a>';
 $('header .profile').outerHTML='<details class="profile-menu"><summary class="profile" aria-label="账户中心">·</summary><div class="profile-popover"><a href="/studio?view=overview">今日概览</a><a href="/subscription">会员订阅</a><a href="/account-center">账户中心</a><a href="/notifications">通知设置</a><a href="/help">使用帮助</a></div></details>';
 document.addEventListener('click',e=>{if(!e.target.closest('.profile-menu'))$('.profile-menu').open=false;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('.profile-menu').open=false;});

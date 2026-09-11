@@ -1,15 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="auth-experience auth-experience-register">
-  <div class="mr-auth-wrap mr-auth-wrap-wide">
-    <header class="mr-auth-brand">
-      <a class="mr-auth-logo" href="/login" aria-label="火花守护登录页">
-        <span class="brand-mark"><img class="brand-symbol" src="/static/spark-flame.png?v=20260909-1" width="44" height="44" alt=""></span>
-      </a>
-      <h1>火花守护</h1>
-      <p>创建你的平台账号</p>
-    </header>
-
+<div class="studio-auth-layout">
+{% include 'studio_auth_art.html' %}
     <section class="auth-card auth-card-premium register-card">
       <nav class="studio-auth-tabs" aria-label="账户入口"><a href="/login">登录</a><a href="/register" aria-current="page">注册</a></nav>
       <div class="auth-card-heading">
@@ -42,6 +34,5 @@
         <p class="fine">创建账号即代表你将妥善保管平台及抖音登录信息。</p>
       </div>
     </section>
-  </div>
 </div>
 {% endblock %}

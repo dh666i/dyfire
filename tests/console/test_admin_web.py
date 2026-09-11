@@ -287,7 +287,9 @@ class AdminWebTests(unittest.TestCase):
             with self.subTest(path=path):
                 response = self.real_client.get(path)
                 self.assertEqual(200, response.status_code)
-                self.assertIn('class="admin-body"', response.text)
+                self.assertIn('data-design="dyfire-studio"', response.text)
+                self.assertIn('class="studio-admin-tabs"', response.text)
+                self.assertNotIn('/static/mineradio_admin.css', response.text)
 
     def test_admin_sections_require_an_active_admin_session(self):
         anonymous = TestClient(

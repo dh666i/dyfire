@@ -1,15 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="auth-experience auth-experience-login">
-  <div class="mr-auth-wrap">
-    <header class="mr-auth-brand">
-      <a class="mr-auth-logo" href="/login" aria-label="火花守护登录页">
-        <span class="brand-mark"><img class="brand-symbol" src="/static/spark-flame.png?v=20260909-1" width="44" height="44" alt=""></span>
-      </a>
-      <h1>火花守护</h1>
-      <p>账号与续火计划</p>
-    </header>
-
+<div class="studio-auth-layout">
+{% include 'studio_auth_art.html' %}
     <section class="auth-card auth-card-premium">
       <nav class="studio-auth-tabs" aria-label="账户入口"><a href="/login" aria-current="page">登录</a><a href="/register">注册</a></nav>
       <div class="auth-card-heading">
@@ -34,6 +26,5 @@
         <p class="fine">请勿与他人共享平台密码或抖音登录信息。</p>
       </div>
     </section>
-  </div>
 </div>
 {% endblock %}

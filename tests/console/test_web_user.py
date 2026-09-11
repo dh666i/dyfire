@@ -352,11 +352,11 @@ class UserWebTests(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertIn('href="/register"', response.text)
-        self.assertIn('class="auth-experience auth-experience-login"', response.text)
-        self.assertRegex(response.text, r'/static/mineradio\.css\?v=\d{8}-[a-z0-9]+')
+        self.assertIn('class="studio-auth-layout"', response.text)
+        self.assertIn('/static/studio_site.css?v=0.1.1', response.text)
         self.assertNotIn("登录控制台", response.text)
         self.assertIn("<span>登录</span>", response.text)
-        self.assertIn('/static/mineradio_ui.js?v=20260910-2', response.text)
+        self.assertIn('/static/studio_site.js?v=0.1.1', response.text)
         self.assertEqual(1, response.text.count("data-password-toggle"))
         self.assertIn('aria-label="显示密码"', response.text)
 
@@ -373,8 +373,8 @@ class UserWebTests(unittest.TestCase):
             )
 
         self.assertEqual(200, response.status_code)
-        self.assertIn('href="/static/app.css?', response.text)
-        self.assertIn('href="/static/mineradio.css?', response.text)
+        self.assertIn('href="/static/studio_site.css?', response.text)
+        self.assertNotIn('href="/static/mineradio.css?', response.text)
         self.assertNotIn('href="http://henng.cn/static/app.css"', response.text)
 
     def test_http_mode_issues_a_session_cookie_the_browser_can_return(self):

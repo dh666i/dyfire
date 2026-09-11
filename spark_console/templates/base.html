@@ -21,154 +21,19 @@
 </svg>
 {%- endmacro %}
 <!doctype html>
-<html lang="zh-CN" class="no-js" data-app-surface="console" data-theme-light-color="#f3f3f4" data-theme-dark-color="#101112">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f3f3f4" data-theme-color>
-  <title>{{ title }} · 火花守护</title>
-  <script>
-    (() => {
-      const root = document.documentElement;
-      let saved = null;
-      try { saved = localStorage.getItem('spark-console-theme'); } catch (_) {}
-      const mode = saved === 'dark' ? 'dark' : 'light';
-
-      const theme = mode;
-      root.dataset.themeMode = mode;
-      root.dataset.theme = theme;
-      root.style.colorScheme = theme;
-      const themeColor = document.querySelector('[data-theme-color]');
-      if (themeColor) themeColor.setAttribute('content', theme === 'dark' ? root.dataset.themeDarkColor : root.dataset.themeLightColor);
-      root.classList.remove('no-js');
-      root.classList.add('js');
-    })();
-  </script>
-  <link rel="stylesheet" href="/static/app.css?v=20260905-1">
-  <link rel="stylesheet" href="/static/mineradio.css?v=20260905-4">
-  <link rel="stylesheet" href="/static/console_studio.css?v=20260906-2">
-  <link rel="stylesheet" href="/static/directory_ui.css?v=20260909-2">
-  <link rel="stylesheet" href="/static/smoke_fonts.css?v=20260910-1">
-  <link rel="stylesheet" href="/static/smoke_cards.css?v=20260910-1">
-  <link rel="stylesheet" href="/static/smoke_production.css?v=20260910-2">
-  <link rel="stylesheet" href="/static/ui_select.css?v=20260910-1">
-  <script type="module" src="/static/smoke_ui.js?v=20260910-1"></script>
-  <link rel="stylesheet" href="/static/experience.css?v=20260910-3">
-  <script defer src="/static/ui_select.js?v=20260910-3"></script>
-  <script defer src="/static/experience.js?v=20260910-3"></script>
-  <link rel="stylesheet" href="/static/reliability.css?v=20260910-5">
-  <script defer src="/static/mail_ui.js?v=20260910-6"></script>
-  <link rel="stylesheet" href="/static/product.css?v=20260911-1">
-  <link rel="stylesheet" href="/static/layout_refinement.css?v=20260911-2">
-  <script defer src="/static/product_ui.js?v=20260910-6"></script>
-  <script defer src="/static/batch_tasks.js?v=20260911-2"></script>
-  <script defer src="/static/workflow_polish.js?v=20260910-5"></script>
-  <link rel="icon" type="image/png" href="/static/spark-flame.png?v=20260909-1">
-  <script defer src="/static/directory_ui.js?v=20260910-3"></script>
-  <script defer src="/static/password_toggle.js?v=20260902-1"></script>
-  <script defer src="/static/app_ui.js?v=20260910-3"></script>
-  <script defer src="/static/mineradio_ui.js?v=20260910-2"></script>
-  <script defer src="/static/console_studio.js?v=20260911-2"></script>
+<html lang="zh-CN" data-app-surface="console"><head>
+{% include 'studio_head.html' %}
+<link rel="stylesheet" href="/static/studio_site.css?v=0.1.1">
+<script defer src="/static/app_ui.js"></script><script defer src="/static/batch_tasks.js"></script>
+<script defer src="/static/console_studio.js"></script>
 </head>
-{% set has_nav = (nav is not defined or nav) and user is defined %}
-{% set route = request.url.path %}
-<body class="{{ 'app-body' if has_nav else 'auth-body' }}" data-route="{{ route }}" data-ui="mineradio" data-design="studio">
+{% set route=request.url.path %}
+<body data-route="{{ route }}" data-design="dyfire-studio" class="{{ 'studio-auth-body' if nav is defined and not nav else 'studio-site' }}">
 <a class="skip-link" href="#main-content">跳到主要内容</a>
-{% if not has_nav %}
-<button class="icon-button theme-toggle theme-toggle-auth" type="button" data-theme-toggle aria-label="切换显示主题" title="切换显示主题">
-  <span class="theme-icon theme-icon-light">{{ icon('sun', 18) }}</span><span class="theme-icon theme-icon-dark">{{ icon('moon', 18) }}</span>
-</button>
-{% endif %}
-{% if ui_notice is defined and ui_notice %}
-<div class="app-toast-region" aria-live="polite" aria-atomic="true">
-  <div class="app-toast app-toast-{{ ui_notice.tone }}" role="status" data-app-toast>
-    <span class="app-toast-mark" aria-hidden="true">{{ icon('spark', 17) }}</span>
-    <span>{{ ui_notice.message }}</span>
-    <button class="app-toast-close" type="button" aria-label="关闭提示" data-toast-close>×</button>
-  </div>
-</div>
-{% endif %}
-{% if has_nav %}
-<aside class="sidebar mr-rail" aria-label="控制台导航">
-  <a class="brand" href="/dashboard" aria-label="火花守护首页">
-    <span class="brand-mark"><img class="brand-symbol" src="/static/spark-flame.png?v=20260909-1" width="32" height="32" alt=""></span>
-    <span class="brand-copy"><strong>火花守护</strong><small>个人工作台</small></span>
-  </a>
-
-  <div class="sidebar-navs">
-    <span class="nav-label">工作台</span>
-    <nav class="primary-nav" aria-label="主要导航">
-      <a class="nav-link{{ ' active' if route == '/dashboard' else '' }}" href="/dashboard"{% if route == '/dashboard' %} aria-current="page"{% endif %}>{{ icon('dashboard') }}<span>今日概览</span><i class="nav-state" aria-hidden="true"></i></a>
-      <a class="nav-link{{ ' active' if route == '/accounts' else '' }}" href="/accounts"{% if route == '/accounts' %} aria-current="page"{% endif %}>{{ icon('accounts') }}<span>抖音账号</span><i class="nav-state" aria-hidden="true"></i></a>
-      <a class="nav-link{{ ' active' if route == '/tasks' or route.startswith('/tasks/') else '' }}" href="/tasks"{% if route == '/tasks' or route.startswith('/tasks/') %} aria-current="page"{% endif %}>{{ icon('tasks') }}<span>续火任务</span><i class="nav-state" aria-hidden="true"></i></a>
-      <a class="nav-link{{ ' active' if route == '/runs' else '' }}" href="/runs"{% if route == '/runs' %} aria-current="page"{% endif %}>{{ icon('runs') }}<span>执行记录</span><i class="nav-state" aria-hidden="true"></i></a>
-    </nav>
-
-    <span class="nav-label nav-label-secondary">账户</span>
-    <nav class="secondary-nav" aria-label="账户导航">
-      <a class="nav-link{{ ' active' if route == '/attention' else '' }}" href="/attention">{{ icon('runs') }}<span>待处理事项</span></a>
-      <a class="nav-link{{ ' active' if route == '/account-center' else '' }}" href="/account-center">{{ icon('security') }}<span>账户中心</span></a>
-      <a class="nav-link{{ ' active' if route == '/help' else '' }}" href="/help">{{ icon('dashboard') }}<span>使用帮助</span></a>
-      <a class="nav-link{{ ' active' if route == '/notifications' else '' }}" href="/notifications">{{ icon('runs') }}<span>通知设置</span></a>
-      <a class="nav-link{{ ' active' if route == '/subscription' else '' }}" href="/subscription"{% if route == '/subscription' %} aria-current="page"{% endif %}>{{ icon('subscription') }}<span>会员订阅</span><i class="nav-state" aria-hidden="true"></i></a>
-      {% if is_admin %}<a class="nav-link{{ ' active' if route.startswith('/admin') else '' }}" href="/admin/overview"{% if route.startswith('/admin') %} aria-current="page"{% endif %}>{{ icon('admin') }}<span>管理后台</span><i class="nav-state" aria-hidden="true"></i></a>{% endif %}
-    </nav>
-  </div>
-
-  <div class="sidebar-footer">
-    {% if membership is defined and membership %}
-    <a class="side-membership" href="/subscription">
-      <span class="status-dot status-{{ membership.status }}" aria-hidden="true"></span>
-      <span><small>会员状态</small><strong>{{ membership.status_label }}</strong></span>
-      {{ icon('arrow', 16) }}
-    </a>
-    {% endif %}
-    <div class="side-user">
-      <span class="user-avatar" aria-hidden="true">{{ user.username[0]|upper }}</span>
-      <span class="user-copy"><strong>{{ user.username }}</strong><small>{{ '管理员' if is_admin else '平台用户' }}</small></span>
-      <form action="/logout" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="icon-button side-logout" type="submit" aria-label="退出登录" title="退出登录">{{ icon('logout', 18) }}</button></form>
-    </div>
-  </div>
-</aside>
-
-<header class="mobile-topbar">
-  <a class="mobile-brand" href="/dashboard" aria-label="火花守护首页"><span class="brand-mark"><img class="brand-symbol" src="/static/spark-flame.png?v=20260909-1" width="32" height="32" alt=""></span><strong>火花守护</strong></a>
-  <div class="mobile-actions">
-    <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="切换显示主题" title="切换显示主题"><span class="theme-icon theme-icon-light">{{ icon('sun', 18) }}</span><span class="theme-icon theme-icon-dark">{{ icon('moon', 18) }}</span></button>
-    <a class="icon-button{{ ' active' if route == '/account-center' else '' }}" href="/account-center" aria-label="账户中心" title="账户中心">{{ icon('security', 19) }}</a>
-    {% if is_admin %}<a class="icon-button{{ ' active' if route.startswith('/admin') else '' }}" href="/admin/overview" aria-label="管理后台" title="管理后台">{{ icon('admin', 19) }}</a>{% endif %}
-    <form action="/logout" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="icon-button" type="submit" aria-label="退出登录" title="退出登录">{{ icon('logout', 19) }}</button></form>
-  </div>
-</header>
-
-<nav class="mobile-nav" aria-label="移动端主要导航">
-  <a class="{{ 'active' if route == '/dashboard' else '' }}" href="/dashboard"{% if route == '/dashboard' %} aria-current="page"{% endif %}>{{ icon('dashboard', 20) }}<span>概览</span></a>
-  <a class="{{ 'active' if route == '/accounts' else '' }}" href="/accounts"{% if route == '/accounts' %} aria-current="page"{% endif %}>{{ icon('accounts', 20) }}<span>账号</span></a>
-  <a class="{{ 'active' if route == '/tasks' or route.startswith('/tasks/') else '' }}" href="/tasks"{% if route == '/tasks' or route.startswith('/tasks/') %} aria-current="page"{% endif %}>{{ icon('tasks', 20) }}<span>任务</span></a>
-  <a class="{{ 'active' if route == '/runs' else '' }}" href="/runs"{% if route == '/runs' %} aria-current="page"{% endif %}>{{ icon('runs', 20) }}<span>记录</span></a>
-  <a class="{{ 'active' if route == '/subscription' else '' }}" href="/subscription"{% if route == '/subscription' %} aria-current="page"{% endif %}>{{ icon('subscription', 20) }}<span>会员</span></a>
-</nav>
-{% endif %}
-<main id="main-content" class="{{ 'app-main' if has_nav else 'auth-main' }}" tabindex="-1">
-  {% if has_nav %}
-  <div class="app-command-bar mr-topbar-stage" aria-label="页面状态">
-    <div class="mr-topbar-shell">
-      <div class="mr-page-identity">
-        <a href="/dashboard">工作台</a><span aria-hidden="true">/</span>
-        <strong>{{ title }}</strong>
-      </div>
-      <div class="mr-topbar-controls">
-        <button class="icon-button theme-toggle" type="button" data-theme-toggle aria-label="切换显示主题" title="切换显示主题"><span class="theme-icon theme-icon-light">{{ icon('sun', 18) }}</span><span class="theme-icon theme-icon-dark">{{ icon('moon', 18) }}</span></button>
-        <a class="mr-user-control" href="/account-center" aria-label="账号与安全">
-          <span class="user-avatar" aria-hidden="true">{{ user.username[0]|upper }}</span>
-          <span><strong>{{ user.username }}</strong><small>{{ '管理员' if is_admin else '平台用户' }}</small></span>
-        </a>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-  <div class="{{ 'content-shell' if has_nav else 'auth-shell' }}">{% block content %}{% endblock %}</div>
-</main>
+{% include 'studio_header.html' %}
+{% if ui_notice is defined and ui_notice %}<div class="app-toast-region" aria-live="polite"><div class="app-toast" data-app-toast role="status"><span>{{ ui_notice.message }}</span><button data-toast-close type="button" aria-label="关闭提示">×</button></div></div>{% endif %}
+<main id="main-content" class="studio-content" tabindex="-1">{% block content %}{% endblock %}</main>
+<footer class="studio-footer"><span>火花 / KEEP IN TOUCH.</span><span>让关系持续，让操作简单。</span></footer>
 <dialog class="app-confirm-dialog" data-app-confirm-dialog aria-labelledby="app-confirm-title" aria-describedby="app-confirm-message">
   <div class="app-confirm-icon" aria-hidden="true">{{ icon('spark', 20) }}</div>
   <button class="app-confirm-close" type="button" data-app-confirm-cancel aria-label="关闭确认窗口">×</button>
@@ -181,5 +46,4 @@
   </div>
 </dialog>
 <div class="app-runtime-toast-region" aria-live="polite" aria-atomic="true" data-runtime-toast-region></div>
-</body>
-</html>
+</body></html>
