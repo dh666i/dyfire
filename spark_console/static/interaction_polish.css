@@ -1,4 +1,12 @@
 /* Shared, quiet feedback for the connected application. */
+.profile-popover,.studio-profile-menu{width:260px!important;max-width:calc(100vw - 32px);padding:14px!important;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);z-index:100}
+.profile-popover a,.studio-profile-menu a,.profile-popover form button,.studio-profile-menu form button{display:flex!important;align-items:center;width:100%;min-height:40px;padding:10px 12px!important;border:0!important;border-radius:3px;background:transparent!important;color:var(--ink)!important;font:400 13px/1.5 Inter,"Noto Sans SC",sans-serif!important;text-align:left;box-sizing:border-box}
+.profile-popover a:hover,.studio-profile-menu a:hover,.profile-popover form button:hover,.studio-profile-menu form button:hover{background:var(--field)!important}
+.profile-popover form,.studio-profile-menu form{border-top:1px solid var(--line);padding-top:8px;margin:8px 0 0}
+.profile-popover form button,.studio-profile-menu form button{color:var(--muted)!important}
+.menu-identity{display:grid;gap:6px;border-bottom:1px solid var(--line);margin-bottom:7px;padding:8px 12px 14px!important;overflow-wrap:anywhere;font-size:13px}.menu-identity small{font-size:11px;color:var(--muted)}
+.account-list .account-item{padding:22px}.account-list .account-controls{gap:12px;margin-top:16px;padding-top:16px}.account-list .account-maintenance{margin-top:12px}.account-list .product-actions{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.directory-actions{display:flex;gap:8px;flex-wrap:wrap}.directory-actions button{font-size:12px;padding:8px 12px;min-height:38px;border:1px solid var(--line);border-radius:3px;background:var(--field)}.directory-status{font-size:11px;color:var(--muted);line-height:1.7}.directory-controls{padding:12px 0;border-bottom:1px solid var(--line)}
 dialog{max-height:calc(100dvh - 32px);overflow:auto}
 dialog[open]{animation:dialog-reveal .16s ease-out}
 dialog::backdrop{background:#0009}

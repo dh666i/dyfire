@@ -1,7 +1,7 @@
 (() => {
   'use strict';
-  const account = document.querySelector('#task-account');
-  const csrf = document.querySelector('[name="csrf_token"]')?.value || document.querySelector('[data-csrf-token]')?.dataset.csrfToken;
+  const account = document.querySelector('#task-account, #account');
+  const csrf = document.querySelector('[name="csrf_token"]')?.value || document.querySelector('[data-csrf-token]')?.dataset.csrfToken || document.querySelector('#create-form')?.dataset.csrf;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   let leaving = false;
   window.addEventListener('pagehide', () => { leaving = true; });
@@ -64,7 +64,7 @@
         if (!job || token !== version || id !== getAccount()) return;
         if (!query) currentLimit = job.limit;
         status.textContent = `${query ? '搜索' : '同步'}完成，读取 ${job.items?.length || 0} 位好友 · ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}${profileOnly ? '。刷新页面查看最新昵称和头像。' : ''}`;
-        document.dispatchEvent(new CustomEvent('directory-updated', {detail: {accountId: id}}));
+        document.dispatchEvent(new CustomEvent('directory-updated', {detail: {accountId: id, query, items: job.items}}));
         if (more && !query) more.hidden = !job.has_more;
       } catch (error) {
         if (token === version && id === getAccount()) status.textContent = error.name === 'AbortError' ? '网络超时，请稍后重试' : error.message;
@@ -96,6 +96,11 @@
   }
 
   if (account && csrf) {
+    const studioToolbar = document.querySelector('#friends-dialog .selection-tools');
+    if (studioToolbar) {
+      const host = document.createElement('div'); studioToolbar.before(host);
+      controls(host, () => account.value, () => document.querySelector('#friend-search').value);
+    }
     const toolbar = document.querySelector('.target-picker-toolbar');
     const single = document.querySelector('#task-target-options');
     if (toolbar) {

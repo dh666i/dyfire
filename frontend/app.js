@@ -6,7 +6,7 @@ import '../spark_console/static/interaction_polish.css';
 import {installPages} from './src/connected-pages.js';
 const {esc,toast} = studio;
 const $ = s => document.querySelector(s);
-let state, contacts=[], busy=false, contactGeneration=0;
+let state, contacts=[], busy=false, contactGeneration=0, contactsAccount='';
 async function request(path, body) {
   const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),20000);
   try {
@@ -34,8 +34,9 @@ function decorateTasks(){
 }
 const originalRender=studio.render;
 async function load(){
-  const account=$('#account').value;
+  const account=$('#account').value || new URLSearchParams(location.search).get('account');
   state=await request('/api/studio');studio.tasks=state.tasks;
+  $('#create-form').dataset.csrf=state.csrf;
   $('#account').innerHTML=state.accounts.map(a=>`<option value="${esc(a.id)}">${esc(a.name)} · ${esc(a.health.label)}</option>`).join('')||'<option value="">请先绑定抖音账号</option>';
   if(state.accounts.some(a=>a.id===account))$('#account').value=account;
   $('#account-status').textContent=state.accounts.length?`${state.accounts.length} 个账号 · ${state.accounts.filter(a=>!a.health.blocked).length} 个可用`:'尚未绑定账号';
@@ -47,28 +48,35 @@ async function load(){
   const logout=document.createElement('form');logout.id='session-logout';logout.method='POST';logout.action='/logout';
   logout.innerHTML=`<input type="hidden" name="csrf_token" value="${esc(state.csrf)}"><button type="submit" class="small-action">退出登录</button>`;
   $('.profile-popover').append(logout);
-  $('#admin-link')?.remove();if(state.user.role==='admin')$('.profile-popover').insertAdjacentHTML('beforeend','<div id="admin-link"><a href="/admin/overview">管理后台 ↗</a><a href="/studio?view=updates">版本更新 ↗</a></div>');
+  $('#admin-link')?.remove();if(state.user.role==='admin')logout.insertAdjacentHTML('beforebegin','<div id="admin-link"><a href="/admin/overview">管理后台 ↗</a><a href="/studio?view=updates">版本更新 ↗</a></div>');
+  $('.menu-identity')?.remove();$('.profile-popover').insertAdjacentHTML('afterbegin',`<div class="menu-identity"><strong>${esc(state.user.name)}</strong><small>${state.user.role==='admin'?'管理员':'个人工作台'}</small></div>`);
 }
 $('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01</sup></a><a href="/accounts">抖音账号 <sup>02</sup></a><a href="/runs">执行记录 <sup>03</sup></a>';
 $('header .profile').outerHTML='<details class="profile-menu"><summary class="profile" aria-label="账户中心">·</summary><div class="profile-popover"><a href="/studio?view=overview">今日概览</a><a href="/subscription">会员订阅</a><a href="/account-center">账户中心</a><a href="/notifications">通知设置</a><a href="/help">使用帮助</a></div></details>';
 document.addEventListener('click',e=>{if(!e.target.closest('.profile-menu'))$('.profile-menu').open=false;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('.profile-menu').open=false;});
-async function loadContacts(){
+async function loadContacts(searchItems=null){
   const generation=++contactGeneration;
+  const chosen=contactsAccount===$('#account').value ? [...document.querySelectorAll('[name=friend]:checked')].map(el=>contacts[Number(el.value)]).filter(Boolean) : [];
+  const identity=c=>c.sec_uid||c.name;
+  const chosenIds=new Set(chosen.map(identity));
+  contactsAccount=$('#account').value;
   contacts=[];studio.friends.splice(0);studio.syncSelection();
   const account=$('#account').value;
   $('#friend-list').textContent=account?'正在读取好友列表…':'请先绑定抖音账号';
   if(!account)return;
   try{
-    const data=await request('/accounts/'+encodeURIComponent(account)+'/conversations');
+    const data=searchItems ? {items:searchItems} : await request('/accounts/'+encodeURIComponent(account)+'/conversations');
     if(generation!==contactGeneration)return;
-    contacts=data.items;studio.friends.push(...contacts.map(c=>c.name));
+    contacts=[...data.items,...chosen.filter(c=>!data.items.some(item=>identity(item)===identity(c)))];studio.friends.push(...contacts.map(c=>c.name));
     $('#friend-list').innerHTML=contacts.map((c,i)=>`<label class="friend-option" data-name="${esc([c.name,c.nickname,c.remark_name].filter(Boolean).join(' ').toLowerCase())}"><input type="checkbox" value="${i}" name="friend"><span class="avatar">${c.avatar_url?`<img src="${esc(c.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`:esc(c.name[0])}</span><span>${esc(c.name)}<small>${esc(c.nickname||'抖音好友')}</small></span><span class="checkmark">✓</span></label>`).join('')||'暂无好友记录，请在账号页同步好友后刷新。';
     $('#friend-search').value='';
+    document.querySelectorAll('[name=friend]').forEach(el=>{el.checked=chosenIds.has(identity(contacts[Number(el.value)]));});studio.syncSelection();
   }catch(error){if(generation===contactGeneration)$('#friend-list').textContent=error.message;}
 }
 $('#friend-list').addEventListener('change',studio.syncSelection);
-$('#account').addEventListener('change',loadContacts);
+$('#account').addEventListener('change',()=>loadContacts());
+document.addEventListener('directory-updated',e=>{if(e.detail.accountId===$('#account').value)loadContacts(e.detail.query ? e.detail.items : null);});
 $('#choose-friends').onclick=async()=>{$('#friends-dialog').showModal();if(!contacts.length)await loadContacts();};
 $('#create-form').onsubmit=async e=>{
   e.preventDefault();if(busy||!state)return;
@@ -110,5 +118,9 @@ document.addEventListener('click',async e=>{
   catch(error){button.textContent=label;toast(error.message);}
   finally{busy=false;button.disabled=false;button.removeAttribute('aria-busy');}
 });
-load().then(()=>installPages({state,studio,request})).catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
+load().then(()=>{
+  $('.profile-popover a[href="/help"]').insertAdjacentHTML('beforebegin','<a href="/attention">待处理事项</a>');
+  const directory=document.createElement('script');directory.src='/static/directory_ui.js?v=0.1.5';document.body.append(directory);
+  installPages({state,studio,request});
+}).catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
 document.addEventListener('studio:render-tasks',decorateTasks);

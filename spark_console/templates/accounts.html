@@ -56,9 +56,8 @@
           </div>
           <div class="account-maintenance">
           <div class="account-health-actions"><button type="button" class="quiet" data-health-check{% if health_state in ['verification','relogin'] %} disabled{% endif %}>复核登录状态</button><span data-health-feedback role="status"></span></div>
-          <div data-profile-sync="{{ account.id }}"></div>
           </div>
-          <div class="product-actions"><a href="/tasks?account={{ account.id }}">关联任务</a><a href="/runs?account_id={{ account.id }}">发送记录</a><a href="/attention">待处理事项</a></div>
+          <div class="product-actions"><a href="/studio?account={{ account.id }}">续火任务与好友</a><a href="/runs?account_id={{ account.id }}">发送记录</a><a href="/attention">待处理事项</a></div>
         </article>
         {% endfor %}
       {% else %}
