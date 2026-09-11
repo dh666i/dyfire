@@ -10,7 +10,7 @@ import yaml
 root=Path('/opt/dyfire-web-updater')
 source=Path(__file__).resolve().parent
 root.mkdir(exist_ok=True,mode=0o700)
-for name in ('git_web_updater.py','Dockerfile.fast'):
+for name in ('git_web_updater.py','Dockerfile.fast','Dockerfile.fast.dockerignore'):
     shutil.copy2(source/name,root/name)
 with urllib.request.urlopen('https://api.github.com/meta',timeout=20) as response:
     keys=json.load(response)['ssh_keys']
