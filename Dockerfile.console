@@ -3,7 +3,7 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-COPY spark_console/static/ui_select.js spark_console/static/ui_select.css spark_console/static/interaction_polish.css /spark_console/static/
+COPY spark_console/static/ /spark_console/static/
 RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-noble
