@@ -1,5 +1,6 @@
 import {studio} from './main.js';
 import './pages.css';
+import {installPages} from './src/connected-pages.js';
 const {esc,toast} = studio;
 const $ = s => document.querySelector(s);
 let state, contacts=[], busy=false, contactGeneration=0;
@@ -39,10 +40,14 @@ async function load(){
   $('#create-form .submit').disabled=!state.subscription.can_add_task;
   $('#form-feedback').textContent=state.subscription.can_add_task?'':state.accounts.length?'当前不可创建任务，请检查会员状态和任务额度。':'请先绑定抖音账号。';
   const profile=$('.profile');profile.textContent=state.user.name.slice(0,1);profile.setAttribute('aria-label','账户中心');
-  $('#admin-link')?.remove();if(state.user.role==='admin')$('.profile-popover').insertAdjacentHTML('beforeend','<a id="admin-link" href="/admin/overview">管理后台 ↗</a>');
+  $('#session-logout')?.remove();
+  const logout=document.createElement('form');logout.id='session-logout';logout.method='POST';logout.action='/logout';
+  logout.innerHTML=`<input type="hidden" name="csrf_token" value="${esc(state.csrf)}"><button type="submit" class="small-action">退出登录</button>`;
+  $('.profile-popover').append(logout);
+  $('#admin-link')?.remove();if(state.user.role==='admin')$('.profile-popover').insertAdjacentHTML('beforeend','<div id="admin-link"><a href="/admin/overview">管理后台 ↗</a><a href="/studio?view=updates">版本更新 ↗</a></div>');
 }
-$('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01</sup></a><a href="/accounts">抖音账号 <sup>02</sup></a><a href="/runs">执行记录 <sup>03</sup></a>';
-$('header .profile').outerHTML='<details class="profile-menu"><summary class="profile" aria-label="账户中心">·</summary><div class="profile-popover"><a href="/dashboard">今日概览</a><a href="/subscription">会员订阅</a><a href="/account-center">账户中心</a><a href="/notifications">通知设置</a><a href="/help">使用帮助</a></div></details>';
+$('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01</sup></a><a href="/studio?view=accounts">抖音账号 <sup>02</sup></a><a href="/studio?view=runs">执行记录 <sup>03</sup></a>';
+$('header .profile').outerHTML='<details class="profile-menu"><summary class="profile" aria-label="账户中心">·</summary><div class="profile-popover"><a href="/studio?view=overview">今日概览</a><a href="/subscription">会员订阅</a><a href="/account-center">账户中心</a><a href="/notifications">通知设置</a><a href="/help">使用帮助</a></div></details>';
 document.addEventListener('click',e=>{if(!e.target.closest('.profile-menu'))$('.profile-menu').open=false;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('.profile-menu').open=false;});
 async function loadContacts(){
@@ -83,5 +88,5 @@ document.addEventListener('click',async e=>{
   catch(error){toast(error.message);}
   finally{busy=false;button.disabled=false;}
 });
-load().catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
+load().then(()=>installPages({state,studio,request})).catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
 document.addEventListener('studio:render-tasks',decorateTasks);

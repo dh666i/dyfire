@@ -2,10 +2,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from spark_console.db import session_scope
 from spark_console.models import DouyinAccount, SparkTask, TaskRun
@@ -103,5 +103,24 @@ def build_studio_router(engine, auth, cipher):
             except Conflict as error:
                 raise HTTPException(409, str(error))
         return {'saved': True}
+
+    @router.get('/api/studio/runs')
+    def runs(request: Request, page: int = Query(1,ge=1), q: str = Query('',max_length=100), status: str = ''):
+        from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
+        with session_scope(engine) as db:
+            user,_ = auth.current(request,db)
+            criteria=[SparkTask.owner_user_id==user.id]
+            if q: criteria.append(SparkTask.target_name.contains(q,autoescape=True))
+            if status:
+                if status not in ('success','failed','submitted_unconfirmed','running','skipped'):
+                    raise HTTPException(400,'记录状态无效')
+                criteria.append(TaskRun.status==status)
+            total=db.scalar(select(func.count()).select_from(TaskRun).join(SparkTask).where(*criteria)) or 0
+            pages=max(1,(total+11)//12);page=min(page,pages)
+            rows=db.execute(select(TaskRun,SparkTask).join(SparkTask).where(*criteria).order_by(TaskRun.scheduled_for.desc(),TaskRun.id.desc()).offset((page-1)*12).limit(12)).all()
+            return {'total':total,'page':page,'pages':pages,'items':[{'id':run.id,'name':task.target_name,
+                'time':shanghai_time(run.scheduled_for),'status':run.status,'label':run_view_status(run)['label'],
+                'stage':RUN_STAGE_LABELS.get(run.stage,run.stage),'guidance':run_guidance(run),
+                'error':run.error_summary,'kind':'原生续火花' if task.message_kind=='douyin_sticker' else '文字消息'} for run,task in rows]}
 
     return router

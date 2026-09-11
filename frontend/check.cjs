@@ -12,6 +12,8 @@ const state={user:{name:'Test',role:'user'},csrf:'token',accounts:[{id:'account-
 w.fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/enabled'))state.tasks[0].enabled=JSON.parse(options.body).enabled;return {ok:true,status:200,json:async()=>url==='/api/studio'?structuredClone(state):url.includes('conversations')?{items:[{name:'Friend',sec_uid:'uid'}]}:{saved:true}};};
 let shell=fs.readFileSync(path.join(__dirname,'main.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export const studio =','window.studio =');
 w.eval(shell);
+w.eval(fs.readFileSync(path.join(__dirname,'src/components.js'),'utf8').replace('export function','function'));
+w.eval(fs.readFileSync(path.join(__dirname,'src/connected-pages.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export function','function'));
 let app=fs.readFileSync(path.join(__dirname,'app.js'),'utf8').replace(/^import .*;\r?\n/gm,'');
 w.eval('const studio=window.studio;'+app);
 const flush=()=>new Promise(r=>setTimeout(r,20));

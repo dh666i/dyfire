@@ -51,6 +51,10 @@ def test_create_owned_and_idempotent_enabled(site):
         assert client.post(f'/api/studio/tasks/{task_id}/enabled',json={'enabled':False},headers=headers).status_code==200
     assert client.get('/api/studio').json()['tasks'][0]['enabled'] is False
     assert client.get('/api/admin/updates').status_code==404
+    runs=client.get('/api/studio/runs').json()
+    assert runs['total']==0 and runs['items']==[]
+    assert client.get('/api/studio/runs?page=0').status_code==422
+    assert client.get('/api/studio/runs?status=bogus').status_code==400
 
 
 def test_expired_auth_returns_json(site):

@@ -41,6 +41,12 @@ jobs:
           push: true
           tags: ghcr.io/dh666i/dyfire:${{ steps.version.outputs.version }}
           labels: org.opencontainers.image.source=https://github.com/dh666i/dyfire
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify release container
+        env:
+          RELEASE_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+        run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" "$RELEASE_IMAGE" /app/smoke.py
       - name: Create release draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

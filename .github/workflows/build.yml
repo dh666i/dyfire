@@ -29,4 +29,9 @@ jobs:
           context: .
           file: Dockerfile.console
           push: false
+          load: true
           tags: dyfire:validation
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify container application
+        run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" dyfire:validation /app/smoke.py
