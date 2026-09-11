@@ -38,6 +38,7 @@
       busy = value;
       buttons.forEach(el => { el.disabled = value; });
       bar.setAttribute('aria-busy', String(value));
+      buttons.forEach(el => el.classList.toggle('is-loading', value && el === buttons[0]));
       if (more && currentLimit >= 100) more.disabled = true;
     }
     async function poll(id, job, token) {
@@ -64,13 +65,13 @@
         }), token);
         if (!job || token !== version || id !== getAccount()) return;
         if (!query) currentLimit = job.limit;
-        status.textContent = query && !job.items?.length ? '未读取到匹配结果，不代表好友不存在。请尝试昵称或抖音号，或同步更多最近会话。' : `${query ? '搜索' : '同步'}完成，读取 ${job.items?.length || 0} 位好友 · ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}${profileOnly ? '。刷新页面查看最新昵称和头像。' : ''}`;
+        status.textContent = `同步完成，读取 ${job.items?.length || 0} 个最近会话 · ${new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit'})}${profileOnly ? '。刷新页面查看最新昵称和头像。' : ''}`;
         document.dispatchEvent(new CustomEvent('directory-updated', {detail: {accountId: id, query, items: job.items}}));
         if (more && !query) more.hidden = !job.has_more;
       } catch (error) {
         if (token === version && id === getAccount()) {
           const technical=/HTTP |业务码|页面就绪|会话列表/.test(error.message);
-          status.textContent = error.name === 'AbortError' ? '网络超时，请稍后重试' : technical ? '暂时无法读取抖音好友，本次搜索未完成。可先筛选已保存的好友，或稍后重试；不代表账号已失效。' : error.message;
+          status.textContent = error.name === 'AbortError' ? '网络超时，请稍后重试' : technical ? '本次同步未完成，已保存的会话仍可筛选，请稍后重试。' : error.message;
           bar.querySelector('.directory-diagnostic')?.remove();
           if(technical){const detail=document.createElement('details');detail.className='directory-diagnostic';const summary=document.createElement('summary');summary.textContent='诊断详情';const text=document.createElement('small');text.textContent=error.message;detail.append(summary,text);bar.append(detail);}
         }
@@ -78,10 +79,13 @@
     }
     button(profileOnly ? '更新资料与好友' : '同步最近 20 个', () => run(20));
     const more = profileOnly ? null : button('加载更多', () => run(Math.min(100, currentLimit + 20)));
-    if (getQuery) button('去抖音搜索', () => {
+    if (getQuery) button('搜索已同步会话', () => {
       const query = getQuery().trim();
       if (!query) { status.textContent = '先输入好友昵称、备注或抖音号，再搜索'; return; }
-      run(20, query);
+      // Do not call Douyin Web search. The picker filters the locally synced
+      // conversation snapshot in tasks.js / the page UI.
+      document.dispatchEvent(new CustomEvent('directory-local-search', {detail: {query}}));
+      status.textContent = '已在当前同步的最近会话中筛选';
     });
     bar.append(actions, status); host.append(bar);
     async function resume() {
@@ -93,8 +97,8 @@
         if (token !== version || id !== getAccount()) return;
         currentLimit = data.sync?.limit || 20;
         if (more) { more.hidden = data.sync ? !data.sync.has_more : false; more.disabled = currentLimit >= 100; }
-        status.textContent = data.sync?.finished_at ? `最近同步：${new Date(data.sync.finished_at).toLocaleString('zh-CN')}` : '可先选择已保存的好友，或同步最近会话';
-        if (data.active_sync) run(data.active_sync.limit, data.active_sync.query, data.active_sync);
+        status.textContent = data.sync?.finished_at ? `最近同步：${new Date(data.sync.finished_at).toLocaleString('zh-CN')} · 搜索仅限已同步会话` : '可先同步最近会话，搜索仅限已同步内容';
+        if (data.active_sync && !data.active_sync.query) run(data.active_sync.limit, '', data.active_sync);
       } catch (_) { if (token === version) status.textContent = '可点击同步更新好友列表'; }
     }
     if (account && !profileOnly) account.addEventListener('change', resume);

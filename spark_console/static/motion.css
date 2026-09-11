@@ -1,0 +1,30 @@
+/* Last in the cascade: common motion without moving controls during use. */
+:root{--motion-fast:160ms;--motion-ease:cubic-bezier(.2,.7,.3,1)}
+.ui-load-placeholder{display:grid;gap:12px;padding:20px;min-height:108px}
+.ui-load-placeholder span{display:block;height:14px;background:var(--field);border-radius:3px}
+.ui-load-placeholder span:nth-child(2){width:72%}
+.ui-load-placeholder span:nth-child(3){width:88%}
+.studio-profile[open] .studio-profile-menu,.row-menu[open] .row-menu-panel,.ui-select-popup:not([hidden]),.app-toast{animation:motion-enter var(--motion-fast) var(--motion-ease)}
+@keyframes motion-enter{from{opacity:0;translate:0 4px}to{opacity:1;translate:0 0}}
+.app-toast-region,.app-runtime-toast-region,.admin-toast-region{top:auto;left:auto;right:24px;bottom:24px;transform:none;width:min(400px,calc(100vw - 32px));pointer-events:none}
+.app-toast{pointer-events:auto;background:var(--panel);color:var(--ink);box-shadow:0 5px 20px #0002}
+.app-toast[data-closing=true]{opacity:0;translate:0 4px;transition:opacity 180ms,translate 180ms}
+.app-toast-error{border-color:var(--red)}
+.app-toast-close{flex-shrink:0;min-width:32px}
+button.is-loading::after{animation:motion-spin .7s linear infinite}
+@keyframes motion-spin{to{transform:rotate(360deg)}}
+.target-option,.pill,.account-health,.task-row-action{transition:color 160ms,background-color 160ms,border-color 160ms}
+.target-option>i{transition:opacity 160ms}
+.motion-avatar-pending{opacity:0}
+.motion-avatar-ready{opacity:1;transition:opacity 180ms}
+.scan-progress{display:flex;gap:12px;list-style:none;margin:0 0 18px;padding:0;flex-wrap:wrap;color:var(--muted);font-size:11px}
+.scan-progress li{border-bottom:2px solid var(--line);padding:6px 0;flex:1;min-width:70px}
+.scan-progress li[aria-current=step]{color:var(--ink);border-color:var(--accent)}
+.scan-progress li[data-complete=true]{border-color:var(--green)}
+dialog{transition:opacity 180ms,translate 180ms,display 180ms allow-discrete,overlay 180ms allow-discrete}
+dialog:not([open]){opacity:0;translate:0 6px}
+dialog[open]{opacity:1;translate:0 0}
+dialog::backdrop{transition:opacity 180ms,display 180ms allow-discrete,overlay 180ms allow-discrete}
+dialog:not([open])::backdrop{opacity:0}
+@media(max-width:640px){.app-toast-region,.app-runtime-toast-region,.admin-toast-region{right:16px;bottom:calc(18px + env(safe-area-inset-bottom))}}
+@media(prefers-reduced-motion:reduce){.studio-content,dialog[open],dialog::backdrop,.app-toast,.ui-load-placeholder span,.scan-loading-track:after,button.is-loading:after{animation:none!important}*,*::before,*::after{transition:none!important;scroll-behavior:auto!important}}

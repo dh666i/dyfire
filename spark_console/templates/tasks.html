@@ -80,8 +80,9 @@
               <div><button class="quiet" type="button" data-target-select-all>全选结果</button><button class="quiet" type="button" data-target-clear>清空</button></div>
             </div>
             <div class="target-picker-manual">
-              <label for="target-manual-input">没有找到？输入准确昵称</label>
+              <label for="target-manual-input">手动添加准确昵称</label>
               <div><input id="target-manual-input" maxlength="256" autocomplete="off" placeholder="好友昵称"><button class="quiet" type="button" data-target-add-manual>添加</button></div>
+              <small class="field-hint">搜索仅限已同步会话。找不到时可同步更多会话；手动添加不会验证好友身份，请核对准确昵称。</small>
             </div>
             <div id="target-picker-feedback" class="target-picker-feedback" role="status" hidden></div>
             <div id="target-option-list" class="target-option-list" role="group" aria-label="最近会话好友">

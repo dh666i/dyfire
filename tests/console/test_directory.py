@@ -49,11 +49,14 @@ class DirectoryTests(unittest.TestCase):
         job = first.json()
         self.assertEqual(20, job['limit'])
         self.assertEqual(job['id'], self.post().json()['id'])
-        self.assertEqual(409, self.post(query='new').status_code)
+        self.assertEqual(422, self.post(query='new').status_code)
         self.assertEqual(404, self.client.get(f'/accounts/{other}/directory-jobs/{job["id"]}').status_code)
         self.assertEqual(job['id'], self.client.get(f'/accounts/{self.account}/conversations').json()['active_sync']['id'])
 
     def test_validation_expired_jobs_and_throttle(self):
+        self.assertEqual(422, self.post(query='郭琪').status_code)
+        with session_scope(self.engine) as db:
+            self.assertIsNone(db.scalar(select(ContactDirectoryJob)))
         self.assertEqual(422, self.post(limit=21).status_code)
         self.assertEqual(422, self.post(query='x'*101).status_code)
         with session_scope(self.engine) as db:
@@ -98,7 +101,7 @@ class DirectoryTests(unittest.TestCase):
         from core.session_health import SessionEvidence, SessionUnavailable
         with session_scope(self.engine) as db:
             db.get(DouyinAccount, self.account).validation_state='valid'
-        self.post(query='同学')
+        self.post()
         reader=AsyncMock(side_effect=SessionUnavailable(SessionEvidence('temporary','页面未就绪')))
         asyncio.run(process_directory_job(self.engine,self.cipher,reader))
         with session_scope(self.engine) as db:

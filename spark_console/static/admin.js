@@ -14,6 +14,7 @@
   }
 
   function toast(message, kind) {
+    if (window.sparkToast) { window.sparkToast(message, kind || 'success'); return; }
     if (!toastRegion) return;
     var item = document.createElement("div");
     item.className = "admin-toast " + (kind || "success");

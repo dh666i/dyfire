@@ -189,7 +189,7 @@
           options.appendChild(option);
         }
         bindSelectedIdentity();
-        setStatus(body.items?.length ? `已读取 ${body.items.length} 个最近会话` : "暂未读取到最近会话，仍可手动输入准确昵称", body.items?.length ? "success" : "neutral");
+        setStatus(body.items?.length ? `已读取 ${body.items.length} 个最近会话，可在列表中筛选` : "暂未读取到最近会话，请先重新同步", body.items?.length ? "success" : "neutral");
       } catch (error) {
         if (error?.name === "AbortError" || version !== requestVersion) return;
         setStatus(error.message || "好友列表读取失败，仍可手动输入", "error");
@@ -322,7 +322,7 @@
     function renderOptions() {
       const items = visibleContacts();
       if (!items.length) {
-        renderEmpty(contacts.size ? "没有匹配的好友" : "好友列表尚未读取", contacts.size ? "换一个关键词，或在上方手动添加" : "关闭抽屉并点击“读取好友列表”");
+        renderEmpty(contacts.size ? "没有匹配的已同步会话" : "好友列表尚未读取", contacts.size ? "换一个关键词，或先同步更多最近会话" : "关闭抽屉并点击“读取好友列表”");
         return;
       }
       const fragment = document.createDocumentFragment();
@@ -370,6 +370,7 @@
         fragment.appendChild(label);
       }
       optionList.replaceChildren(fragment);
+      window.sparkReveal?.(optionList);
     }
 
     function openPicker() {
@@ -482,7 +483,7 @@
         renderOptions();
         const count = contacts.size;
         const ignoredNote = ignoredLongNames ? `，已忽略 ${ignoredLongNames} 个昵称过长的会话` : "";
-        setStatus(count ? `已读取 ${count} 个最近会话，可搜索或多选${ignoredNote}` : `暂未读取到可用会话，可手动添加准确昵称${ignoredNote}`, count ? "success" : "neutral");
+        setStatus(count ? `已读取 ${count} 个最近会话，可在本列表搜索或多选${ignoredNote}` : `暂未读取到最近会话，请先重新同步${ignoredNote}`, count ? "success" : "neutral");
         setPickerFeedback("", "neutral");
         if (openAfter && !dialogIsOpen()) openPicker();
       } catch (error) {
@@ -506,6 +507,12 @@
       loadTargets(false, false);
     });
     search.addEventListener("input", renderOptions);
+    document.addEventListener("directory-local-search", (event) => {
+      if (event.detail?.query != null) {
+        search.value = event.detail.query;
+        renderOptions();
+      }
+    });
     document.addEventListener("directory-updated", (event) => { if (event.detail.accountId === account.value) loadTargets(false, false); });
     search.addEventListener("keydown", (event) => {
       if (event.key === "Enter") event.preventDefault();

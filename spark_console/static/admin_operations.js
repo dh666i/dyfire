@@ -42,7 +42,10 @@
 
   function setText(selector, value) {
     var node = root.querySelector(selector);
-    if (node) node.textContent = value;
+    if (node && node.textContent !== String(value)) {
+      node.textContent = value;
+      window.sparkReveal?.(node);
+    }
   }
 
   function formatPercent(value) {

@@ -25,7 +25,7 @@
     else dialog.removeAttribute("open");
   };
 
-  const attachToastLifecycle = (toast, duration = 5200) => {
+  const attachToastLifecycle = (toast, duration = 4000) => {
     if (!toast) return;
     let remaining = duration;
     let startedAt = Date.now();
@@ -58,6 +58,14 @@
 
   document.querySelectorAll("[data-app-toast]").forEach((toast) => attachToastLifecycle(toast));
 
+  // Give every async form the same visible progress treatment. The existing
+  // submit lock remains authoritative; this only adds the visual feedback.
+  document.querySelectorAll("form[data-submit-lock]").forEach((form) => {
+    form.addEventListener("invalid", () => {
+      form.removeAttribute("aria-busy");
+    }, true);
+  });
+
   window.sparkToast = (message, tone = "success") => {
     if (!runtimeToastRegion || !message) return;
     const toast = document.createElement("div");
@@ -67,7 +75,7 @@
     toast.innerHTML = '<span class="app-toast-mark" aria-hidden="true">✦</span><span data-toast-message></span><button class="app-toast-close" type="button" aria-label="关闭提示" data-toast-close>×</button>';
     toast.querySelector("[data-toast-message]").textContent = message;
     runtimeToastRegion.appendChild(toast);
-    attachToastLifecycle(toast, 4200);
+    attachToastLifecycle(toast, 4000);
   };
 
   const lockForm = (form, submitter) => {
@@ -104,6 +112,8 @@
   };
 
   document.addEventListener("submit", (event) => {
+    // Admin forms have their own confirmation and locking lifecycle.
+    if (document.body.classList.contains('studio-admin')) return;
     const form = event.target.closest("form");
     if (!form || event.defaultPrevented) return;
 
@@ -129,7 +139,7 @@
         });
       };
       fetch(form.action, {method:'POST',body:payload,credentials:'same-origin'}).then(async response => {
-        if (response.redirected && response.ok) { window.location.assign(response.url); return; }
+        if (response.redirected && response.ok) { feedback.textContent = '已收到服务器响应，正在打开任务列表…'; window.location.assign(response.url); return; }
         if ([400,403,409,422].includes(response.status)) {
           const html = new DOMParser().parseFromString(await response.text(), 'text/html');
           feedback.textContent = html.querySelector('.auth-error-message,.form-error')?.textContent.trim() || '提交未通过，请检查好友选择、发送时间和账号状态后重试。';

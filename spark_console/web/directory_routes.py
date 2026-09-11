@@ -26,8 +26,14 @@ def build_directory_router(engine, auth, cipher):
                 AccountService(db, cipher, AuditService(db)).get_owned(user.id, account_id)
             except NotFound:
                 raise HTTPException(404, "账号不存在")
-            if len(query.strip()) > 100 or limit not in (20,40,60,80,100):
-                raise HTTPException(422, "搜索最多100字，每次增加20条，最多100条")
+            # Search is intentionally local-only. The directory job only
+            # refreshes recent conversations; the UI filters that snapshot.
+            # Keeping query out of the worker avoids implying full Douyin
+            # contact search, which the Web client does not expose reliably.
+            if query.strip():
+                raise HTTPException(422, "好友搜索仅支持已同步的最近会话，请先同步好友列表")
+            if limit not in (20,40,60,80,100):
+                raise HTTPException(422, "每次增加20条，最多100条")
             if user.role != 'admin' and not SubscriptionService(db, AuditService(db)).active(user.id):
                 raise HTTPException(403, "请先开通有效会员")
             db.execute(update(ContactDirectoryJob).where(ContactDirectoryJob.status.in_(['queued', 'running']),
