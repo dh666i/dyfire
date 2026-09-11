@@ -91,8 +91,10 @@ def install(target):
     run(['tar','-xf',str(archive),'-C',str(source)])
     previous = run(['docker','inspect','douyin-spark-console-spark-web-1','--format','{{.Image}}'])
     image='dyfire:web-'+version+'-'+sha[:12]
+    base='dyfire:base-'+previous.removeprefix('sha256:')[:16]
+    run(['docker','tag',previous,base])
     status(phase='building', message='正在准备新版网页，当前服务继续运行')
-    run(['docker','build','--network','host','--build-arg','DYFIRE_BASE_IMAGE='+previous,'-f',str(ROOT/'Dockerfile.fast'),'-t',image,str(source)])
+    run(['docker','build','--network','host','--build-arg','DYFIRE_BASE_IMAGE='+base,'-f',str(ROOT/'Dockerfile.fast'),'-t',image,str(source)])
     backup=ROOT/'backups'/time.strftime('%Y%m%d-%H%M%S');backup.mkdir(parents=True)
     shutil.copy2(APP/'compose.console.yml',backup/'compose.console.yml')
     shutil.copy2(ROOT/'installed.json',backup/'installed.json')
