@@ -94,6 +94,18 @@ class DirectoryTests(unittest.TestCase):
             self.assertEqual(original, db.get(DouyinAccount, self.account).encrypted_cookies)
             self.assertEqual('succeeded', db.get(ContactDirectoryJob, job['id']).status)
 
+    def test_inconclusive_search_does_not_block_healthy_account(self):
+        from core.session_health import SessionEvidence, SessionUnavailable
+        with session_scope(self.engine) as db:
+            db.get(DouyinAccount, self.account).validation_state='valid'
+        self.post(query='同学')
+        reader=AsyncMock(side_effect=SessionUnavailable(SessionEvidence('temporary','页面未就绪')))
+        asyncio.run(process_directory_job(self.engine,self.cipher,reader))
+        with session_scope(self.engine) as db:
+            self.assertEqual('valid',db.get(DouyinAccount,self.account).validation_state)
+            job=db.scalar(select(ContactDirectoryJob))
+            self.assertEqual('failed',job.status)
+
     def test_relogin_race_does_not_persist_old_sync(self):
         job = self.post().json()
         async def reader(*args):

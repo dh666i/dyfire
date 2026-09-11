@@ -97,6 +97,7 @@ def views(db, accounts):
         result[account.id] = {'state':state, 'label':('登录异常，待复核' if state == 'invalid' and not health else LABELS.get(state,'待验证')), 'blocked':state in (*BLOCKED,'relogin'),
             'checking':checking,
             'reason':health.reason if health else ('历史失效记录，尚无详细检测依据' if state == 'invalid' else ''),
+            'last_verified_at':account.last_verified_at.replace(tzinfo=timezone.utc) if account.last_verified_at else None,
             'checked_at':health.checked_at.replace(tzinfo=timezone.utc) if health and health.checked_at else None,
             'next_check_at':health.next_check_at.replace(tzinfo=timezone.utc) if health and health.next_check_at else None,
             'attempts':health.attempts if health else 0}

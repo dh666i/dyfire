@@ -121,7 +121,7 @@ async def process_directory_job(engine, cipher, reader=None):
         if account.validation_state in BLOCKED:
             job.status, job.error, job.finished_at = 'failed', '请先完成账号复核或登录验证，再同步好友', now
             return True
-        if is_relogging(db, account.id) or not acquire(db, account.id, job.id, 'directory', now, 110):
+        if is_relogging(db, account.id) or not acquire(db, account.id, job.id, 'directory', now, 145):
             return False
         claimed = db.execute(update(ContactDirectoryJob).where(ContactDirectoryJob.id == job.id, ContactDirectoryJob.status == "queued")
                              .values(status="running", started_at=now))
@@ -137,7 +137,7 @@ async def process_directory_job(engine, cipher, reader=None):
             release(db, account.id, job.id)
             return True
         version = account.cookie_version
-    reading = asyncio.create_task(asyncio.wait_for((reader or read_directory)(payload, version, limit, query), timeout=75))
+    reading = asyncio.create_task(asyncio.wait_for((reader or read_directory)(payload, version, limit, query), timeout=120))
     try:
         # Login takes priority over optional directory sync; relinquish the browser promptly.
         from spark_console.models import DouyinLoginSession
@@ -183,8 +183,10 @@ async def process_directory_job(engine, cipher, reader=None):
             job = db.get(ContactDirectoryJob, job_id)
             if job and job.status == "running":
                 job.status, job.error, job.finished_at = "failed", message, utc_now()
-                if isinstance(error, SessionUnavailable):
+                if isinstance(error, SessionUnavailable) and error.evidence.state != 'temporary':
                     record(db, account_id, (expected_cookies, expected_nonce, expected_version), error.evidence.state, error.evidence.reason)
+                elif isinstance(error, SessionUnavailable):
+                    AuditService(db).write(None, 'account.directory.unavailable', 'douyin_account', account_id, detail=message[:240])
     finally:
         if not reading.done():
             reading.cancel()

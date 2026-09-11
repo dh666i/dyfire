@@ -30,10 +30,11 @@
               </span>
             </div>
             {% if profile and profile.nickname and account.display_name != profile.nickname %}<p class="account-profile-note">备注：{{ account.display_name }}</p>{% endif %}
-            <p class="account-profile-note" data-health-reason>{{ health.reason if health and health.reason else '' }}</p>
+            <p class="account-profile-note" data-health-reason>{{ '登录状态正常' if health_state == 'valid' else '暂时无法确认登录状态，等待复核' if health_state == 'temporary' else '请完成抖音安全验证' if health_state == 'verification' else '登录已失效，请重新登录' if health_state == 'invalid' else '' }}</p>
             <p class="account-profile-note" data-health-progress>{% if health and health.checking %}正在进行第 {{ health.attempts }} 次登录复核…{% elif health and health.next_check_at %}已安排第 {{ health.attempts + 1 }} 次复核，预计 {{ health.next_check_at|shanghai_time }}{% elif health_state == 'temporary' %}自动复核已结束，仍无法确认，请稍后复核或重新登录。{% elif health_state == 'verification' %}请点击“完成验证”，系统不会自动尝试密码或验证码。{% endif %}</p>
-            {% if health and health.blocked %}<p class="account-profile-note">已启用的计划等待账号恢复，错过的消息不自动补发；已暂停的任务需要手动启用。</p>{% endif %}
-            <p class="account-verified">最近验证：{% if account.last_verified_at %}{{ account.last_verified_at|shanghai_time }}{% else %}尚未验证{% endif %}</p>
+            <p class="account-profile-note" data-health-blocked{% if not health or not health.blocked %} hidden{% endif %}>已启用的计划等待账号恢复，错过的消息不自动补发；已暂停的任务需要手动启用。</p>
+            <p class="account-verified" data-health-verified>最近验证：{% if account.last_verified_at %}{{ account.last_verified_at|shanghai_time }}{% else %}尚未验证{% endif %}</p>
+            <details class="account-diagnostics"><summary>诊断详情</summary><small data-health-diagnostic>{{ health.reason if health else '' }}</small></details>
           </div>
           </div>
           <div class="account-controls">

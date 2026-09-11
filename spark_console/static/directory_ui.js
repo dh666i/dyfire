@@ -57,6 +57,7 @@
       const id = getAccount(), token = ++version;
       if (!id) return;
       setBusy(true); status.textContent = '正在提交同步请求…';
+      bar.querySelector('.directory-diagnostic')?.remove();
       try {
         const job = await poll(id, existing || await json(`/accounts/${encodeURIComponent(id)}/directory-jobs`, {
           method: 'POST', body: new URLSearchParams({csrf_token: csrf || '', limit: String(limit), query})
@@ -67,7 +68,12 @@
         document.dispatchEvent(new CustomEvent('directory-updated', {detail: {accountId: id, query, items: job.items}}));
         if (more && !query) more.hidden = !job.has_more;
       } catch (error) {
-        if (token === version && id === getAccount()) status.textContent = error.name === 'AbortError' ? '网络超时，请稍后重试' : error.message;
+        if (token === version && id === getAccount()) {
+          const technical=/HTTP |业务码|页面就绪|会话列表/.test(error.message);
+          status.textContent = error.name === 'AbortError' ? '网络超时，请稍后重试' : technical ? '暂时无法读取抖音好友，本次搜索未完成。可先筛选已保存的好友，或稍后重试；不代表账号已失效。' : error.message;
+          bar.querySelector('.directory-diagnostic')?.remove();
+          if(technical){const detail=document.createElement('details');detail.className='directory-diagnostic';const summary=document.createElement('summary');summary.textContent='诊断详情';const text=document.createElement('small');text.textContent=error.message;detail.append(summary,text);bar.append(detail);}
+        }
       } finally { if (token === version) setBusy(false); }
     }
     button(profileOnly ? '更新资料与好友' : '同步最近 20 个', () => run(20));

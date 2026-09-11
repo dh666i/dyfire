@@ -5,7 +5,7 @@ from dataclasses import asdict
 from core.avatars import avatar_from_user_info
 from core.web_chat import UserInfoCollector, WEB_CHAT_URL, ensure_web_chat_authenticated
 from spark_console.credentials import CredentialPayload
-from core.session_health import require_session
+from core.session_health import require_session, wait_for_session, inspect_session, SessionUnavailable
 
 ACCOUNT_INFO_URL = "https://www.douyin.com/passport/account/info/v2/?aid=6383"
 
@@ -101,14 +101,24 @@ async def read_directory(payload_bytes, version, limit, query):
             page = await context.new_page()
             page.on("response", collector.capture)
             await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=45000)
-            await require_session(page, context)
+            # A cold chat page may still be hydrating. Retry once only when
+            # evidence is inconclusive, never when login/verification is explicit.
+            evidence = await wait_for_session(page, context, timeout=20)
+            if evidence.state == 'temporary':
+                await page.reload(wait_until='domcontentloaded', timeout=20000)
+                evidence = await wait_for_session(page, context, timeout=20)
+            if evidence.state != 'valid':
+                raise SessionUnavailable(evidence)
             profile = await read_self_profile(context)
             try:
                 rows = await collect_directory(page, limit, query)
             except Exception:
                 await require_session(page, context)
                 raise
-            await require_session(page, context)
+            # Search replaces the conversation list. Its absence is not logout.
+            final = await inspect_session(page, context)
+            if final.state in ('verification', 'logged_out'):
+                raise SessionUnavailable(final)
             identities = await collector.drain()
             items = []
             for row in rows:

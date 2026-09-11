@@ -9,7 +9,10 @@
     const label = row.querySelector('[data-health-label]');
     label.textContent = `健康状态：${health.label}`;
     label.className = `account-health account-health-${health.state}`;
-    row.querySelector('[data-health-reason]').textContent = health.reason || '';
+    row.querySelector('[data-health-reason]').textContent = ({valid:'登录状态正常',temporary:'暂时无法确认登录状态，正在等待复核',verification:'抖音要求完成安全验证',invalid:'登录已失效，请重新登录',relogin:'正在重新登录'})[health.state] || '登录状态待确认';
+    const diagnostic=row.querySelector('[data-health-diagnostic]');if(diagnostic)diagnostic.textContent=health.reason||'暂无诊断信息';
+    const blocked=row.querySelector('[data-health-blocked]');if(blocked)blocked.hidden=!health.blocked;
+    const verified=row.querySelector('[data-health-verified]');if(verified)verified.textContent='最近验证：'+(health.last_verified_at?new Date(health.last_verified_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'尚未验证');
     row.querySelector('[data-health-progress]').textContent = health.checking
       ? `正在进行第 ${health.attempts} 次登录复核…`
       : health.next_check_at
