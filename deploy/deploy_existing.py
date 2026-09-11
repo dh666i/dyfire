@@ -28,7 +28,7 @@ def main():
     original=COMPOSE.read_text()
     # Existing services, keys, named volume, ports and project name are retained.
     import re
-    updated=re.sub(r'\$\{SPARK_IMAGE_NAME:-[^}]+\}', '${SPARK_IMAGE_NAME:-'+IMAGE+'}', original, count=1)
+    updated=re.sub(r'\$\{SPARK_IMAGE_NAME:-[^}]+\}', '${SPARK_IMAGE_NAME:-'+IMAGE+'}', original)
     if updated==original:raise RuntimeError('Unexpected original image configuration')
     try:
         COMPOSE.write_text(updated)
