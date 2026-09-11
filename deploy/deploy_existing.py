@@ -36,7 +36,7 @@ def main():
         for attempt in range(30):
             try:
                 with urllib.request.urlopen('http://127.0.0.1:8899/api/version',timeout=3) as response:
-                    assert json.load(response)['version']=='0.1.0'
+                    assert json.load(response)['version']=='0.1.1'
                 with urllib.request.urlopen('http://127.0.0.1:8899/health/ready',timeout=3) as response:
                     assert response.status==200
                 with urllib.request.urlopen('http://127.0.0.1:8899/studio',timeout=3) as response:
@@ -51,7 +51,7 @@ def main():
         shutil.copy2(SOURCE/'spark_console/version.py',ROOT/'spark_console/version.py')
         shutil.copy2(SOURCE/'VERSION',ROOT/'VERSION')
         shutil.copytree(SOURCE/'frontend/dist',ROOT/'frontend/dist',dirs_exist_ok=True)
-        print('Deployed 0.1.0; backup: '+str(backup))
+        print('Deployed 0.1.1; backup: '+str(backup))
     except Exception:
         COMPOSE.write_text(original)
         # Restore exact original image even if mutable tags changed meanwhile.
