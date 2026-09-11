@@ -26,7 +26,8 @@ def main():
     command=['docker','compose','--env-file',str(ROOT/'.env.console'),'-f',str(COMPOSE)]
     original=COMPOSE.read_text()
     # Existing services, keys, named volume, ports and project name are retained.
-    updated=original.replace('${SPARK_IMAGE_NAME:-douyin-spark-console:local}','${SPARK_IMAGE_NAME:-dyfire:0.1.0}')
+    import re
+    updated=re.sub(r'\$\{SPARK_IMAGE_NAME:-[^}]+\}', '${SPARK_IMAGE_NAME:-dyfire:0.1.1}', original, count=1)
     if updated==original:raise RuntimeError('Unexpected original image configuration')
     try:
         COMPOSE.write_text(updated)
