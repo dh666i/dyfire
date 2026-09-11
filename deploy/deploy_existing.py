@@ -9,7 +9,7 @@ import urllib.request
 ROOT=Path('/opt/henng-spark-console')
 SOURCE=Path(__file__).resolve().parents[1]
 COMPOSE=ROOT/'compose.console.yml'
-IMAGE='dyfire:0.1.0'
+IMAGE='dyfire:0.1.1'
 
 
 def run(*args):
@@ -18,7 +18,7 @@ def run(*args):
 
 def main():
     previous=run('docker','inspect','douyin-spark-console-spark-web-1','--format','{{.Image}}')
-    backup=ROOT/'source-backups'/('dyfire-0.1.0-'+time.strftime('%Y%m%d-%H%M%S'))
+    backup=ROOT/'source-backups'/('dyfire-0.1.1-'+time.strftime('%Y%m%d-%H%M%S'))
     backup.mkdir(parents=True)
     shutil.copy2(COMPOSE,backup/'compose.console.yml')
     shutil.copytree(ROOT/'spark_console',backup/'spark_console')
