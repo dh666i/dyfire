@@ -47,7 +47,7 @@
     const collect=selector=>[...(root.matches?.(selector)?[root]:[]),...root.querySelectorAll(selector)];
     for(const card of collect(cardSelector)){
       if(card.classList.contains('ui-card'))continue;
-      card.classList.add('ui-card');const light=document.createElement('div');light.className='ui-card-light';light.setAttribute('aria-hidden','true');card.prepend(light);
+      card.classList.add('ui-card');
     }
     collect(menus).forEach(wireMenu);collect('dialog').forEach(wireDialog);
     collect('img[data-avatar-image],.avatar img,.account-avatar img,.directory-avatar img').forEach(img=>{if(enhanced.has(img))return;enhanced.add(img);img.addEventListener('error',()=>img.remove(),{once:true});});
@@ -84,15 +84,6 @@
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&openMenu){const trigger=openMenu.querySelector('summary');openMenu.open=false;trigger?.focus();}});
     window.addEventListener('resize',()=>{if(openMenu)positionMenu(openMenu);},{passive:true});
     window.addEventListener('scroll',()=>{if(openMenu)positionMenu(openMenu);},{passive:true,capture:true});
-    const fine=matchMedia('(hover: hover) and (pointer: fine)'),reduced=matchMedia('(prefers-reduced-motion: reduce)');
-    let active=null,pending=0,x=0,y=0;
-    document.addEventListener('pointermove',event=>{
-      if(!fine.matches||reduced.matches||event.pointerType==='touch')return;
-      const card=event.target.closest('.ui-card');if(active!==card){if(active)delete active.dataset.spot;active=card;}if(!card)return;
-      x=event.clientX;y=event.clientY;
-      if(!pending)pending=requestAnimationFrame(()=>{pending=0;if(!active)return;const r=active.getBoundingClientRect();active.style.setProperty('--spot-x',(x-r.left)+'px');active.style.setProperty('--spot-y',(y-r.top)+'px');active.dataset.spot='true';});
-    },{passive:true});
-    document.addEventListener('pointerout',event=>{if(active&&!active.contains(event.relatedTarget)){delete active.dataset.spot;active=null;}},{passive:true});
     document.addEventListener('invalid',event=>{const field=event.target;field.setAttribute('aria-invalid','true');const message=field.validationMessage;if(message)window.sparkToast?.(message,'error');},true);
     document.addEventListener('input',event=>{if(event.target.matches('input,select,textarea')&&event.target.validity?.valid)event.target.removeAttribute('aria-invalid');});
     document.querySelectorAll('a[href="/studio?view=overview"]').forEach(link=>link.href='/dashboard');

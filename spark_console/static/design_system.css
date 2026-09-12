@@ -1,8 +1,8 @@
 /* Shared production surfaces. Keep the Studio composition; unify its scale. */
 :root,html[data-theme=dark]{
-  --bg:#101112;--panel:#222325;--field:#292a2d;--ink:#f2f2f3;--text:var(--ink);
-  --muted:#a1a3a8;--line:#ffffff21;--accent:#dc967b;--green:#a4c5ac;--amber:#dbbb83;--red:#e69b95;
-  --ui-radius:8px;--ui-gap:24px;--ui-padding:24px;--ui-surface:rgba(34,35,37,.90);
+  --bg:#101112;--panel:#191a1b;--field:#222325;--ink:#f2f2f3;--text:var(--ink);
+  --muted:#a1a3a8;--line:#ffffff21;--accent:#ff581f;--green:#a4c5ac;--amber:#dbbb83;--red:#e69b95;
+  --ui-radius:0px;--ui-gap:24px;--ui-padding:24px;--ui-surface:var(--panel);
   --ui-highlight:rgba(190,193,198,.08);--ui-spot:rgba(205,208,214,.07);
   --ui-shadow:0 4px 18px #0000000e;--ui-menu-shadow:0 12px 36px #0003;
   --ui-hover:#ffffff07;--ui-primary-ink:#201713;
@@ -11,7 +11,7 @@
 }
 html[data-theme=light]{
   --bg:#f0f1f2;--panel:#fafafb;--field:#eceef0;--ink:#28292d;--text:var(--ink);
-  --muted:#62656d;--line:#22252b22;--accent:#985438;--green:#376748;--amber:#89611b;--red:#ad4543;
+  --muted:#62656d;--line:#22252b22;--accent:#d43d08;--green:#376748;--amber:#89611b;--red:#ad4543;
   --ui-surface:rgba(255,255,255,.88);--ui-highlight:rgba(255,255,255,.48);
   --ui-spot:rgba(102,109,120,.055);--ui-shadow:0 3px 16px #22252b06;--ui-menu-shadow:0 12px 36px #22252b15;
   --ui-hover:#22252b06;--ui-primary-ink:#fff;
@@ -26,12 +26,7 @@ button,input,select,textarea{font-family:inherit}button,a,summary{touch-action:m
 :where(.studio-content){max-width:1560px;margin-inline:auto;padding:32px 4vw 48px}
 :where(.split,.product-grid,.studio-overview-columns,.studio-account-layout,.studio-notification-layout,.subscription-layout){gap:var(--ui-gap)}
 :where(.panel,.admin-panel,.studio-identity-card,.subscription-summary,.subscription-redeem,.composer){min-width:0;padding:var(--ui-padding);border-radius:var(--ui-radius)}
-.ui-card{position:relative;isolation:isolate;background:var(--panel);border:1px solid var(--line);border-radius:var(--ui-radius);box-shadow:var(--ui-shadow)}
-@supports(backdrop-filter:blur(20px)){.ui-card{background:var(--ui-surface)}.ui-card:not(.ui-card .ui-card){backdrop-filter:blur(20px)}}
-.ui-card:before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(ellipse at 0 0,var(--ui-highlight),transparent 65%);pointer-events:none;z-index:-1}
-.ui-card>.ui-card-light{position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;z-index:-1}
-.ui-card-light:before{content:"";position:absolute;inset:0;background:radial-gradient(300px circle at var(--spot-x,0px) var(--spot-y,0px),var(--ui-spot),transparent 100%);opacity:0;transition:opacity 200ms}
-@media(hover:hover) and (pointer:fine){.ui-card[data-spot=true]>.ui-card-light:before{opacity:1}}
+.ui-card{border-radius:0;box-shadow:none;backdrop-filter:none}
 :where(.ui-card):hover{transform:none}
 :where(.panel,.admin-panel,.product-row,.admin-cell-stack,.record-target,.record-detail,.subscription-facts dd,.menu-identity,.account-copy){min-width:0;overflow-wrap:anywhere}
 :where(.studio-metric strong,.business-kpis strong,.admin-stat-value,.admin-settings-kpis strong,.subscription-usage strong,.task-time,.time,.money,.amount){font-family:var(--ui-mono);font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:-.035em}
@@ -117,4 +112,23 @@ dialog::backdrop{background:#090b1066;backdrop-filter:blur(3px)}
   .record-account{display:block;grid-column:1/3;grid-row:3;font-size:11px}.record-detail{padding:16px}.record-facts{grid-template-columns:1fr}.records-filter{gap:10px}.admin-table tbody td{min-width:0;overflow-wrap:anywhere}.admin-table tbody td>*{min-width:0;max-width:100%}.admin-table .admin-row-actions{flex-wrap:wrap}.admin-tabs{max-width:100%}
   .target-picker-sheet-foot,.dialog-bottom,.scan-dialog-foot{position:sticky;bottom:0;background:var(--panel);padding-bottom:max(16px,env(safe-area-inset-bottom));z-index:4}.target-picker-sheet-foot button,.dialog-bottom button{min-height:44px}.record-facts button,.selected-target-chip button{min-width:32px;min-height:32px}.studio-footer{flex-wrap:wrap;gap:8px}.scan-progress{gap:10px}.scan-dialog{padding:16px}
 }
-@media(prefers-reduced-motion:reduce){.ui-card-light:before{transition:none}.ui-load-placeholder span{animation:none}.ui-create-drawer[open]{animation:none}}
+@media(prefers-reduced-motion:reduce){.ui-load-placeholder span{animation:none}.ui-create-drawer[open]{animation:none}}
+
+/* Straight-edged editorial controls; circular identity images stay circular. */
+.panel,.admin-panel,.account-item,.studio-identity-card,.composer,.ui-card,
+button,.button,.admin-button,input,textarea,select,.pill,.badge,.notice,.form-error,
+.ui-select .ui-select-trigger,.ui-select-popup,.ui-select-option,dialog,
+.studio-profile-menu,.profile-popover,.row-menu-panel,.ui-group-toggle,
+.selected-target-chip,.target-option,.friend-option{border-radius:0!important}
+.studio-profile-menu a,.studio-profile-menu button,.profile-popover a,.profile-popover button,.row-menu-panel button{border-radius:0!important}
+.ui-card{background-image:none;box-shadow:none!important;backdrop-filter:none!important}
+.ui-card:before,.ui-card:after{content:none!important}
+.filters button,.studio-segments button,.studio-admin-tabs a{border-radius:0!important;border:0;border-bottom:2px solid transparent;background:transparent;box-shadow:none;padding:14px 0;color:var(--muted)}
+.filters button.selected,.filters button[aria-pressed=true],.studio-segments button[aria-pressed=true],.studio-admin-tabs a[aria-current]{border-bottom-color:var(--accent);color:var(--ink);background:transparent}
+.filters button:before,.filters button:after,.studio-segments button:before,.studio-segments button:after{content:none!important}
+.ui-workspace-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.ui-workspace-actions>.ui-select{flex:0 1 220px;width:220px;min-width:0}
+.ui-workspace-actions>.ui-select .ui-select-trigger{min-height:38px;padding:8px 12px;background:transparent;font-size:12px}
+.ui-workspace-actions>button.submit{flex:0 0 auto;width:auto;min-width:112px;min-height:38px;padding:8px 18px;margin:0 0 0 auto;display:inline-flex;justify-content:center;align-items:center;font-size:12px}
+.ui-group-toggle{background:transparent;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+@media(max-width:560px){.ui-workspace-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ui-workspace-actions>.ui-select{width:100%;min-width:0}.ui-workspace-actions>button.submit{grid-column:2;justify-self:end;width:auto;min-height:42px}.ui-workspace-actions>.ui-select .ui-select-trigger{min-height:42px}}

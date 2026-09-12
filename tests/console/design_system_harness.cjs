@@ -6,7 +6,7 @@ async function main(){
   const w=dom.window;w.matchMedia=()=>({matches:false});w.performance.getEntriesByType=()=>[];
   w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new w.Event('close'));};
   w.eval(fs.readFileSync('spark_console/static/design_system.js','utf8'));w.document.dispatchEvent(new w.Event('DOMContentLoaded'));await tick();
-  const input=w.document.querySelector('#steady');w.sparkDesignSystem.enhance();assert.equal(w.document.querySelectorAll('.ui-card-light').length,1);assert.equal(input,w.document.querySelector('#steady'));
+  const input=w.document.querySelector('#steady');w.sparkDesignSystem.enhance();assert.equal(w.document.querySelectorAll('.ui-card-light').length,0);assert.equal(input,w.document.querySelector('#steady'));
   w.document.querySelector('#open').click();const drawer=w.document.querySelector('.ui-create-drawer');assert.equal(drawer.open,true);
   const draft=w.document.querySelector('#draft');draft.value='保留输入';draft.dispatchEvent(new w.Event('input',{bubbles:true}));
   drawer.querySelector('.ui-drawer-head button').click();assert.ok(drawer.querySelector('.ui-drawer-dirty'));assert.equal(drawer.open,true);
