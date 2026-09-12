@@ -44,16 +44,16 @@
               data-scan-account-id="{{ account.id }}"
               data-scan-account-name="{{ account.display_name }}"
             >{{ '完成验证' if health_state == 'verification' else '重新登录' }}</button>
-            <form method="post" action="/accounts/{{ account.id }}/rename" class="account-rename" data-submit-lock data-submitting-label="保存中…">
+            <details class="account-edit-details"><summary>修改备注</summary><form method="post" action="/accounts/{{ account.id }}/rename" class="account-rename" data-submit-lock data-submitting-label="保存中…">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <label class="sr-only" for="account-name-{{ account.id }}">新账号备注</label>
               <input id="account-name-{{ account.id }}" name="display_name" value="{{ account.display_name }}" maxlength="64" required>
               <button class="quiet" type="submit">修改备注</button>
-            </form>
-            <form method="post" action="/accounts/{{ account.id }}/delete" data-submit-lock data-submitting-label="正在删除…" data-confirm="删除后该账号的云端登录状态将被清除，相关任务也无法继续执行。" data-confirm-title="删除这个抖音账号？">
+            </form></details>
+            <details class="row-menu"><summary aria-label="{{ account.display_name }} 的更多操作">更多</summary><div class="row-menu-panel"><form method="post" action="/accounts/{{ account.id }}/delete" data-submit-lock data-submitting-label="正在删除…" data-confirm="删除后该账号的云端登录状态将被清除，相关任务也无法继续执行。" data-confirm-title="删除这个抖音账号？">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="danger quiet" type="submit">删除</button>
-            </form>
+            </form></div></details>
           </div>
           <div class="account-maintenance">
           <div class="account-health-actions"><button type="button" class="quiet" data-health-check{% if health_state in ['verification','relogin'] %} disabled{% endif %}>复核登录状态</button><span data-health-feedback role="status"></span></div>

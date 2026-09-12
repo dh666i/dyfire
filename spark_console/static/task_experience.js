@@ -6,14 +6,18 @@
     if(!r.ok)throw Error(typeof body.detail==='string'?body.detail:'操作未完成');return body;
   };
   window.sparkReview=(title,lines)=>new Promise(resolve=>{
-    const d=document.createElement('dialog'),h=document.createElement('h2'),content=document.createElement('div'),footer=document.createElement('footer');
+    const drawer=document.querySelector('.ui-create-drawer[open]');
+    const d=document.createElement(drawer?'section':'dialog'),h=document.createElement('h2'),content=document.createElement('div'),footer=document.createElement('footer');
     d.className='task-review';h.textContent=title;h.id='task-review-title';d.setAttribute('aria-labelledby',h.id);content.className='task-review-content';footer.className='form-actions';
     lines.forEach(line=>{const p=document.createElement('p');p.textContent=line;content.append(p);});
     const cancel=document.createElement('button'),accept=document.createElement('button'),origin=document.activeElement;
     cancel.type=accept.type='button';cancel.textContent='返回修改';accept.textContent='确认执行';let done=false;
-    function finish(value){if(done)return;done=true;d.close();d.remove();origin?.focus();resolve(value);}
+    const composer=drawer?.querySelector('.composer,.task-create-panel');
+    const escape=event=>{if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();finish(false);}};
+    function finish(value){if(done)return;done=true;if(!drawer)d.close();d.remove();if(composer)composer.hidden=false;document.removeEventListener('keydown',escape,true);origin?.focus();resolve(value);}
     cancel.onclick=()=>finish(false);accept.onclick=()=>finish(true);d.addEventListener('cancel',e=>{e.preventDefault();finish(false);});d.addEventListener('click',e=>{if(e.target===d)finish(false);});
-    footer.append(cancel,accept);d.append(h,content,footer);document.body.append(d);d.showModal();cancel.focus();
+    footer.append(cancel,accept);d.append(h,content,footer);(drawer||document.body).append(d);
+    if(drawer){if(composer)composer.hidden=true;d.setAttribute('role','region');document.addEventListener('keydown',escape,true);}else d.showModal();cancel.focus();
   });
   window.sparkApplyTasks=results=>{
     for(const item of results){if(!item.ok)continue;const row=document.querySelector(`[data-task-id="${CSS.escape(item.id)}"]`);if(!row)continue;

@@ -16,7 +16,7 @@
   </select></label>
   <label><span class="sr-only">每页条数</span><select name="page_size">{% for size in [12, 24, 48] %}<option value="{{ size }}"{% if pagination.page_size == size %} selected{% endif %}>每页 {{ size }} 条</option>{% endfor %}</select></label>
   <button type="submit" class="quiet">筛选</button>
-  {% if q or status %}<a class="records-clear" href="/runs">清除</a>{% endif %}
+  {% if q or status or account_id or start or end %}<a class="records-clear" href="/runs">清除筛选</a>{% endif %}
 </form>
 <section class="records-list" aria-label="续火执行记录">
   {% if runs %}

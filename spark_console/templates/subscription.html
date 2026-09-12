@@ -6,7 +6,7 @@
 </header>
 
 {% if error %}<div class="form-error subscription-message" role="alert">{{ error }}</div>{% endif %}
-{% if redeemed %}<div class="notice good-notice subscription-message" role="status">兑换成功，会员状态已更新。</div>{% endif %}
+{% if redeemed %}<div class="notice good-notice subscription-message" role="status"><strong>兑换成功</strong>{% if membership %}<p>当前额度：{{ membership.max_accounts }} 个抖音账号 / {{ membership.max_tasks }} 个续火任务。{% if membership.valid_until %}新的有效期至 {{ membership.valid_until|shanghai_time }}。{% endif %}</p>{% else %}<p>会员状态已更新。</p>{% endif %}</div>{% endif %}
 {% if required %}<div class="notice subscription-message" role="status">请先开通有效会员，或续费后再使用该功能。</div>{% endif %}
 {% if message %}<div class="notice subscription-message" role="status">{{ message }}</div>{% endif %}
 

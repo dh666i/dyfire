@@ -26,8 +26,16 @@ def build_reliability_router(engine,auth,cipher):
             def seconds(a,b):return round(max(0,(b-a).total_seconds()),1) if a and b else None
             items=[{'id':r.id,'name':t.target_name,'status':r.status,'stage':r.stage,'queue':seconds(r.scheduled_for,r.started_at),'before_submit':seconds(r.started_at,r.submitted_at),'confirmation':seconds(r.submitted_at,r.finished_at),'total':seconds(r.started_at,r.finished_at)} for r,t in rows]
             backup={'status':'unconfigured','message':'尚未配置备份任务'}
-            try:backup=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-status.json').read_text())
+            try:
+                historical=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-status.json').read_text())
+                if isinstance(historical,dict):backup=historical
             except (OSError,ValueError):pass
+            schedule={'enabled':None}
+            try:
+                configured=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-schedule.json').read_text())
+                if isinstance(configured,dict) and isinstance(configured.get('enabled'),bool):schedule=configured
+            except (OSError,ValueError):pass
+            backup['schedule_enabled']=schedule['enabled']
             return JSONResponse({'items':items,'backup':backup},headers={'Cache-Control':'no-store'})
     @router.post('/tasks/preview')
     async def preview(request:Request):

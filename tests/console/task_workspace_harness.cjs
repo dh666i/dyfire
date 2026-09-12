@@ -1,0 +1,17 @@
+const {JSDOM}=require('jsdom');
+const fs=require('node:fs'),assert=require('node:assert/strict');
+const dom=new JSDOM(`<main><section id="workspace"><div class="task-area"><div class="filters"><button data-filter="all">全部</button></div><input id="search"><div id="task-list"></div></div><aside class="composer"><form id="create-form"></form></aside></section></main><dialog id="friends-dialog"><div class="selection-tools"></div><input id="friend-search"><div id="friend-list"><label class="friend-option" data-name="张三"><input type="checkbox" checked></label><label class="friend-option" data-name="李四"><input type="checkbox"></label></div><p id="friend-empty"></p><button id="clear-selection"></button></dialog>`,{url:'https://example.test/studio',runScripts:'outside-only'});
+const w=dom.window,store={};w.sparkDesignSystem={storage:{get:(k,f)=>store[k]??f,set:(k,v)=>store[k]=v},createDrawer:()=>{}};
+const tasks=Array.from({length:55},(_,i)=>({id:String(i),accountId:i<30?'a':'b',name:'好友'+i,time:String(8+Math.floor(i/60)).padStart(2,'0')+':'+String(i%60).padStart(2,'0')}));
+const render=()=>{w.document.querySelector('#task-list').innerHTML=tasks.map(t=>`<article class="task-row"><button data-toggle="${t.id}">暂停</button></article>`).join('');w.document.dispatchEvent(new w.Event('studio:render-tasks'));};
+render();w.document.querySelector('[data-filter=all]').onclick=render;
+w.eval(fs.readFileSync('frontend/src/task-workspace.js','utf8').replace('export function installTaskWorkspace','window.installTaskWorkspace = function'));
+w.installTaskWorkspace({studio:{tasks},state:{accounts:[{id:'a',name:'账号A',health:{blocked:false}},{id:'b',name:'账号B',health:{blocked:true,label:'待验证'}}]}});
+assert.equal(w.document.querySelectorAll('.task-row').length,24);assert.equal(w.document.querySelector('.ui-group-toggle strong').textContent,'账号B');
+w.document.querySelector('.workspace-pager button:last-child').click();assert.equal(w.document.querySelectorAll('.task-row').length,24);
+const select=w.document.querySelector('.ui-workspace-actions select');select.value='a';select.dispatchEvent(new w.Event('change'));assert.equal(w.document.querySelectorAll('.task-row').length,24);
+w.document.querySelector('.ui-group-toggle').click();assert.equal(w.document.querySelector('.ui-group-content').hidden,true);
+w.document.dispatchEvent(new w.CustomEvent('studio:tasks-created',{detail:{ids:['29'],account:'a'}}));assert.ok(w.document.querySelector('[data-toggle="29"]'));assert.equal(w.document.querySelector('.ui-group-content').hidden,false);
+const only=w.document.querySelector('.selection-tools button');only.click();assert.equal(w.document.querySelectorAll('.friend-option:not([hidden])').length,1);
+assert.equal(w.document.querySelector('.friend-option:not([hidden])').dataset.name,'张三');
+dom.window.close();console.log('55-task grouping, pagination, account filter, new-task reveal and selected-friend filter passed');

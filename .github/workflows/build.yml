@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py -q
+      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py tests/console/test_design_system.py -q
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -23,6 +23,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci && npm run build
         working-directory: frontend
+      - name: Verify shared UI interactions without browser automation
+        run: |
+          npm install --prefix "$RUNNER_TEMP/dyfire-ui-tests" --no-save --package-lock=false jsdom@26.1.0
+          export NODE_PATH="$RUNNER_TEMP/dyfire-ui-tests/node_modules"
+          node tests/console/design_system_harness.cjs
+          node tests/console/task_workspace_harness.cjs
+          node tests/console/commercial_ui_harness.cjs
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:

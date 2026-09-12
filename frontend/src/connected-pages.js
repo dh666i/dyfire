@@ -1,29 +1,16 @@
 import {createUI} from './components.js';
 
-export function installPages({state,studio,request}){
- const view=new URLSearchParams(location.search).get('view');
- if(!['accounts','runs','overview','updates'].includes(view))return;
- const {esc}=studio,{pageHead,pill,empty,section}=createUI(esc);
- const main=document.querySelector('main');[...main.children].forEach(child=>child.hidden=true);
- const page=document.createElement('div');page.className='site-page';main.append(page);
- document.querySelectorAll('header nav a').forEach(a=>a.classList.toggle('active',a.href.endsWith('?view='+view)));
- const link=(href,label)=>`<a class="primary-action" href="${href}">${label} ↗</a>`;
- if(view==='accounts'){
-  page.innerHTML=pageHead(['YOUR CONNECTIONS','抖音账号','账号状态、好友和计划，在这里管理。'],link('/accounts','绑定抖音账号'))+`<div class="account-grid">${state.accounts.map(a=>`<article class="account-pass"><div class="account-cover"><span class="avatar">${esc(a.name[0])}</span>${pill(a.health.label,a.health.blocked?'amber':'green')}</div><h2>${esc(a.name)}</h2><p class="account-meta">${esc(a.health.reason||'账号会定期复核，需要处理时会提示你。')}</p><div class="account-facts"><span>关联计划 <b>${studio.tasks.filter(t=>t.accountId===a.id).length}</b></span><span>运行中 <b>${studio.tasks.filter(t=>t.accountId===a.id&&t.enabled).length}</b></span></div><div class="account-actions"><a href="/accounts">管理账号 ↗</a><button type="button" data-health="${esc(a.id)}">复核状态</button></div><p role="status"></p></article>`).join('')||empty('还没有绑定账号','绑定后即可同步好友并创建任务。')}</div>`;
-  page.addEventListener('click',async e=>{const button=e.target.closest('[data-health]');if(!button)return;button.disabled=true;const status=button.closest('article').querySelector('[role=status]');try{const response=await fetch('/accounts/'+encodeURIComponent(button.dataset.health)+'/health-check',{method:'POST',credentials:'same-origin',body:new URLSearchParams({csrf_token:state.csrf})});const data=await response.json();if(!response.ok)throw new Error(data.detail||data.message||'复核请求未完成');status.textContent='复核已提交，请稍后刷新查看结果';}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});
- }
- if(view==='overview'){
-  page.innerHTML=pageHead(['DAILY OVERVIEW','今日概览','每天的计划与结果，一眼看清。'],link('/studio','管理续火任务'))+`<div class="overview-metrics">${[['今日已确认',studio.tasks.filter(t=>t.confirmed).length],['启用任务',studio.tasks.filter(t=>t.enabled).length],['已绑定账号',state.accounts.length],['需要关注',state.accounts.filter(a=>a.health.blocked).length]].map(([label,n])=>`<div><span>${label}</span><strong>${n}</strong></div>`).join('')}</div>`+section('01 / YOUR DAY','续火计划',`<div class="schedule-list">${studio.tasks.filter(t=>t.enabled).sort((a,b)=>a.time.localeCompare(b.time)).map(t=>`<a href="/studio"><time>${esc(t.time)}</time><span class="avatar">${t.avatar?`<img src="${esc(t.avatar)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit" referrerpolicy="no-referrer">`:esc(t.name[0])}</span><div><b>${esc(t.name)}</b><small>${esc(t.kind)}</small></div><span>↗</span></a>`).join('')||empty('暂无启用的计划')}</div>`);
- }
- if(view==='runs'){
-  page.innerHTML=pageHead(['DELIVERY JOURNAL','执行记录','发送结果与执行过程，分别核对。'])+`<form id="run-filter" class="page-filters"><label class="search"><input name="q" type="search" placeholder="搜索好友" aria-label="搜索好友"></label><select name="status" aria-label="执行状态"><option value="">全部状态</option><option value="success">已确认</option><option value="submitted_unconfirmed">待核实</option><option value="failed">失败</option><option value="running">执行中</option></select><button class="primary-action">筛选</button></form><div id="run-content" aria-live="polite"></div>`;
-  let current=1,generation=0;
-  async function load(number=1){const mine=++generation;const output=page.querySelector('#run-content');output.textContent='正在读取记录…';const params=new URLSearchParams(new FormData(page.querySelector('form')));params.set('page',number);try{const data=await request('/api/studio/runs?'+params);if(mine!==generation)return;current=data.page;output.innerHTML=`<div class="journal">${data.items.map(r=>`<details class="journal-entry"><summary><time>${esc(r.time.slice(11))}<small>${esc(r.time.slice(0,10))}</small></time><strong>${esc(r.name)}</strong><span class="journal-account">${esc(r.kind)}</span>${pill(r.label,r.status==='success'?'green':r.status==='failed'?'red':'amber')}<span>＋</span></summary><div class="journal-detail"><p>执行阶段：${esc(r.stage)}</p><p>${esc(r.guidance?.text||r.error||(r.status==='success'?'系统已取得发送成功确认。':'本次执行尚未取得成功确认。'))}</p><small>诊断编号 ${esc(r.id)}</small></div></details>`).join('')||empty('没有匹配的记录')}</div><div class="list-footer"><span>共 ${data.total} 条 · ${data.page} / ${data.pages} 页</span><div><button data-page="${data.page-1}" ${data.page<=1?'disabled':''}>上一页</button> <button data-page="${data.page+1}" ${data.page>=data.pages?'disabled':''}>下一页</button></div></div>`;}catch(error){if(mine===generation)output.textContent=error.message;}}
-  page.querySelector('form').onsubmit=e=>{e.preventDefault();load();};page.addEventListener('click',e=>{const button=e.target.closest('[data-page]');if(button)load(Number(button.dataset.page));});load();
- }
- if(view==='updates'){
+// One canonical implementation for account, journal and overview workflows.
+export function installPages({state,studio}) {
+  const view=new URLSearchParams(location.search).get('view');
+  const canonical={accounts:'/accounts',runs:'/runs',overview:'/dashboard'};
+  if(canonical[view]){location.replace(canonical[view]);return;}
+  if(view!=='updates')return;
+  const {esc}=studio,{pageHead,empty,section}=createUI(esc);
+  const main=document.querySelector('main');[...main.children].forEach(child=>child.hidden=true);
+  const page=document.createElement('div');page.className='site-page';main.append(page);
+  document.querySelectorAll('header nav a').forEach(a=>a.classList.remove('active'));
   if(state.user.role!=='admin'){page.innerHTML=empty('页面不存在');return;}
-  page.innerHTML=pageHead(['SYSTEM RELEASES','版本更新','检查版本、安装更新和查看更新状态。'])+section('01 / DYFIRE','应用版本',`<div data-system-updates data-csrf="${esc(state.csrf)}"><div class="setting-row"><h3>当前版本</h3><strong data-current-version>0.1.0</strong></div><p role="status">正在连接更新服务</p><div class="form-actions"><button class="primary-action" type="button" data-update-check disabled>检查更新</button><button class="primary-action" type="button" data-update-install disabled>安装更新</button></div></div>`);
+  page.innerHTML=pageHead(['SYSTEM RELEASES','版本更新','检查版本、安装更新和查看更新状态。'])+section('01 / DYFIRE','应用版本',`<div data-system-updates data-csrf="${esc(state.csrf)}"><div class="setting-row"><h3>当前版本</h3><strong data-current-version>正在读取</strong></div><p role="status">正在连接更新服务</p><div class="form-actions"><button class="primary-action" type="button" data-update-check>检查更新</button><button class="primary-action" type="button" data-update-install disabled>安装更新</button></div></div>`);
   const script=document.createElement('script');script.src='/static/system_updates.js';document.body.append(script);
- }
 }

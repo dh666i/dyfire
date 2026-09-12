@@ -16,7 +16,7 @@
   const create = document.getElementById("new-task");
   const revealCreate = (focus = false) => {
     if (!create) return;
-    if (focus) create.querySelector('#task-account')?.focus();
+    if (focus && !create.closest('dialog')) create.querySelector('#task-account')?.focus();
   };
   document.querySelectorAll("[data-open-task-create]").forEach(link => {
     link.addEventListener("click", () => revealCreate(true));
@@ -48,6 +48,8 @@
   options.innerHTML='<label>排序<select data-order><option value="time">按发送时间</option><option value="name">按好友名称</option><option value="attention">异常优先</option><option value="account">按账号分组</option></select></label><label>每页<select data-size><option value="12">12 个</option><option value="24">24 个</option><option value="48">48 个</option></select></label>';
   toolbar.after(options);
   const order=options.querySelector('[data-order]'),size=options.querySelector('[data-size]');
+  order.value='account';size.value='24';
+  let collapsed={};try{collapsed=JSON.parse(sessionStorage.getItem('spark-task-collapsed')||'{}');}catch(_){}
   try{const saved=JSON.parse(sessionStorage.getItem('spark-task-layout')||'null');if(saved){if(['time','name','attention','account'].includes(saved.order))order.value=saved.order;if(['12','24','48'].includes(saved.size))size.value=saved.size;}}catch(_){}
   const pager=document.createElement('nav');pager.className='workspace-pager';pager.setAttribute('aria-label','任务列表分页');
   pager.innerHTML='<button type="button" class="quiet" data-prev>上一页</button><span role="status"></span><button type="button" class="quiet" data-next>下一页</button>';
@@ -69,7 +71,26 @@
     const pages=Math.max(1,Math.ceil(shown/Number(size.value)));pageIndex=Math.min(pageIndex,pages);
     const body=document.querySelector('.task-overview-body');body?.querySelectorAll('.task-account-heading').forEach(n=>n.remove());
     let previous=null;
-    matchesRows.forEach((row,index)=>{row.hidden=index<(pageIndex-1)*Number(size.value)||index>=pageIndex*Number(size.value);if(!row.hidden&&order.value==='account'&&previous!==row.dataset.taskAccount){const heading=document.createElement('div');heading.className='task-account-heading';heading.setAttribute('role','row');const cell=document.createElement('span');cell.setAttribute('role','cell');cell.textContent=row.querySelector('.task-overview-account>span:last-child')?.textContent||'未绑定账号';heading.append(cell);body?.append(heading);previous=row.dataset.taskAccount;}body?.append(row);});
+    matchesRows.forEach((row,index)=>{
+      const onPage=index>=(pageIndex-1)*Number(size.value)&&index<pageIndex*Number(size.value);
+      row.hidden=!onPage;
+      if(onPage&&order.value==='account'){
+        const key=row.dataset.taskAccount||'unbound';
+        if(previous!==key){
+          const group=matchesRows.filter(r=>(r.dataset.taskAccount||'unbound')===key);
+          const issues=group.filter(attention).length;
+          const heading=document.createElement('div');heading.className='task-account-heading';heading.setAttribute('role','row');
+          const cell=document.createElement('div');cell.setAttribute('role','cell');cell.setAttribute('aria-colspan','7');
+          const button=document.createElement('button');button.type='button';button.className='ui-group-toggle';button.setAttribute('aria-expanded',String(!collapsed[key]||!!query));button.disabled=!!query;
+          const title=document.createElement('strong'),count=document.createElement('small');title.textContent=row.querySelector('.task-overview-account>span:last-child')?.textContent||'未绑定账号';
+          count.textContent=`${group.length} 个任务${issues?' · '+issues+' 项需关注':''}`;button.append(title,count);
+          button.onclick=()=>{collapsed[key]=!collapsed[key];try{sessionStorage.setItem('spark-task-collapsed',JSON.stringify(collapsed));}catch(_){}apply();body.querySelectorAll('.ui-group-toggle').forEach(b=>{if(b.querySelector('strong')?.textContent===title.textContent)b.focus({preventScroll:true});});};
+          cell.append(button);heading.append(cell);body?.append(heading);previous=key;
+        }
+        row.hidden=!!collapsed[key]&&!query;
+      }
+      body?.append(row);
+    });
     pager.querySelector('span').textContent=`第 ${pageIndex} / ${pages} 页 · 共 ${shown} 个`;pager.querySelector('[data-prev]').disabled=pageIndex===1;pager.querySelector('[data-next]').disabled=pageIndex===pages;pager.hidden=rows.length===0;
     try{sessionStorage.setItem('spark-task-layout',JSON.stringify({order:order.value,size:size.value}));}catch(_){}
     filters.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.taskFilter === mode)));
