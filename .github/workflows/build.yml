@@ -31,6 +31,7 @@ jobs:
           node tests/console/task_workspace_harness.cjs
           node tests/console/commercial_ui_harness.cjs
           node tests/console/motion_harness.cjs
+          node tests/console/mobile_workspace_harness.cjs
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:

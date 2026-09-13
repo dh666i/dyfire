@@ -1,0 +1,12 @@
+const {JSDOM}=require('jsdom'),fs=require('fs'),assert=require('node:assert/strict');
+const dom=new JSDOM(`<form action="/logout"></form><a class="brand"></a><form class="records-filter" action="/runs"><label><select name="account_id"><option value="">所有</option><option selected value="a">账号A</option></select></label><input name="start" value="2026-09-01"><input name="end"><input name="q" value="老朋友"><select name="status"><option value="">全部</option><option value="success" selected>成功</option></select><button type="submit">筛选</button></form>`,{url:'https://test.local/runs?account_id=a&status=success',runScripts:'outside-only'});
+const w=dom.window;let change;const media={matches:true,addEventListener:(event,fn)=>{change=fn;}};w.matchMedia=()=>media;
+w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
+let submitted;w.HTMLFormElement.prototype.requestSubmit=function(){submitted=new w.URLSearchParams(new w.FormData(this));this.dispatchEvent(new w.Event('submit'));};
+w.eval(fs.readFileSync('spark_console/static/mobile_workspace.js','utf8'));w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
+assert.equal(w.document.querySelectorAll('.mobile-dock a').length,4);assert.equal(w.document.querySelector('.brand').getAttribute('href'),'/dashboard');
+const original=w.document.querySelector('.records-filter');assert.ok(original.closest('dialog'));
+const quick=w.document.querySelector('.mobile-record-search');quick.querySelector('input').value='郭琪';quick.dispatchEvent(new w.Event('submit',{cancelable:true}));assert.equal(submitted.get('q'),'郭琪');assert.equal(submitted.get('account_id'),'a');assert.equal(submitted.get('status'),'success');
+quick.lastElementChild.click();const dialog=w.document.querySelector('dialog');assert.equal(dialog.open,true);original.elements.start.value='2026-09-15';dialog.close();assert.equal(original.elements.start.value,'2026-09-01');
+media.matches=false;change();assert.equal(original.closest('dialog'),null);assert.equal(quick.hidden,true);assert.equal(w.document.querySelectorAll('form.records-filter').length,1);
+dom.window.close();console.log('Mobile dock, single-source filters, query preservation, cancel and desktop restoration passed');

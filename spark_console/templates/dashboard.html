@@ -8,7 +8,19 @@
     <div><span class="studio-overline" data-studio-date>今日工作台</span><h1>今日续火</h1></div>
     <div class="studio-heading-actions"><a class="button quiet" href="/runs">执行记录</a>{% if tasks %}<a class="button quiet" href="/tasks#new-task">新建任务{{ icon('arrow', 16) }}</a>{% endif %}</div>
   </header>
-  <div class="product-actions"><a href="/attention">统一处理账号与执行异常</a><a href="/notifications">接收异常提醒</a><a href="/help">使用说明</a></div>
+  <section class="overview-accounts" aria-labelledby="overview-accounts-title">
+    <header class="studio-section-title"><h2 id="overview-accounts-title">账号状态 <span class="studio-count">{{ accounts|length }}</span></h2><a href="/accounts">管理账号 ↗</a></header>
+    <div class="overview-account-list">
+    {% for account in accounts %}
+    {% set health = account_health.get(account.id) %}{% set profile = account_profiles.get(account.id) %}
+    <article class="overview-account" data-state="{{ health.state if health else account.validation_state }}">
+      <span class="studio-initial" aria-hidden="true">{{ account.display_name[0] }}{% if profile and profile.avatar_url %}<img data-avatar-image src="{{ profile.avatar_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</span>
+      <div class="overview-account-copy"><strong>{{ account.display_name }}</strong><small class="{{ 'overview-good' if health and health.state=='valid' else 'overview-attention' }}">{{ health.label if health else '等待复核' }}</small></div>
+      <a class="quiet button" href="/accounts#account-{{ account.id }}">{{ '查看账号' if health and health.state=='valid' else '查看并处理' }}</a>
+    </article>
+    {% else %}<div class="empty"><h3>还没有绑定抖音账号</h3><a class="button" href="/accounts">绑定账号</a></div>{% endfor %}
+    </div>
+  </section>
   {% if membership and not membership.active %}<section class="action-summary"><div><strong>下一步：开通会员</strong><p>先确认账号与任务额度，再绑定抖音账号。</p></div><a class="button" href="/subscription">查看会员</a></section>
   {% elif not accounts %}<section class="action-summary"><div><strong>下一步：绑定你的抖音账号</strong><p>准备好抖音 App，扫码后按平台提示完成验证。</p></div><a class="button" href="/accounts">开始绑定</a></section>
   {% elif account_attention|default(0) %}<section class="action-summary"><div><strong>{{ account_attention }} 个账号需要关注</strong><p>自动复核或安全验证期间，相关任务暂缓；恢复后执行后续计划。</p></div><a class="button" href="/accounts">查看账号状态</a></section>
@@ -50,13 +62,6 @@
       {% else %}<div class="empty"><span class="empty-icon" aria-hidden="true">{{ icon('tasks', 24) }}</span><h3>还没有续火任务</h3><a class="button quiet" href="{{ '/tasks#new-task' if accounts else '/accounts' }}">{{ '创建第一个任务' if accounts else '绑定抖音账号' }}</a></div>{% endif %}
     </section>
     <aside class="studio-account-column">
-      <header class="studio-section-title"><h2>抖音账号<span class="studio-count">{{ accounts|length }}</span></h2><a href="/accounts" aria-label="管理抖音账号" title="管理抖音账号">{{ icon('arrow', 16) }}</a></header>
-      {% for account in accounts[:5] %}
-      {% set health = account_health.get(account.id) if account_health is defined else none %}
-      {% set state = health.state if health else account.validation_state %}
-      <a class="studio-account-row" href="/accounts"><span class="studio-initial" aria-hidden="true">{{ account.display_name[0] }}</span><span><strong>{{ account.display_name }}</strong><small>{{ health.label if health else '待验证' }}</small></span><i class="studio-health studio-health-{{ state }}" aria-hidden="true"></i></a>
-      {% else %}<div class="empty compact-empty"><h3>尚未绑定账号</h3><a href="/accounts">添加抖音账号{{ icon('arrow', 16) }}</a></div>{% endfor %}
-      <div class="studio-account-total"><span>可用账号</span><strong>{{ valid_accounts|default(accounts|length) }} / {{ accounts|length }}</strong></div>
       {% if membership is defined and membership %}
       <section class="studio-membership"><span class="studio-overline">会员订阅</span><div><strong>{{ membership.status_label }}</strong><a href="/subscription">管理{{ icon('arrow', 16) }}</a></div><p>{% if membership.is_admin %}管理员账号{% elif membership.valid_until %}有效期至 {{ membership.valid_until|shanghai_time }}{% else %}尚未开通会员{% endif %}</p></section>
       {% endif %}

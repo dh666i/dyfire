@@ -249,7 +249,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
 
     @app.get("/")
     def root():
-        return RedirectResponse('/studio' if frontend_assets.is_dir() else '/dashboard', status_code=303)
+        return RedirectResponse('/dashboard', status_code=303)
 
     @app.get("/login")
     def login_page(request: Request):
@@ -294,7 +294,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             login_limiter.clear(client_key)
             raw, record = sessions.create_record(user.id)
             db.add(record)
-            destination = "/change-password" if user.must_change_password else ('/studio' if frontend_assets.is_dir() else '/dashboard')
+            destination = "/change-password" if user.must_change_password else '/dashboard'
         response = RedirectResponse(destination, status_code=303)
         response.set_cookie(
             "spark_session",
@@ -400,6 +400,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 )
             ).all()
             valid_accounts = sum(item.validation_state == "valid" for item in accounts)
+            accounts.sort(key=lambda item: (item.validation_state == 'valid', item.display_name.casefold()))
             account_attention = sum(item.validation_state in ('invalid','temporary','verification') for item in accounts)
             next_task = min(
                 (task for task in tasks if task.enabled and task.next_run_at is not None),

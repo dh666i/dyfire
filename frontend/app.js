@@ -8,6 +8,7 @@ import '../spark_console/static/motion.js';
 import '../spark_console/static/task_experience.js';
 import '../spark_console/static/design_system.css';
 import '../spark_console/static/design_system.js';
+import '../spark_console/static/mobile_workspace.js';
 import {installPages} from './src/connected-pages.js';
 import {installTaskWorkspace} from './src/task-workspace.js';
 const {esc,toast} = studio;
@@ -38,7 +39,7 @@ function decorateTasks(){
     const avatar=row.querySelector('.avatar');
     avatar.textContent=task.name.slice(0,1);
     if(task.avatar){const image=document.createElement('img');image.src=task.avatar;image.alt='';image.loading='lazy';image.referrerPolicy='no-referrer';image.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:inherit';image.onerror=()=>image.remove();avatar.prepend(image);}
-    const controls=document.createElement('div');controls.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';button.replaceWith(controls);controls.append(button);
+    const controls=document.createElement('div');controls.className='task-row-controls';controls.style.cssText='display:flex;align-items:center;gap:10px;flex-wrap:wrap';button.replaceWith(controls);controls.append(button);
     const edit=document.createElement('a');edit.href='/tasks/'+encodeURIComponent(task.id)+'/edit';edit.textContent='编辑';edit.className='small-action';controls.append(edit);
   }
 }

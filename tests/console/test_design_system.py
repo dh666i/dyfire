@@ -23,8 +23,8 @@ class DesignSystemTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200, response.text[:200])
-                self.assertIn('/static/design_system.css?v=0.1.13', response.text)
-                self.assertIn('/static/design_system.js?v=0.1.13', response.text)
+                self.assertIn('/static/design_system.css?v=0.1.14', response.text)
+                self.assertIn('/static/design_system.js?v=0.1.14', response.text)
                 self.assertIn('action="/logout"', response.text)
                 self.assertIn('name="csrf_token"', response.text)
         accounts = self.client.get('/accounts').text
@@ -41,7 +41,7 @@ class DesignSystemTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200, response.text[:200])
-                self.assertIn('/static/design_system.css?v=0.1.13', response.text)
+                self.assertIn('/static/design_system.css?v=0.1.14', response.text)
         with TemporaryDirectory() as directory, patch.dict(os.environ, DYFIRE_UPDATE_DIR=directory):
             Path(directory, 'backup-status.json').write_text(json.dumps({'status':'success','at':'2026-09-12T00:00:00Z'}))
             Path(directory, 'backup-schedule.json').write_text(json.dumps({'enabled':False}))
@@ -53,3 +53,12 @@ class DesignSystemTests(TestCase):
 
     def test_ordinary_user_cannot_read_admin_diagnostics(self):
         self.assertIn(self.client.get('/admin/diagnostics').status_code, (403,404))
+
+    def test_login_lands_on_account_first_overview(self):
+        response=self.fixture.fx.login()
+        self.assertEqual(response.headers['location'],'/dashboard')
+        self.assertEqual(self.client.get('/',follow_redirects=False).headers['location'],'/dashboard')
+        html=self.client.get('/dashboard').text
+        self.assertLess(html.index('overview-accounts-title'),html.index('今日运行总览'))
+        self.assertIn('data-state=',html)
+        self.assertIn('管理账号',html)
