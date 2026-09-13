@@ -8,7 +8,7 @@ const w=dom.window;
 w.CSS={escape:s=>s};w.HTMLCanvasElement.prototype.getContext=()=>null;
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true};w.HTMLDialogElement.prototype.close=function(){this.open=false};
 const calls=[];
-const state={user:{name:'Test',role:'user'},csrf:'token',accounts:[{id:'account-uuid',name:'Account',health:{label:'已连接',blocked:false}}],tasks:[{id:'task-uuid',name:'Friend',accountId:'account-uuid',time:'09:30',kind:'原生续火花',enabled:true,confirmed:false,status:'submitted_unconfirmed'}],subscription:{can_add_task:true}};
+const state={user:{name:'Test',role:'user'},csrf:'token',accounts:[{id:'account-uuid',name:'Account',health:{label:'已连接',blocked:false}}],tasks:[{id:'task-uuid',name:'Friend',accountId:'account-uuid',time:'09:30',kind:'续火花表情',enabled:true,confirmed:false,status:'submitted_unconfirmed'}],subscription:{can_add_task:true}};
 w.fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith('/enabled'))state.tasks[0].enabled=JSON.parse(options.body).enabled;return {ok:true,status:200,json:async()=>url==='/api/studio'?structuredClone(state):url.includes('conversations')?{items:[{name:'Friend',sec_uid:'uid'}]}:{saved:true}};};
 let shell=fs.readFileSync(path.join(__dirname,'main.js'),'utf8').replace(/^import .*;\r?\n/gm,'').replace('export const studio =','window.studio =');
 w.eval(shell);

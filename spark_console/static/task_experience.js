@@ -39,7 +39,7 @@
       try{
         const p=await window.sparkTaskRequest('/tasks/preview',{csrf_token:data.get('csrf_token'),account_id:data.get('account_id'),time:data.get('send_time'),targets:names.map((name,i)=>({name,sec_uid:uids[i]}))});
         if(p.conflicts.length)throw Error('同一时间已有任务：'+p.conflicts.join('、'));if(p.blocked)throw Error('请先完成账号复核或验证');
-        const yes=await window.sparkReview('确认每日计划',[`账号：${p.account}`,`每天 ${p.time}（北京时间） · ${p.count} 位好友`,names.join('、'),data.get('message_kind')==='douyin_sticker'?'抖音原生续火花表情':'消息：'+data.get('message_template'),p.manual_count?`${p.manual_count} 位为手动输入，请核对准确昵称。`:'已选择同步会话中的好友。','从下一次计划时间开始，不补发历史消息。']);
+        const yes=await window.sparkReview('确认每日计划',[`账号：${p.account}`,`每天 ${p.time}（北京时间） · ${p.count} 位好友`,names.join('、'),data.get('message_kind')==='douyin_sticker'?'续火花表情':'消息：'+data.get('message_template'),p.manual_count?`${p.manual_count} 位为手动输入，请核对准确昵称。`:'已选择同步会话中的好友。','从下一次计划时间开始，不补发历史消息。']);
         if(yes){if(JSON.stringify([...data])!==JSON.stringify([...new FormData(form)]))throw Error('表单内容已变化，请重新确认');form.dataset.previewApproved='true';if(button)button.disabled=false;form.requestSubmit(button);}
       }catch(error){window.sparkToast?.(error.message,'error');}
       finally{delete form.dataset.previewBusy;if(button&&form.dataset.submitting!=='true'){button.disabled=false;button.classList.remove('is-loading');}}return;

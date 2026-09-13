@@ -108,7 +108,7 @@ $('#create-form').onsubmit=async e=>{
     const preview=await request('/tasks/preview',{csrf_token:state.csrf,account_id:$('#account').value,time:$('#time').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''}))});
     if(preview.conflicts.length)throw Error('同一时间已有任务：'+preview.conflicts.join('、'));
     if(preview.blocked)throw Error('请先完成账号复核或验证');
-    if(!await window.sparkReview('确认每日计划',[`账号：${preview.account}`,`每天 ${preview.time}（北京时间） · ${preview.count} 位好友`,selected.map(c=>c.name).join('、'),text?$('#message').value:'抖音原生续火花表情','从下一次计划时间开始执行，不补发历史消息。']))return;
+    if(!await window.sparkReview('确认每日计划',[`账号：${preview.account}`,`每天 ${preview.time}（北京时间） · ${preview.count} 位好友`,selected.map(c=>c.name).join('、'),text?$('#message').value:'续火花表情','从下一次计划时间开始执行，不补发历史消息。']))return;
     const nowSelected=[...document.querySelectorAll('[name=friend]:checked')].map(c=>contacts[Number(c.value)]).filter(Boolean);
     if(snapshot!==JSON.stringify([$('#account').value,$('#time').value,$('#kind').value,$('#message').value,nowSelected.map(c=>c.sec_uid||c.name)]))throw Error('表单内容已变化，请重新确认');
     const created=await request('/api/studio/tasks',{account_id:$('#account').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''})),send_time:$('#time').value,message_kind:text?'text':'douyin_sticker',message_template:text?$('#message').value.trim():'续火花'});

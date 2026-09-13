@@ -136,13 +136,13 @@ dialog::backdrop{background:#090b1066;backdrop-filter:blur(3px)}
   .overview-account-list{grid-template-columns:1fr}.overview-account{padding:12px;gap:12px}.overview-accounts{margin-bottom:18px}.overview-accounts .studio-section-title{margin-bottom:12px}
   .studio-dashboard>.studio-heading{margin-bottom:22px}.studio-dashboard .studio-metric{padding:14px 10px}.studio-dashboard .studio-metric strong{font-size:28px}
   .studio-dashboard .studio-overview-columns{grid-template-columns:1fr}.studio-dashboard .studio-schedule{margin-top:12px}
-  #task-list .task-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(70px,auto);gap:9px 12px;padding:14px 0!important;min-height:0}
+  #task-list .task-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(70px,auto);gap:9px 12px;padding:14px 12px!important;min-height:0}
   #task-list .task-row .person{grid-column:1;grid-row:1;min-width:0;gap:10px}
   #task-list .task-row .person h3{font-size:14px;line-height:1.5}#task-list .task-row .person p{font-size:11px}
   #task-list .task-row>.state{position:static!important;inset:auto!important;grid-column:2;grid-row:1;align-self:center;max-width:110px;min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:11px}
-  #task-list .task-row .task-time{grid-column:1/-1;grid-row:2;font-size:13px}.task-row .task-time small{display:inline;margin-left:8px;font-size:11px}
-  #task-list .task-row>.task-row-controls{grid-column:1/-1!important;grid-row:3!important;display:flex;justify-content:flex-end;gap:20px!important;max-width:100%;min-width:0}
-  #task-list .task-row-controls button,#task-list .task-row-controls a{min-height:36px;display:inline-flex;align-items:center;padding:4px 8px}
+  #task-list .task-row .task-time{grid-column:1;grid-row:2;align-self:center;font-size:13px}.task-row .task-time small{display:inline;margin-left:8px;font-size:11px}
+  #task-list .task-row>.task-row-controls{grid-column:2!important;grid-row:2!important;display:flex;align-items:center;justify-content:flex-end;flex-wrap:nowrap!important;gap:8px!important;max-width:100%;min-width:0}
+  #task-list .task-row-controls button,#task-list .task-row-controls a{min-height:40px;display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;background:var(--accent);color:var(--ui-primary-ink);border:1px solid var(--accent);border-radius:0;white-space:nowrap;font-size:12px}
   .ui-workspace-actions{margin-bottom:16px}.ui-group-toggle{padding:10px 8px}.filters>span{display:none!important}
   .mobile-record-search{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;margin-bottom:12px;align-items:center}
   .mobile-record-search input{width:100%;min-width:0;min-height:42px;padding:8px 10px;font-size:16px}.mobile-record-search button{padding:8px 12px;min-height:42px}

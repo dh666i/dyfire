@@ -24,7 +24,7 @@
         <div class="task-overview-time" role="cell"><time class="time">{{ task.send_time }}</time></div>
         <div class="task-overview-target" role="cell">
           <div class="directory-person"><span class="directory-avatar" aria-hidden="true">{{ task.target_name[0] }}{% if task_avatars is defined and task_avatars.get(task.id) %}<img data-avatar-image src="{{ task_avatars[task.id] }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</span><strong title="{{ task.target_name }}">{{ task.target_name }}</strong></div>
-          {% if task.message_kind == 'douyin_sticker' %}<span class="task-message-compact is-sticker"><i aria-hidden="true">✦</i>原生续火花</span>{% else %}<span class="task-message-compact" title="{{ task.message_template }}">{{ task.message_template }}</span>{% endif %}
+          {% if task.message_kind == 'douyin_sticker' %}<span class="task-message-compact is-sticker"><i aria-hidden="true">✦</i>续火花表情</span>{% else %}<span class="task-message-compact" title="{{ task.message_template }}">{{ task.message_template }}</span>{% endif %}
           {% if not task.douyin_account_id %}<span class="task-inline-alert">账号不可用</span>{% endif %}
         </div>
         <div class="task-overview-account" role="cell"><span class="task-cell-label">发送账号</span><span title="{{ account_names.get(task.douyin_account_id, '账号不可用') if account_names is defined else '—' }}">{{ account_names.get(task.douyin_account_id, '账号不可用') if account_names is defined else '—' }}</span></div>
@@ -92,9 +92,9 @@
           </div>
         </dialog>
       </div>
-      <label>消息类型<select id="task-message-kind" name="message_kind"><option value="douyin_sticker" selected>抖音原生表情 · 续火花</option><option value="text">文字消息</option></select></label>
+      <label>消息类型<select id="task-message-kind" name="message_kind"><option value="douyin_sticker" selected>续火花表情</option><option value="text">文字消息</option></select></label>
       <div id="task-message-text-field" hidden><label for="task-message">消息内容<textarea id="task-message" name="message_template" maxlength="500" rows="4">续火花</textarea><small class="field-hint field-counter"><span id="task-message-count">3</span>/500 字</small></label></div>
-      <div id="task-message-sticker-field" class="native-sticker-choice"><span class="field-label">原生表情</span><div class="native-sticker-preview" role="status" aria-label="将发送抖音原生续火花表情"><span aria-hidden="true">✦</span>续火花</div><small class="field-hint">发送时会从抖音表情面板选择原生表情，不会发送普通文字。</small></div>
+      <div id="task-message-sticker-field" class="native-sticker-choice"><span class="field-label">原生表情</span><div class="native-sticker-preview" role="status" aria-label="将发送续火花表情"><span aria-hidden="true">✦</span>续火花</div><small class="field-hint">发送时会从抖音表情面板选择原生表情，不会发送普通文字。</small></div>
       <footer class="task-create-actions">
         <p>已选 <strong data-create-target-count>0</strong> 位好友 · 每位好友创建一条每日任务</p>
         <button type="submit" data-create-submit>创建任务</button>

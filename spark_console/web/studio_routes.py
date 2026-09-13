@@ -63,7 +63,7 @@ def build_studio_router(engine, auth, cipher):
             return {'user': {'id': user.id, 'name': user.username, 'role': user.role}, 'csrf': record.csrf_token,
                     'accounts': [{'id': a.id, 'name': a.display_name, 'health': health[a.id]} for a in accounts],
                     'tasks': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id,
-                               'time': t.send_time, 'kind': '原生续火花' if t.message_kind == 'douyin_sticker' else '文字消息',
+                               'time': t.send_time, 'kind': '续火花表情' if t.message_kind == 'douyin_sticker' else '文字消息',
                                'message': t.message_template, 'enabled': t.enabled, 'avatar': avatars.get(t.id),
                                'confirmed': latest.get(t.id) == 'success', 'status': latest.get(t.id, 'scheduled')} for t in tasks],
                     'subscription': {k: membership[k] for k in ('active','status_label','days_remaining','max_accounts','max_tasks','can_add_task')}}
@@ -125,6 +125,6 @@ def build_studio_router(engine, auth, cipher):
             return {'total':total,'page':page,'pages':pages,'items':[{'id':run.id,'name':task.target_name,
                 'time':shanghai_time(run.scheduled_for),'status':run.status,'label':run_view_status(run)['label'],
                 'stage':RUN_STAGE_LABELS.get(run.stage,run.stage),'guidance':run_guidance(run),
-                'error':run.error_summary,'kind':'原生续火花' if task.message_kind=='douyin_sticker' else '文字消息'} for run,task in rows]}
+                'error':run.error_summary,'kind':'续火花表情' if task.message_kind=='douyin_sticker' else '文字消息'} for run,task in rows]}
 
     return router
