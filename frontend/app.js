@@ -138,7 +138,7 @@ document.addEventListener('click',async e=>{
       status.prepend(document.createElement('i'));
       $('#active-count').textContent=String(studio.tasks.filter(t=>t.enabled).length).padStart(2,'0');
     }
-    toast(enabled?'任务已恢复':'任务已暂停');
+    window.sparkEmphasize?.(row);toast(enabled?'任务已恢复':'任务已暂停');
   }
   catch(error){button.textContent=label;toast(error.message);}
   finally{busy=false;button.disabled=false;button.removeAttribute('aria-busy');}

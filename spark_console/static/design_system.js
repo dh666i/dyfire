@@ -60,18 +60,19 @@
     let dirty=false,origin=null;
     form.addEventListener('input',()=>{dirty=true;});form.addEventListener('change',()=>{dirty=true;});
     form.addEventListener('reset',()=>{dirty=false;});
-    function open(trigger){origin=trigger||document.activeElement;if(!dialog.open)dialog.showModal();(form.querySelector('select')?.parentElement.querySelector('.ui-select-trigger')||form.querySelector('select,input:not([type=hidden])'))?.focus();}
+    function open(trigger){window.sparkCancelClose?.(dialog);origin=trigger||document.activeElement;if(!dialog.open)dialog.showModal();(form.querySelector('select')?.parentElement.querySelector('.ui-select-trigger')||form.querySelector('select,input:not([type=hidden])'))?.focus();}
+    const finishClose=()=>{const done=()=>{dialog.close();origin?.focus();};if(window.sparkCloseDrawer)window.sparkCloseDrawer(dialog,done);else done();};
     function close(){
       if(form.dataset.previewBusy||form.dataset.submitting==='true'||form.querySelector('[aria-busy=true]')){window.sparkToast?.('正在处理，请等待结果后关闭');return;}
       if(dirty&&!dialog.querySelector('.ui-drawer-dirty')){
         const notice=document.createElement('div');notice.className='ui-drawer-dirty';notice.setAttribute('role','status');notice.innerHTML='<p>内容尚未提交。暂时关闭后，本页内仍保留填写内容。</p><div><button type="button">继续填写</button><button type="button" class="quiet">暂时关闭</button></div>';header.after(notice);
-        const buttons=notice.querySelectorAll('button');buttons[0].onclick=()=>notice.remove();buttons[1].onclick=()=>{notice.remove();dialog.close();origin?.focus();};buttons[0].focus();return;
+        const buttons=notice.querySelectorAll('button');buttons[0].onclick=()=>notice.remove();buttons[1].onclick=()=>{notice.remove();finishClose();};buttons[0].focus();return;
       }
-      if(dirty)return;dialog.close();origin?.focus();
+      if(dirty)return;finishClose();
     }
     header.querySelector('button').onclick=close;dialog.addEventListener('cancel',e=>{e.preventDefault();close();});
     document.addEventListener('click',event=>{const trigger=event.target.closest(triggerSelector);if(trigger){event.preventDefault();open(trigger);}},true);
-    document.addEventListener('task-created',()=>{dirty=false;dialog.close();origin?.focus();});
+    document.addEventListener('task-created',()=>{dirty=false;finishClose();});
     if(location.hash==='#new-task')open();
     return {open,close,dialog};
   }

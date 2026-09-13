@@ -31,7 +31,7 @@ export function installTaskWorkspace({studio,state}) {
       const title=document.createElement('strong'),count=document.createElement('small');title.textContent=a?.name||'账号不可用';
       const total=matches.filter(row=>(taskFor(row)?.accountId||'unbound')===id).length;count.textContent=`${total} 个任务${a?.health.blocked?' · '+a.health.label:''}`;button.append(title,count);
       const searching=!!document.querySelector('#search').value.trim();body.hidden=!searching&&!!collapsed[id];button.setAttribute('aria-expanded',String(!body.hidden));
-      button.onclick=()=>{body.hidden=!body.hidden;collapsed[id]=body.hidden;button.setAttribute('aria-expanded',String(!body.hidden));storage.set('studio-account-collapsed',collapsed);};
+      button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';collapsed[id]=!expanded;button.setAttribute('aria-expanded',String(expanded));if(window.sparkFold)window.sparkFold(body,expanded);else body.hidden=!expanded;storage.set('studio-account-collapsed',collapsed);};
       body.append(...items);fragment.append(button,body);
     }
     if(!matches.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='当前账号下没有匹配的任务，请调整账号或任务筛选。';fragment.append(empty);}

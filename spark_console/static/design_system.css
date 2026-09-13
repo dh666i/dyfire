@@ -115,6 +115,13 @@ dialog::backdrop{background:#090b1066;backdrop-filter:blur(3px)}
 @media(prefers-reduced-motion:reduce){.ui-load-placeholder span{animation:none}.ui-create-drawer[open]{animation:none}}
 
 /* Straight-edged editorial controls; circular identity images stay circular. */
+.ui-select-popup:not([hidden]){animation:none!important}
+.filters[data-motion-tabs],.studio-segments[data-motion-tabs]{position:relative}
+.filters[data-motion-tabs] button,.studio-segments[data-motion-tabs] button{border-bottom-color:transparent!important}
+.motion-tab-line{position:absolute;left:0;bottom:0;height:2px;background:var(--accent);pointer-events:none;transition:transform 160ms ease-out,width 160ms ease-out}
+.task-operation-updated{animation:task-operation-updated 800ms ease-out}
+@keyframes task-operation-updated{from{background-color:color-mix(in srgb,var(--accent) 12%,transparent)}to{background-color:transparent}}
+@media(prefers-reduced-motion:reduce){.motion-tab-line{transition:none}.task-operation-updated{animation:none}}
 .panel,.admin-panel,.account-item,.studio-identity-card,.composer,.ui-card,
 button,.button,.admin-button,input,textarea,select,.pill,.badge,.notice,.form-error,
 .ui-select .ui-select-trigger,.ui-select-popup,.ui-select-option,dialog,

@@ -1,6 +1,42 @@
 (() => {
   'use strict';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const closing=new WeakMap();
+  window.sparkCancelClose=dialog=>{const entry=closing.get(dialog);if(entry){closing.delete(dialog);clearTimeout(entry.timer);entry.animation.cancel();}};
+  window.sparkCloseDrawer=(dialog,complete)=>{
+    if(closing.has(dialog))return;
+    if(!dialog.open||reduced.matches||!dialog.animate){complete();return;}
+    const animation=dialog.animate([{opacity:1,transform:'translateX(0)'},{opacity:0,transform:'translateX(18px)'}],{duration:160,easing:'ease-in',fill:'forwards'});
+    const finish=()=>{if(closing.get(dialog)!==entry)return;closing.delete(dialog);clearTimeout(entry.timer);complete();animation.cancel();};
+    const entry={animation,timer:setTimeout(finish,220)};closing.set(dialog,entry);animation.onfinish=finish;
+  };
+  window.sparkEmphasize=row=>{if(!row)return;row.classList.remove('task-operation-updated');void row.offsetWidth;row.classList.add('task-operation-updated');};
+  const folds=new WeakMap();
+  window.sparkFoldRows=(rows,expanded,complete)=>{
+    if(reduced.matches||!rows.length||!rows[0].animate){complete();return;}
+    const animations=rows.map(row=>{const style=getComputedStyle(row),full={height:row.getBoundingClientRect().height+'px',minHeight:'0px',paddingTop:style.paddingTop,paddingBottom:style.paddingBottom,opacity:1,overflow:'hidden'},empty={height:'0px',minHeight:'0px',paddingTop:'0px',paddingBottom:'0px',opacity:0,overflow:'hidden'};return row.animate(expanded?[empty,full]:[full,empty],{duration:180,easing:'ease-out',fill:'forwards'});});
+    let done=false;const finish=()=>{if(done)return;done=true;clearTimeout(timer);complete();animations.forEach(a=>a.cancel());};
+    const timer=setTimeout(finish,240);animations[0].onfinish=finish;
+  };
+  window.sparkFold=(body,expanded)=>{
+    const start=body.hidden?0:body.getBoundingClientRect().height;
+    const previous=folds.get(body);if(previous){previous.cancel();folds.delete(body);}
+    if(reduced.matches||!body.animate){body.hidden=!expanded;return;}
+    body.hidden=false;
+    const end=expanded?body.scrollHeight:0;
+    const animation=body.animate([{height:start+'px',overflow:'hidden'},{height:end+'px',overflow:'hidden'}],{duration:180,easing:'cubic-bezier(.2,.7,.3,1)'});
+    folds.set(body,animation);animation.onfinish=()=>{if(folds.get(body)!==animation)return;body.hidden=!expanded;folds.delete(body);animation.cancel();};
+  };
+  function tabs(){
+    document.querySelectorAll('.filters,.studio-segments').forEach(group=>{
+      if(group.dataset.motionTabs)return;group.dataset.motionTabs='true';
+      const line=document.createElement('i');line.className='motion-tab-line';line.setAttribute('aria-hidden','true');group.append(line);
+      const update=()=>{const active=group.querySelector('button[aria-pressed=true],button.selected');if(!active)return;line.style.width=active.offsetWidth+'px';line.style.transform=`translateX(${active.offsetLeft}px)`;};
+      new MutationObserver(update).observe(group,{subtree:true,attributes:true,attributeFilter:['aria-pressed','class']});
+      if(window.ResizeObserver)new ResizeObserver(update).observe(group);update();document.fonts?.ready.then(update);
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tabs,{once:true});else tabs();
   const viewport=window.visualViewport;
   const resize=()=>document.documentElement.style.setProperty('--visible-height',(viewport?.height||innerHeight)+'px');
   viewport?.addEventListener('resize',resize);resize();

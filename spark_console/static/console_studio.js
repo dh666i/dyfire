@@ -84,7 +84,7 @@
           const button=document.createElement('button');button.type='button';button.className='ui-group-toggle';button.setAttribute('aria-expanded',String(!collapsed[key]||!!query));button.disabled=!!query;
           const title=document.createElement('strong'),count=document.createElement('small');title.textContent=row.querySelector('.task-overview-account>span:last-child')?.textContent||'未绑定账号';
           count.textContent=`${group.length} 个任务${issues?' · '+issues+' 项需关注':''}`;button.append(title,count);
-          button.onclick=()=>{collapsed[key]=!collapsed[key];try{sessionStorage.setItem('spark-task-collapsed',JSON.stringify(collapsed));}catch(_){}apply();body.querySelectorAll('.ui-group-toggle').forEach(b=>{if(b.querySelector('strong')?.textContent===title.textContent)b.focus({preventScroll:true});});};
+          button.onclick=()=>{collapsed[key]=!collapsed[key];try{sessionStorage.setItem('spark-task-collapsed',JSON.stringify(collapsed));}catch(_){}const refresh=()=>{apply();body.querySelectorAll('.ui-group-toggle').forEach(b=>{if(b.querySelector('strong')?.textContent===title.textContent)b.focus({preventScroll:true});});};if(window.sparkFoldRows){if(collapsed[key]){button.disabled=true;window.sparkFoldRows(group.filter(r=>!r.hidden),false,refresh);}else{refresh();window.sparkFoldRows(group.filter(r=>!r.hidden),true,()=>{});}}else refresh();};
           cell.append(button);heading.append(cell);body?.append(heading);previous=key;
         }
         row.hidden=!!collapsed[key]&&!query;

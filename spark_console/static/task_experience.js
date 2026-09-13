@@ -26,6 +26,7 @@
       const time=row.querySelector('.task-overview-time time');if(time)time.textContent=item.time;
       const next=row.querySelector('.task-overview-next>span:last-child');if(next)next.textContent=!item.enabled?'任务已暂停':item.next_run_at?new Date(item.next_run_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'等待调度';
       const button=row.querySelector('form[action$="/toggle"] button');if(button)button.textContent=item.enabled?'暂停':'启用';row.querySelector('details[open]')?.removeAttribute('open');window.sparkReveal?.(state);
+      window.sparkEmphasize?.(row);
     }document.dispatchEvent(new Event('task-state-updated'));
   };
   document.addEventListener('submit',async event=>{
