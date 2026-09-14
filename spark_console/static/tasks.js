@@ -314,6 +314,8 @@
       optionList.replaceChildren(empty);
     }
 
+    let existingTasks = [];
+    function hasTask(item) { return existingTasks.some(t => t.accountId === account.value && (t.sec_uid && item.sec_uid ? t.sec_uid === item.sec_uid : foldTargetName(t.name) === foldTargetName(item.name))); }
     function visibleContacts() {
       const query = search.value.trim().toLocaleLowerCase("zh-CN");
       return Array.from(contacts.values()).filter((item) => !query || [item.name, item.nickname, item.remark_name, item.unique_id, item.short_id].some(value => String(value || "").toLocaleLowerCase("zh-CN").includes(query)));
@@ -335,7 +337,8 @@
         label.className = "target-option";
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
-        checkbox.checked = selected.has(key);
+        checkbox.disabled = hasTask(item);
+        checkbox.checked = !checkbox.disabled && selected.has(key);
         checkbox.setAttribute("aria-label", `选择好友 ${item.name}`);
         const avatar = document.createElement("span");
         avatar.className = "target-option-avatar";
@@ -358,6 +361,7 @@
         strong.textContent = item.name;
         const small = document.createElement("small");
         small.textContent = [item.nickname !== item.name ? item.nickname : "", item.unique_id ? `抖音号 ${item.unique_id}` : ""].filter(Boolean).join(" · ") || (item.sec_uid ? "已匹配好友身份" : "最近会话 · 请核对昵称");
+        if (checkbox.disabled) small.textContent = "已有任务 · 请到任务列表编辑或恢复";
         copy.append(strong, small);
         const check = document.createElement("i");
         check.setAttribute("aria-hidden", "true");
@@ -422,6 +426,7 @@
         return;
       }
       const item = matches[0] || draft;
+      if (hasTask(item)) { setPickerFeedback("该好友已有任务，请编辑或恢复已有任务", "error"); return; }
       const key = keyFor(item);
       for (const [candidateKey, candidate] of selected) {
         if (!candidate.sec_uid && foldTargetName(candidate.name) === foldedName && candidateKey !== key) selected.delete(candidateKey);
@@ -447,6 +452,12 @@
       setStatus("正在读取该账号的最近会话…", "loading");
       setPickerFeedback("正在读取好友列表…", "loading");
       try {
+        const taskResponse = await fetch("/api/studio", {cache:"no-store", credentials:"same-origin", ...(activeController ? {signal:activeController.signal} : {})});
+        const taskState = await readJson(taskResponse);
+        if (!taskResponse.ok) throw new Error("任务列表读取失败，请重试");
+        if (version !== requestVersion) return;
+        existingTasks = taskState.tasks || [];
+        for (const [key,item] of selected) if (hasTask(item)) selected.delete(key);
         const response = await fetch(`/accounts/${encodeURIComponent(account.value)}/conversations`, {
           cache: "no-store", credentials: "same-origin", headers: {Accept: "application/json"},
           ...(activeController ? {signal: activeController.signal} : {}),
@@ -527,7 +538,7 @@
       addManualTarget();
     });
     root.querySelector("[data-target-select-all]").addEventListener("click", () => {
-      for (const item of visibleContacts()) selected.set(keyFor(item), item);
+      for (const item of visibleContacts()) if (!hasTask(item)) selected.set(keyFor(item), item);
       syncSelection();
     });
     root.querySelector("[data-target-clear]").addEventListener("click", () => {
