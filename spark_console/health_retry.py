@@ -1,0 +1,115 @@
+"""Recovery policy for temporary login checks; never a generic resend queue."""
+from datetime import timedelta, timezone
+from sqlalchemy import select, update
+from spark_console.models import (
+    TaskHealthRetry, TaskRun, SparkTask, DouyinAccount, User, UserSubscription,
+    AccountOperation, DouyinLoginSession,
+)
+
+WINDOW = timedelta(minutes=10)
+MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
+WAIT = timedelta(seconds=30)
+
+
+def aware(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def invalid_reason(db, run, pending, now, *, require_valid=False):
+    if run.submitted_at is not None or run.stage == "submitted":
+        return "health_retry_submitted", "已进入发送步骤，不会自动重发"
+    if aware(now) >= aware(pending.expires_at):
+        return "health_retry_expired", "超过原计划 10 分钟恢复窗口，本次不再补发"
+    if run.attempt > MAX_ATTEMPTS:
+        return "health_retry_exhausted", "已达到最多 2 次重试，本次停止"
+    task = db.get(SparkTask, run.task_id)
+    if not task or not task.enabled or aware(task.updated_at) != aware(pending.task_revision):
+        return "health_retry_cancelled", "任务已暂停或修改，取消本次恢复重试"
+    user = db.get(User, task.owner_user_id)
+    sub = db.get(UserSubscription, task.owner_user_id)
+    if not user or user.status != "active" or (user.role != "admin" and (
+        not sub or not aware(sub.valid_from) <= aware(now) < aware(sub.valid_until)
+    )):
+        return "health_retry_cancelled", "账号或会员当前不可用，取消本次恢复重试"
+    account = db.get(DouyinAccount, task.douyin_account_id) if task.douyin_account_id else None
+    if not account or account.owner_user_id != task.owner_user_id or account.validation_state in ("verification", "invalid"):
+        return "health_retry_cancelled", "账号需要人工验证或已失效，本次不再自动补发"
+    if db.scalar(select(DouyinLoginSession.id).where(
+        DouyinLoginSession.account_id == account.id,
+        DouyinLoginSession.slot.is_not(None),
+        DouyinLoginSession.status.in_(("queued","loading_qr","awaiting_scan","confirming")),
+        DouyinLoginSession.expires_at > now,
+    ).limit(1)):
+        return "health_retry_cancelled", "账号正在重新登录，取消本次自动补发"
+    if require_valid and account.validation_state != "valid":
+        return "health_retry_cancelled", "账号尚未复核正常，本次暂不发送"
+    return None
+
+
+def original_schedule(db, run):
+    origin = aware(run.scheduled_for)
+    for _ in range(MAX_ATTEMPTS):
+        prior = db.scalar(select(TaskRun).where(TaskRun.task_id == run.task_id,
+            TaskRun.status == "retrying", TaskRun.retry_after == origin,
+            TaskRun.scheduled_for < origin).order_by(TaskRun.scheduled_for).limit(1))
+        if prior is None:
+            break
+        origin = aware(prior.scheduled_for)
+    return origin
+
+
+def queue(db, task, run, now, reason):
+    from spark_console.scheduler import finish_run
+    pending = db.get(TaskHealthRetry, run.id)
+    if pending is None:
+        db.flush()
+        pending = TaskHealthRetry(run_id=run.id, task_revision=task.updated_at,
+            expires_at=original_schedule(db, run) + WINDOW, last_reason=reason[:240])
+        db.add(pending)
+    pending.last_reason = reason[:240]
+    invalid = invalid_reason(db, run, pending, now)
+    if invalid or run.attempt >= MAX_ATTEMPTS:
+        code, message = invalid or ("health_retry_exhausted", "已重试 2 次仍未通过登录检测，本次停止")
+        return finish_run(run, "failed", "authenticating", now, code, message)
+    return finish_run(run, "retrying", "authenticating", now,
+        "health_retry_waiting", "发送前登录检测暂时异常，等待复核正常后重试；原计划后 10 分钟内最多重试 2 次",
+        retry_after=now + WAIT)
+
+
+def claim(db, now, worker_id):
+    from spark_console.scheduler import finish_run, RUN_LEASE
+    # Only records explicitly created by the new policy are eligible. Historical
+    # failed runs never become candidates after an upgrade.
+    rows = db.execute(select(TaskRun, TaskHealthRetry).join(
+        TaskHealthRetry, TaskHealthRetry.run_id == TaskRun.id
+    ).where(TaskRun.status.in_(("retrying", "running"))).order_by(
+        TaskRun.scheduled_for, TaskRun.id
+    )).all()
+    for run, pending in rows:
+        if run.status == "running" and run.lease_until and aware(run.lease_until) > aware(now):
+            continue
+        invalid = invalid_reason(db, run, pending, now)
+        if invalid or run.attempt >= MAX_ATTEMPTS:
+            code, message = invalid or ("health_retry_exhausted", "已达到最多 2 次重试，本次停止")
+            status = "submitted_unconfirmed" if code == "health_retry_submitted" else "failed"
+            finish_run(run, status, "submitted" if status == "submitted_unconfirmed" else "authenticating", now, code, message)
+            continue
+        task = db.get(SparkTask, run.task_id)
+        account = db.get(DouyinAccount, task.douyin_account_id)
+        if account.validation_state != "valid" or (run.retry_after and aware(run.retry_after) > aware(now)):
+            continue
+        if db.scalar(select(AccountOperation.account_id).where(
+            AccountOperation.account_id == account.id, AccountOperation.expires_at > now)):
+            continue
+        claimed = db.execute(update(TaskRun).where(
+            TaskRun.id == run.id, TaskRun.status == run.status,
+            TaskRun.attempt == run.attempt, TaskRun.submitted_at.is_(None),
+        ).values(status="running", stage="health_retry", worker_id=worker_id,
+            attempt=run.attempt+1, started_at=now, finished_at=None,
+            lease_until=now+RUN_LEASE, retry_after=None, error_code=None, error_summary=None
+        ).execution_options(synchronize_session=False))
+        if claimed.rowcount == 1:
+            db.flush()
+            db.refresh(run)
+            return run
+    return None

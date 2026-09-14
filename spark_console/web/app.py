@@ -102,6 +102,8 @@ def shanghai_time(value) -> str:
 def run_view_status(run) -> dict[str, str]:
     status = str(getattr(run, "status", "") or "")
     error_code = str(getattr(run, "error_code", "") or "")
+    if status == "retrying" and error_code == "health_retry_waiting":
+        return {"label": "等待账号复核后重试", "tone": "warn", "kind": "retry"}
     if error_code.startswith("retry_scheduled_"):
         return {"label": "等待重试", "tone": "warn", "kind": "retry"}
     if status == "running":
@@ -121,6 +123,12 @@ def run_view_status(run) -> dict[str, str]:
 
 def run_guidance(run) -> dict[str, str] | None:
     code = str(getattr(run, "error_code", "") or "")
+    if code == 'health_retry_waiting':
+        return {'text':'本次尚未提交消息。账号复核正常后，将在原计划后 10 分钟内最多重试 2 次；暂停或修改任务会取消本次补发。', 'action':'account'}
+    if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'}:
+        return {'text':'本次恢复重试已结束，不会继续补发。请查看账号状态；下一天的正常计划不受影响。', 'action':'account'}
+    if code == 'health_retry_submitted':
+        return {'text':'消息已进入提交步骤，为避免重复消息不会自动重发，请核对抖音聊天记录。', 'action':'none'}
     if code in {'account_health_pending', 'account_health_blocked'}:
         return {'text':'账号暂缓发送，正在复核或等待处理；任务开关保持不变，恢复后继续后续计划，本次不会自动补发。', 'action':'account'}
     if code == 'account_verification_required':

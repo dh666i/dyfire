@@ -486,6 +486,16 @@ class TaskRun(Base):
     message_digest: Mapped[str | None] = mapped_column(String(64))
 
 
+class TaskHealthRetry(Base):
+    """Durable, bounded recovery of one unsubmitted scheduled run."""
+    __tablename__ = "task_health_retries"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("task_runs.id", ondelete="CASCADE"), primary_key=True)
+    task_revision: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    last_reason: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+
+
 class WebSession(Base):
     __tablename__ = "web_sessions"
 

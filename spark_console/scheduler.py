@@ -13,6 +13,7 @@ from spark_console.models import (
     DouyinLoginSession,
     SparkTask,
     TaskRun,
+    TaskHealthRetry,
     User,
     UserSubscription,
 )
@@ -83,6 +84,7 @@ def _reclaim_expired_run(
             TaskRun.status == "running",
             TaskRun.submitted_at.is_(None),
             TaskRun.stage != "submitted",
+            ~exists().where(TaskHealthRetry.run_id == TaskRun.id),
             _expired_lease(now_utc),
         )
         .order_by(TaskRun.started_at, TaskRun.id)
@@ -121,6 +123,10 @@ def claim_next_due_task(
 ) -> TaskRun | None:
     now_utc = _utc(now)
     _protect_expired_submissions(session, now_utc)
+    from spark_console.health_retry import claim as claim_health_retry
+    recovery = claim_health_retry(session, now_utc, worker_id)
+    if recovery is not None:
+        return recovery
     reclaimed = _reclaim_expired_run(session, now_utc, worker_id)
     if reclaimed is not None:
         return reclaimed

@@ -138,7 +138,7 @@ document.addEventListener('click',async e=>{
       button.setAttribute('aria-label',`${enabled?'暂停':'恢复'} ${task.name} 的任务`);
       const status=row.querySelector('.state');
       status.className='state '+(!enabled?'paused':task.confirmed?'confirmed':'waiting');
-      status.textContent=!enabled?'已暂停':task.confirmed?'发送已确认':task.status==='submitted_unconfirmed'?'已提交，待核实':task.status==='failed'?'执行失败':task.status==='running'?'执行中':'等待执行';
+      status.textContent=!enabled?'已暂停':task.confirmed?'发送已确认':task.status==='submitted_unconfirmed'?'已提交，待核实':task.status==='failed'?'执行失败':task.status==='running'?'执行中':task.status==='retrying'?'等待恢复重试':'等待执行';
       status.prepend(document.createElement('i'));
       $('#active-count').textContent=String(studio.tasks.filter(t=>t.enabled).length).padStart(2,'0');
     }

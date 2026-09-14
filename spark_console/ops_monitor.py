@@ -404,7 +404,13 @@ def _eligible_due_tasks(db: Session, now: datetime) -> int:
 
 
 def _current_retries(db: Session, now: datetime) -> int:
-    return int(
+    from spark_console.models import TaskHealthRetry
+    from spark_console.health_retry import invalid_reason
+    recovery = sum(1 for run, pending in db.execute(
+        select(TaskRun, TaskHealthRetry).join(TaskHealthRetry, TaskHealthRetry.run_id == TaskRun.id)
+        .where(TaskRun.status == "retrying")
+    ) if invalid_reason(db, run, pending, now) is None)
+    return recovery + int(
         db.scalar(
             select(func.count(func.distinct(TaskRun.task_id)))
             .select_from(TaskRun)
@@ -426,6 +432,7 @@ def _current_retries(db: Session, now: datetime) -> int:
                 TaskRun.status == "retrying",
                 TaskRun.retry_after.is_not(None),
                 TaskRun.retry_after == SparkTask.next_run_at,
+                ~select(TaskHealthRetry.run_id).where(TaskHealthRetry.run_id == TaskRun.id).exists(),
             )
         )
         or 0

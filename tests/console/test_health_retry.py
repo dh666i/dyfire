@@ -1,0 +1,176 @@
+import asyncio
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from spark_console.db import create_schema
+from spark_console.models import TaskRun, TaskHealthRetry, SparkTask, DouyinAccount, UserSubscription
+from spark_console.executor import ExecutionResult
+from spark_console.worker import Worker
+from spark_console.scheduler import claim_next_due_task
+from spark_console.services.account_health import record, snapshot
+from tests.console import test_scheduler_worker as fixtures
+from sqlalchemy import create_engine
+import pytest
+
+@pytest.fixture
+def case(tmp_path):
+    now = datetime(2026, 9, 15, 1, 0, tzinfo=timezone.utc)
+    settings = fixtures.WorkerCredentialTests._settings(tmp_path)
+    engine = create_engine(settings.database_url)
+    create_schema(engine)
+    account_id, tasks = fixtures.WorkerCredentialTests._seed_health_case(engine, now)
+    yield now, settings, engine, account_id, tasks[0]
+    engine.dispose()
+
+class Executor:
+    def __init__(self, *, fail=True, submitted=False, health="temporary"):
+        self.calls = 0
+        self.fail, self.submitted, self.health = fail, submitted, health
+    async def execute(self, cookies, target_name, message, *, on_submitted=None, **kwargs):
+        self.calls += 1
+        if self.submitted and on_submitted:
+            on_submitted()
+        if self.fail:
+            return ExecutionResult(False, "authenticating", "account_health_pending",
+                "temporary test", health_state=self.health, health_reason="test")
+        return ExecutionResult(True, "complete")
+
+def attempt(case, executor, offset=0):
+    now, settings, engine, _, _ = case
+    at=now+timedelta(seconds=offset)
+    return asyncio.run(Worker(settings,engine,executor=executor,
+        started_at=at-timedelta(seconds=1)).run_once(at))
+
+def recover(case, seconds=40):
+    now, _, engine, aid, _=case
+    with Session(engine) as db:
+        a=db.get(DouyinAccount,aid)
+        record(db,aid,snapshot(a),"valid","复核正常",now=now+timedelta(seconds=seconds),recheck=True)
+        db.commit()
+
+def test_recovery_retries_same_run_without_changing_next_day(case):
+    first=attempt(case,Executor())
+    assert first.status=="retrying" and first.submitted_at is None
+    now,_,engine,aid,tid=case
+    with Session(engine) as db:
+        following=db.get(SparkTask,tid).next_run_at
+        assert claim_next_due_task(db,now+timedelta(seconds=35),"other") is None
+    recover(case)
+    result=attempt(case,Executor(fail=False),60)
+    assert result.id==first.id and result.status=="success" and result.attempt==2
+    with Session(engine) as db:
+        assert db.get(SparkTask,tid).next_run_at==following
+        assert len(db.scalars(select(TaskRun)).all())==1
+        assert claim_next_due_task(db,now+timedelta(seconds=65),"other") is None
+
+def test_two_retries_max(case):
+    first=attempt(case,Executor())
+    for seconds in (60,120):
+        recover(case,seconds-10)
+        result=attempt(case,Executor(),seconds)
+    assert result.id==first.id and result.attempt==3 and result.status=="failed"
+    assert result.error_code=="health_retry_exhausted"
+    recover(case,150)
+    assert attempt(case,Executor(fail=False),180) is None
+
+@pytest.mark.parametrize("reason",["expiry","edited","paused","membership","verification","invalid"])
+def test_ineligible_recovery_never_executes(case,reason):
+    first=attempt(case,Executor())
+    now,_,engine,aid,tid=case
+    recover(case)
+    with Session(engine) as db:
+        task=db.get(SparkTask,tid)
+        if reason=="edited": task.message_template="changed"
+        if reason=="paused": task.enabled=False
+        if reason=="membership": db.get(UserSubscription,task.owner_user_id).valid_until=now+timedelta(seconds=5)
+        if reason in ("verification","invalid"): db.get(DouyinAccount,aid).validation_state=reason
+        db.commit()
+    executor=Executor(fail=False)
+    assert attempt(case,executor,601 if reason=="expiry" else 60) is None
+    assert executor.calls==0
+    with Session(engine) as db:
+        run=db.get(TaskRun,first.id)
+        assert run.status=="failed" and run.error_code.startswith("health_retry_")
+
+@pytest.mark.parametrize("health",["temporary","verification","logged_out"])
+def test_submission_boundary_wins_over_health_error(case,health):
+    result=attempt(case,Executor(submitted=True,health=health))
+    assert result.status=="submitted_unconfirmed"
+    with Session(case[2]) as db:
+        assert db.get(TaskHealthRetry,result.id) is None
+
+def test_explicit_login_failure_does_not_queue(case):
+    result=attempt(case,Executor(health="logged_out"))
+    assert result.status=="failed"
+    with Session(case[2]) as db:
+        assert db.get(TaskHealthRetry,result.id) is None
+
+def test_old_failures_are_not_replayed(case):
+    first=attempt(case,Executor(health="verification"))
+    recover(case)
+    assert attempt(case,Executor(fail=False),60) is None
+
+def test_claim_is_not_duplicated_and_expired_crash_is_bounded(case):
+    first=attempt(case,Executor())
+    recover(case)
+    now,_,engine,_,_=case
+    with Session(engine) as db:
+        run=claim_next_due_task(db,now+timedelta(seconds=60),"a")
+        assert run.id==first.id
+        db.commit()
+    with Session(engine) as db:
+        assert claim_next_due_task(db,now+timedelta(seconds=61),"b") is None
+        db.commit()
+    with Session(engine) as db:
+        assert claim_next_due_task(db,now+timedelta(minutes=21),"b") is None
+        db.commit()
+        assert db.get(TaskRun,first.id).error_code=="health_retry_expired"
+
+def test_submit_checkpoint_enforces_expiration(case):
+    attempt(case,Executor())
+    recover(case)
+    now,settings,engine,_,_=case
+    class ExpiringExecutor(Executor):
+        async def execute(self,cookies,target_name,message,*,on_submitted=None,**kwargs):
+            clock[0]=now+timedelta(seconds=601)
+            with pytest.raises(RuntimeError):
+                on_submitted()
+            return ExecutionResult(False,"sending","checkpoint_failed",retryable=True)
+    clock=[now+timedelta(seconds=590)]
+    result=asyncio.run(Worker(settings,engine,executor=ExpiringExecutor(),
+        started_at=now,clock=lambda:clock[0]).run_once(clock[0]))
+    assert result.submitted_at is None and result.status=="failed"
+    assert result.error_code=="health_retry_expired"
+def test_monitor_counts_waiting_health_retry(case):
+    from spark_console.ops_monitor import _current_retries
+    attempt(case, Executor())
+    with Session(case[2]) as db:
+        assert _current_retries(db, case[0] + timedelta(seconds=15)) == 1
+        assert _current_retries(db, case[0] + timedelta(seconds=601)) == 0
+
+
+def test_generic_retry_keeps_original_deadline(case):
+    now, _, engine, _, tid = case
+    from spark_console.health_retry import original_schedule
+    with Session(engine) as db:
+        prior = TaskRun(task_id=tid, scheduled_for=now, status="retrying",
+                        retry_after=now+timedelta(minutes=1), attempt=1)
+        current = TaskRun(task_id=tid, scheduled_for=now+timedelta(minutes=1),
+                          status="running", attempt=2)
+        db.add_all([prior, current])
+        db.flush()
+        assert original_schedule(db, current) == now
+
+
+def test_submitted_retry_crash_never_reclaims(case):
+    first = attempt(case, Executor())
+    recover(case)
+    now, _, engine, _, _ = case
+    with Session(engine) as db:
+        run = claim_next_due_task(db, now+timedelta(seconds=60), "a")
+        run.submitted_at = now+timedelta(seconds=65)
+        run.stage = "submitted"
+        db.commit()
+    with Session(engine) as db:
+        assert claim_next_due_task(db, now+timedelta(minutes=21), "b") is None
+        assert db.get(TaskRun, first.id).status == "submitted_unconfirmed"

@@ -22,6 +22,7 @@ from spark_console.models import (
     SparkTask,
     SparkTaskTargetIdentity,
     TaskRun,
+    TaskHealthRetry,
     User,
     WorkerLock,
 )
@@ -76,7 +77,7 @@ class Worker:
             if run is None:
                 return None
             run_id = run.id
-            reclaimed = run.stage == "reclaimed"
+            reclaimed = run.stage in ("reclaimed", "health_retry")
             scheduled = (
                 run.scheduled_for
                 if run.scheduled_for.tzinfo
@@ -431,6 +432,12 @@ class Worker:
         checkpoint_time = submitted_at or self._clock()
         try:
             with session_scope(self.engine) as db:
+                pending = db.get(TaskHealthRetry, run_id)
+                if pending is not None:
+                    from spark_console.health_retry import invalid_reason
+                    retry_run = db.get(TaskRun, run_id)
+                    if invalid_reason(db, retry_run, pending, checkpoint_time, require_valid=True):
+                        raise RuntimeError("health retry is no longer eligible")
                 updated = db.execute(
                     update(TaskRun)
                     .where(
@@ -560,15 +567,27 @@ class Worker:
                         error_summary,
                     )
 
+                health_recorded = False
                 if (
                     (result.health_state or result.error_code == "cookie_invalid")
                     and account_id
                     and credential_snapshot
                 ):
                     from spark_console.services.account_health import record
-                    record(db, account_id, credential_snapshot, result.health_state or 'temporary',
+                    health_recorded = record(db, account_id, credential_snapshot, result.health_state or 'temporary',
                         result.health_reason or '登录检测报告异常，尚未复核', now=finished_at)
-                if not result.success and result.retryable:
+                if (not result.success and result.stage == "authenticating"
+                    and result.error_code == "account_health_pending"
+                    and result.health_state == "temporary" and health_recorded):
+                    from spark_console.health_retry import queue
+                    return queue(db, task, run, finished_at, result.error_summary or "临时登录检测异常")
+                pending = db.get(TaskHealthRetry, run.id)
+                if pending is not None and not result.success:
+                    from spark_console.health_retry import invalid_reason
+                    invalid = invalid_reason(db, run, pending, finished_at)
+                    if invalid:
+                        return finish_run(run, "failed", result.stage, finished_at, *invalid)
+                if not result.success and result.retryable and pending is None:
                     retry = self._schedule_retry(
                         db, task, run, finished_at, result.stage
                     )
