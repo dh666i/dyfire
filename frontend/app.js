@@ -66,6 +66,7 @@ $('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01
 $('header .profile').outerHTML='<details class="profile-menu"><summary class="profile" aria-label="账户中心">·</summary><div class="profile-popover"><a href="/studio?view=overview">今日概览</a><a href="/subscription">会员订阅</a><a href="/account-center">账户中心</a><a href="/notifications">通知设置</a><a href="/help">使用帮助</a></div></details>';
 document.addEventListener('click',e=>{if(!e.target.closest('.profile-menu'))$('.profile-menu').open=false;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('.profile-menu').open=false;});
+function existingTask(c){return studio.tasks.find(t=>t.accountId===$('#account').value&&(t.sec_uid&&c.sec_uid?t.sec_uid===c.sec_uid:t.name.trim().toLocaleLowerCase()===c.name.trim().toLocaleLowerCase()));}
 async function loadContacts(searchItems=null){
   const generation=++contactGeneration;
   const sameAccount=contactsAccount===$('#account').value;
@@ -83,17 +84,17 @@ async function loadContacts(searchItems=null){
     const data=searchItems ? {items:searchItems} : await request('/accounts/'+encodeURIComponent(account)+'/conversations');
     if(generation!==contactGeneration)return;
     contacts=[...data.items,...chosen.filter(c=>!data.items.some(item=>identity(item)===identity(c)))];studio.friends.splice(0,studio.friends.length,...contacts.map(c=>c.name));
-    $('#friend-list').innerHTML=contacts.map((c,i)=>`<label class="friend-option" data-name="${esc([c.name,c.nickname,c.remark_name].filter(Boolean).join(' ').toLowerCase())}"><input type="checkbox" value="${i}" name="friend"><span class="avatar">${c.avatar_url?`<img src="${esc(c.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`:esc(c.name[0])}</span><span>${esc(c.name)}<small>${esc(c.nickname||'抖音好友')}</small></span><span class="checkmark">✓</span></label>`).join('')||'暂无好友记录，请在账号页同步好友后刷新。';
+    $('#friend-list').innerHTML=contacts.map((c,i)=>`<label class="friend-option" data-name="${esc([c.name,c.nickname,c.remark_name].filter(Boolean).join(' ').toLowerCase())}"><input type="checkbox" value="${i}" name="friend" ${existingTask(c)?'disabled aria-label="已有任务"':''}><span class="avatar">${c.avatar_url?`<img src="${esc(c.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`:esc(c.name[0])}</span><span>${esc(c.name)}<small>${esc(existingTask(c)?(existingTask(c).enabled?'已有任务':'已有任务 · 已暂停'):c.nickname||'抖音好友')}</small></span><span class="checkmark">✓</span></label>`).join('')||'暂无好友记录，请在账号页同步好友后刷新。';
     if(!searchItems)$('#friend-search').value='';
     $('#friend-empty').hidden=contacts.length>0;
-    document.querySelectorAll('[name=friend]').forEach(el=>{el.checked=chosenIds.has(identity(contacts[Number(el.value)]));});studio.syncSelection();
+    document.querySelectorAll('[name=friend]').forEach(el=>{el.checked=!el.disabled&&chosenIds.has(identity(contacts[Number(el.value)]));});studio.syncSelection();
   }catch(error){if(generation===contactGeneration){if(sameAccount){contacts=previousContacts;$('#friend-list').innerHTML=previousMarkup;document.querySelectorAll('[name=friend]').forEach(el=>el.checked=chosenIds.has(identity(contacts[Number(el.value)])));studio.syncSelection();toast('读取未完成，保留上次列表和选择。');}else $('#friend-list').textContent=error.message;}}
   finally{if(generation===contactGeneration)$('#friend-list').setAttribute('aria-busy','false');}
 }
 $('#friend-list').addEventListener('change',studio.syncSelection);
 $('#account').addEventListener('change',()=>loadContacts());
 document.addEventListener('directory-updated',e=>{if(e.detail.accountId===$('#account').value)loadContacts(e.detail.query ? e.detail.items : null);});
-$('#choose-friends').onclick=async()=>{$('#friends-dialog').showModal();if(!contacts.length)await loadContacts();};
+$('#choose-friends').onclick=async()=>{$('#friends-dialog').showModal();await load();await loadContacts();};
 $('#create-form').onsubmit=async e=>{
   e.preventDefault();if(busy||!state)return;
   const selected=[...document.querySelectorAll('[name=friend]:checked')].map(c=>contacts[Number(c.value)]);

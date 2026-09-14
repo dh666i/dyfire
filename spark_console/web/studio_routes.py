@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 
 from spark_console.db import session_scope
-from spark_console.models import DouyinAccount, SparkTask, TaskRun
+from spark_console.models import DouyinAccount, SparkTask, TaskRun, SparkTaskTargetIdentity
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.accounts import AccountService
 from spark_console.services.account_health import views
@@ -52,6 +52,7 @@ def build_studio_router(engine, auth, cipher):
             user, record = auth.current(request, db)
             accounts = db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)).all()
             tasks = db.scalars(select(SparkTask).where(SparkTask.owner_user_id == user.id)).all()
+            identities = {t.id: db.get(SparkTaskTargetIdentity, t.id) for t in tasks}
             health = views(db, accounts)
             avatars = task_avatar_map(db, tasks)
             today = datetime.now(ZoneInfo('Asia/Shanghai')).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
@@ -62,7 +63,7 @@ def build_studio_router(engine, auth, cipher):
             membership = membership_summary(db, user)
             return {'user': {'id': user.id, 'name': user.username, 'role': user.role}, 'csrf': record.csrf_token,
                     'accounts': [{'id': a.id, 'name': a.display_name, 'health': health[a.id]} for a in accounts],
-                    'tasks': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id,
+                    'tasks': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id, 'sec_uid': identities[t.id].sec_uid if identities[t.id] else '',
                                'time': t.send_time, 'kind': '续火花表情' if t.message_kind == 'douyin_sticker' else '文字消息',
                                'message': t.message_template, 'enabled': t.enabled, 'avatar': avatars.get(t.id),
                                'confirmed': latest.get(t.id) == 'success', 'status': latest.get(t.id, 'scheduled')} for t in tasks],

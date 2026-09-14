@@ -50,6 +50,7 @@ def main():
         for name in ('web','static','templates'):
             shutil.copytree(SOURCE/'spark_console'/name,ROOT/'spark_console'/name,dirs_exist_ok=True)
         shutil.copy2(SOURCE/'spark_console/version.py',ROOT/'spark_console/version.py')
+        shutil.copy2(SOURCE/'spark_console/services/tasks.py',ROOT/'spark_console/services/tasks.py')
         shutil.copy2(SOURCE/'VERSION',ROOT/'VERSION')
         shutil.copytree(SOURCE/'frontend/dist',ROOT/'frontend/dist',dirs_exist_ok=True)
         print('Deployed '+VERSION+'; backup: '+str(backup))

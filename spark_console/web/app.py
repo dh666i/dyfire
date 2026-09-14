@@ -699,6 +699,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             service = TaskService(db, account_service, AuditService(db))
             try:
                 task = service.get_owned(user.id, task_id)
+                account_id = task.douyin_account_id
+                target_name = task.target_name
+                binding = db.get(SparkTaskTargetIdentity, task.id)
+                target_sec_uid = binding.sec_uid if binding else ""
                 service.update_owned(
                     user.id,
                     task_id,

@@ -45,7 +45,7 @@ def _normalize_message_payload(
         return kind, message
     if kind == DOUYIN_STICKER_MESSAGE_KIND:
         if message and message != DOUYIN_SPARK_STICKER:
-            raise ValidationError("当前仅支持抖音原生续火花表情")
+            raise ValidationError("当前仅支持续火花表情")
         return kind, DOUYIN_SPARK_STICKER
     raise ValidationError("不支持的消息类型")
 
@@ -208,12 +208,16 @@ class TaskService:
             ) is None:
                 raise ValidationError("所选好友不属于当前抖音账号")
 
-        existing_targets = self._active_schedule_targets(account.id, send_time)
+        existing_targets = list(self.session.execute(
+            select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
+            .outerjoin(SparkTaskTargetIdentity, SparkTaskTargetIdentity.task_id == SparkTask.id)
+            .where(SparkTask.douyin_account_id == account.id)
+        ).all())
         if any(
             self._has_target_conflict(existing_targets, target, stable_target)
             for target, stable_target in normalized_targets
         ):
-            raise Conflict("相同账号、好友和时间的启用任务已存在")
+            raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")
 
         local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
         hour, minute = map(int, send_time.split(":"))

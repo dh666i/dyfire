@@ -63,3 +63,21 @@ def test_expired_auth_returns_json(site):
     response=client.get('/api/studio')
     assert response.status_code==401
     assert response.headers['content-type'].startswith('application/json')
+
+def test_existing_recipient_is_fixed_and_cannot_be_created_again(site):
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    headers={'X-CSRF-Token':state['csrf']}
+    payload={'account_id':owned,'targets':[{'name':'Friend'}],'send_time':'09:30'}
+    task_id=client.post('/api/studio/tasks',json=payload,headers=headers).json()['ids'][0]
+    client.post(f'/api/studio/tasks/{task_id}/enabled',json={'enabled':False},headers=headers)
+    duplicate=client.post('/api/studio/tasks',json={**payload,'send_time':'11:00'},headers=headers)
+    assert duplicate.status_code==409
+    assert len(client.get('/api/studio').json()['tasks'])==1
+    page=client.get(f'/tasks/{task_id}/edit').text
+    assert 'id="refresh-targets"' not in page
+    assert 'id="task-target"' not in page
+    result=client.post(f'/tasks/{task_id}/edit',data={'csrf_token':state['csrf'],'account_id':owned,'target_name':'Changed','send_time':'12:00','message_kind':'douyin_sticker','message_template':'续火花'},follow_redirects=False)
+    assert result.status_code==303
+    saved=client.get('/api/studio').json()['tasks'][0]
+    assert saved['name']=='Friend' and saved['time']=='12:00' and saved['enabled'] is False

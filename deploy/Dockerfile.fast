@@ -2,6 +2,7 @@
 # the deployed runtime. A full release build uses Dockerfile.console.
 ARG DYFIRE_BASE_IMAGE
 FROM ${DYFIRE_BASE_IMAGE}
+COPY --chown=spark:spark spark_console/services/tasks.py /app/spark_console/services/tasks.py
 COPY --chown=spark:spark VERSION /app/VERSION
 COPY --chown=spark:spark spark_console/web /app/spark_console/web
 COPY --chown=spark:spark spark_console/version.py /app/spark_console/version.py

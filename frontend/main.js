@@ -44,7 +44,7 @@ document.addEventListener('click', e => {
 $('#search').oninput=e=>{term=e.target.value.trim().toLowerCase();render();};
 $('#friend-search').oninput=e=>{let count=0;document.querySelectorAll('.friend-option').forEach(el=>{el.hidden=!el.dataset.name.includes(e.target.value.trim().toLowerCase());if(!el.hidden)count++;});$('#friend-empty').hidden=!!count;};
 document.querySelectorAll('[name=friend]').forEach(c=>c.onchange=syncSelection);
-$('#select-visible').onclick=()=>{document.querySelectorAll('.friend-option:not([hidden]) input').forEach(c=>c.checked=true);syncSelection();};
+$('#select-visible').onclick=()=>{document.querySelectorAll('.friend-option:not([hidden]) input:not(:disabled)').forEach(c=>c.checked=true);syncSelection();};
 $('#clear-selection').onclick=()=>{document.querySelectorAll('[name=friend]').forEach(c=>c.checked=false);syncSelection();};
 $('#kind').onchange=()=>{const text=$('#kind').value==='文字消息';$('#message').hidden=$('#message-label').hidden=!text;$('#message').required=text;$('#preview-title').textContent=text?'自定义文字消息':'续火花表情';$('#preview-copy').textContent=text?'将按设定时间发送你填写的内容。':'每天定时，给选中的好友发送续火花表情。';};
 
