@@ -546,48 +546,9 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
 
     @app.get("/tasks")
     def tasks_page(request: Request):
-        with session_scope(engine) as db:
-            user, _record, context = auth.user_context(request, db)
-            task_service = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db))
-            accounts = AccountService(db, cipher, AuditService(db)).list_owned(user.id)
-            tasks = task_service.list_owned(user.id)
-            latest_runs: dict[str, TaskRun] = {}
-            if tasks:
-                latest_schedule = (
-                    select(
-                        TaskRun.task_id,
-                        func.max(TaskRun.scheduled_for).label("scheduled_for"),
-                    )
-                    .join(SparkTask, SparkTask.id == TaskRun.task_id)
-                    .where(SparkTask.owner_user_id == user.id)
-                    .group_by(TaskRun.task_id)
-                    .subquery()
-                )
-                latest_runs = {
-                    run.task_id: run
-                    for run in db.scalars(
-                        select(TaskRun).join(
-                            latest_schedule,
-                            and_(
-                                TaskRun.task_id == latest_schedule.c.task_id,
-                                TaskRun.scheduled_for
-                                == latest_schedule.c.scheduled_for,
-                            ),
-                        )
-                    ).all()
-                }
-            return page(
-                request,
-                "tasks.html",
-                title="续火任务",
-                task_avatars=task_avatar_map(db, tasks),
-                tasks=tasks,
-                account_health=health_views(db, db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)).all()),
-                accounts=accounts,
-                account_names={item["id"]: item["display_name"] for item in accounts},
-                latest_runs=latest_runs,
-                **context,
-            )
+        # Keep old bookmarks working; Studio is the only task-list surface.
+        query = str(request.url.query)
+        return RedirectResponse("/studio" + ("?" + query if query else ""), status_code=303)
 
     @app.post("/tasks")
     def add_task(
@@ -647,8 +608,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 raise HTTPException(409, str(error)) from error
             created_id=created[0].id
         if request.headers.get('accept')=='application/json':
-            return JSONResponse({'url':'/tasks?notice=task-created#task-'+created_id},status_code=201)
-        return RedirectResponse("/tasks?notice=task-created", status_code=303)
+            return JSONResponse({'url':'/studio?notice=task-created#task-'+created_id},status_code=201)
+        return RedirectResponse("/studio?notice=task-created", status_code=303)
 
     @app.get("/tasks/{task_id}/edit")
     def edit_task_page(request: Request, task_id: str):
@@ -735,7 +696,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     error=str(error),
                     **context,
                 )
-        return RedirectResponse("/tasks?notice=task-updated", status_code=303)
+        return RedirectResponse("/studio?notice=task-updated", status_code=303)
 
     @app.post("/tasks/{task_id}/toggle")
     def toggle_task(request: Request, task_id: str, csrf_token: str = Form(default="")):
@@ -765,7 +726,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             except Conflict as error:
                 raise HTTPException(409, str(error)) from error
         notice = "task-enabled" if enabled else "task-paused"
-        return RedirectResponse(f"/tasks?notice={notice}", status_code=303)
+        return RedirectResponse(f"/studio?notice={notice}", status_code=303)
 
     @app.post("/tasks/{task_id}/delete")
     def delete_task(request: Request, task_id: str, csrf_token: str = Form(default="")):
@@ -780,9 +741,9 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 ).delete_owned(user.id, task_id)
             except Conflict:
                 return RedirectResponse(
-                    "/tasks?notice=task-running", status_code=303
+                    "/studio?notice=task-running", status_code=303
                 )
-        return RedirectResponse("/tasks?notice=task-deleted", status_code=303)
+        return RedirectResponse("/studio?notice=task-deleted", status_code=303)
 
     @app.get("/runs")
     def runs_page(

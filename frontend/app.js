@@ -146,11 +146,15 @@ document.addEventListener('click',async e=>{
   finally{busy=false;button.disabled=false;button.removeAttribute('aria-busy');}
 });
 load().then(()=>{
+  const notices={'task-updated':'任务已保存','task-created':'任务已创建','task-deleted':'任务已删除','task-enabled':'任务已恢复','task-paused':'任务已暂停','task-running':'任务正在执行，请稍后操作'};
+  const url=new URL(location.href),notice=notices[url.searchParams.get('notice')];
+  if(notice){toast(notice);url.searchParams.delete('notice');history.replaceState(history.state,'',url.pathname+url.search+url.hash);}
   document.querySelectorAll('a[href="/studio?view=overview"]').forEach(link=>link.href='/dashboard');
   $('.profile-popover a[href="/help"]').insertAdjacentHTML('beforebegin','<a href="/attention">待处理事项</a>');
   const directory=document.createElement('script');directory.src='/static/directory_ui.js?v=0.1.5';document.body.append(directory);
   installPages({state,studio,request});
   installTaskWorkspace({state,studio});
+  if(location.hash==='#new-task')document.querySelector('[data-open-studio-create]')?.click();
 }).catch(error=>{$('#account-status').textContent='暂时无法读取';$('#form-feedback').textContent=error.message;$('#create-form .submit').disabled=true;});
 document.addEventListener('studio:render-tasks',decorateTasks);
 document.querySelector('#friend-search').addEventListener('input',event=>{

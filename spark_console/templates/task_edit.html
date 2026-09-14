@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block content %}
 <section class="task-edit-page">
   <div class="task-edit-card panel">
-    <a class="edit-back" href="/tasks">← 返回任务列表</a>
+    <a class="edit-back" href="/studio">← 返回任务列表</a>
     <header class="edit-heading">
       <div><span class="eyebrow">修改计划</span><h1>编辑续火任务</h1><p>修改后会重新计算下一次发送时间，任务的启用状态保持不变。</p></div>
       <span class="pill {{ 'good' if task.enabled else 'off' }}">{{ '已启用' if task.enabled else '已暂停' }}</span>
@@ -30,7 +30,7 @@
         <small class="field-hint field-counter"><span id="task-message-count">{{ form.message_template|length }}</span>/500 字</small>
       </label></div>
       <div id="task-message-sticker-field" class="native-sticker-choice"{% if form.message_kind != 'douyin_sticker' %} hidden{% endif %}><span class="field-label">原生表情</span><div class="native-sticker-preview" role="status" aria-label="将发送续火花表情"><span aria-hidden="true">✦</span>续火花</div><small class="field-hint">发送时会从抖音表情面板选择原生表情，不会发送普通文字。</small></div>
-      <div class="edit-actions"><a class="button quiet" href="/tasks">取消</a><button type="submit">保存修改</button></div>
+      <div class="edit-actions"><a class="button quiet" href="/studio">取消</a><button type="submit">保存修改</button></div>
     </form>
   </div>
 </section>

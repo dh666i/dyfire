@@ -152,7 +152,7 @@
         // A network failure may happen after commit: leave submission locked.
         feedback.textContent = '暂时无法确认保存结果，已停止重复提交。请先查看任务列表，确认是否创建成功。当前填写内容仍保留。';
         feedback.setAttribute('role','alert');
-        const link = document.createElement('a'); link.href = '/tasks'; link.target = '_blank'; link.rel = 'noopener'; link.textContent = ' 在新页面核对任务'; feedback.append(link);
+        const link = document.createElement('a'); link.href = '/studio'; link.target = '_blank'; link.rel = 'noopener'; link.textContent = ' 在新页面核对任务'; feedback.append(link);
       });
       return;
     }

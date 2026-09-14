@@ -6,7 +6,7 @@
 <div class="studio-dashboard">
   <header class="studio-heading">
     <div><span class="studio-overline" data-studio-date>今日工作台</span><h1>今日续火</h1></div>
-    <div class="studio-heading-actions"><a class="button quiet" href="/runs">执行记录</a>{% if tasks %}<a class="button quiet" href="/tasks#new-task">新建任务{{ icon('arrow', 16) }}</a>{% endif %}</div>
+    <div class="studio-heading-actions"><a class="button quiet" href="/runs">执行记录</a>{% if tasks %}<a class="button quiet" href="/studio#new-task">新建任务{{ icon('arrow', 16) }}</a>{% endif %}</div>
   </header>
   <section class="overview-accounts" aria-labelledby="overview-accounts-title">
     <header class="studio-section-title"><h2 id="overview-accounts-title">账号状态 <span class="studio-count">{{ accounts|length }}</span></h2><a href="/accounts">管理账号 ↗</a></header>
@@ -24,7 +24,7 @@
   {% if membership and not membership.active %}<section class="action-summary"><div><strong>下一步：开通会员</strong><p>先确认账号与任务额度，再绑定抖音账号。</p></div><a class="button" href="/subscription">查看会员</a></section>
   {% elif not accounts %}<section class="action-summary"><div><strong>下一步：绑定你的抖音账号</strong><p>准备好抖音 App，扫码后按平台提示完成验证。</p></div><a class="button" href="/accounts">开始绑定</a></section>
   {% elif account_attention|default(0) %}<section class="action-summary"><div><strong>{{ account_attention }} 个账号需要关注</strong><p>自动复核或安全验证期间，相关任务暂缓；恢复后执行后续计划。</p></div><a class="button" href="/accounts">查看账号状态</a></section>
-  {% elif not tasks %}<section class="action-summary"><div><strong>下一步：选择续火好友</strong><p>支持一次选择多个好友，每位好友独立生成计划。</p></div><a class="button" href="/tasks#new-task">创建计划</a></section>
+  {% elif not tasks %}<section class="action-summary"><div><strong>下一步：选择续火好友</strong><p>支持一次选择多个好友，每位好友独立生成计划。</p></div><a class="button" href="/studio#new-task">创建计划</a></section>
   {% elif today_attention|default(0) %}<section class="action-summary"><div><strong>有 {{ today_attention }} 条执行记录需要核对</strong><p>已提交但尚未确认的记录不会计入成功，请先核对，避免重复发送。</p></div><a class="button" href="/runs?status=attention">查看执行结果</a></section>{% endif %}
   {% if not setup_complete %}
   <details class="setup-progress"><summary>首次设置进度 <span>{{ [onboarding.membership, onboarding.account, onboarding.task, onboarding.success]|select|list|length if onboarding is defined else 0 }} / 4</span></summary>
@@ -34,11 +34,11 @@
   <section class="studio-metrics" aria-label="今日运行总览">
     <a class="studio-metric studio-metric-lead" href="/runs?status=success"><span>今日确认成功</span><strong>{{ today_success|default(0) }}<small>条</small></strong><p>已确认的发送结果</p></a>
     <a class="studio-metric" href="/runs?status=submitted_unconfirmed"><span>已提交 · 待核实</span><strong>{{ today_unconfirmed|default(0) }}<small>条</small></strong><p>与确认成功分开统计</p></a>
-    <a class="studio-metric" href="/tasks"><span>启用任务</span><strong>{{ enabled_tasks|length }}<small>个</small></strong><p>共 {{ tasks|length }} 个每日计划</p></a>
+    <a class="studio-metric" href="/studio"><span>启用任务</span><strong>{{ enabled_tasks|length }}<small>个</small></strong><p>共 {{ tasks|length }} 个每日计划</p></a>
     <a class="studio-metric{{ ' needs-attention' if attention_count else '' }}" href="{{ '/accounts' if account_attention|default(0) else '/runs?status=attention' }}"><span>需要关注</span><strong>{{ attention_count }}<small>项</small></strong><p>{{ '有账号或执行结果待处理' if attention_count else '暂无待处理事项' }}</p></a>
   </section>
   <section class="studio-schedule" aria-labelledby="schedule-title">
-    <header class="studio-section-title"><div><h2 id="schedule-title">每日发送安排</h2><span>北京时间 · 按启用任务统计</span></div><a href="/tasks">全部计划{{ icon('arrow', 16) }}</a></header>
+    <header class="studio-section-title"><div><h2 id="schedule-title">每日发送安排</h2><span>北京时间 · 按启用任务统计</span></div><a href="/studio">全部计划{{ icon('arrow', 16) }}</a></header>
     <div class="studio-day-strip" role="list" aria-label="每小时计划任务数">
       {% for hour in range(24) %}
       {% set slot = namespace(count=0) %}
@@ -48,17 +48,17 @@
       </div>
       {% endfor %}
     </div>
-    <div class="studio-next-plan"><span class="studio-next-label">{{ icon('tasks', 18) }}下一次计划</span>{% if next_task %}<strong>{{ next_task.target_name }}</strong><time>{{ next_task.next_run_at|shanghai_time }}</time><a href="/tasks/{{ next_task.id }}/edit" aria-label="查看下一次任务" title="查看下一次任务">{{ icon('arrow', 18) }}</a>{% else %}<strong class="studio-muted">暂无待执行任务</strong><a href="/tasks#new-task">创建计划{{ icon('arrow', 16) }}</a>{% endif %}</div>
+    <div class="studio-next-plan"><span class="studio-next-label">{{ icon('tasks', 18) }}下一次计划</span>{% if next_task %}<strong>{{ next_task.target_name }}</strong><time>{{ next_task.next_run_at|shanghai_time }}</time><a href="/tasks/{{ next_task.id }}/edit" aria-label="查看下一次任务" title="查看下一次任务">{{ icon('arrow', 18) }}</a>{% else %}<strong class="studio-muted">暂无待执行任务</strong><a href="/studio#new-task">创建计划{{ icon('arrow', 16) }}</a>{% endif %}</div>
   </section>
   <div class="studio-overview-columns">
     <section class="studio-plan-list" aria-labelledby="plans-title">
-      <header class="studio-section-title"><h2 id="plans-title">续火计划<span class="studio-count">{{ tasks|length }}</span></h2><a href="/tasks">管理{{ icon('arrow', 16) }}</a></header>
+      <header class="studio-section-title"><h2 id="plans-title">续火计划<span class="studio-count">{{ tasks|length }}</span></h2><a href="/studio">管理{{ icon('arrow', 16) }}</a></header>
       {% if tasks %}
       <div class="studio-plan-head" aria-hidden="true"><span>每日时间</span><span>目标好友 / 消息</span><span>状态</span></div>
       {% for task in tasks[:8] %}
       <a class="studio-plan-row" href="/tasks/{{ task.id }}/edit"><time>{{ task.send_time }}</time><span class="studio-plan-person"><span class="studio-initial" aria-hidden="true">{{ task.target_name[0] }}{% if task_avatars is defined and task_avatars.get(task.id) %}<img data-avatar-image src="{{ task_avatars[task.id] }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}</span><span><strong>{{ task.target_name }}</strong><small>{{ '续火花表情' if task.message_kind == 'douyin_sticker' else task.message_template }}</small></span></span><span class="pill {{ 'good' if task.enabled else 'neutral' }}">{{ '等待账号恢复' if task.enabled and account_health is defined and account_health.get(task.douyin_account_id, {}).get('blocked') else ('已启用' if task.enabled else '已暂停') }}</span></a>
       {% endfor %}
-      {% if tasks|length > 8 %}<a class="studio-list-more" href="/tasks">查看全部 {{ tasks|length }} 个计划{{ icon('arrow', 16) }}</a>{% endif %}
+      {% if tasks|length > 8 %}<a class="studio-list-more" href="/studio">查看全部 {{ tasks|length }} 个计划{{ icon('arrow', 16) }}</a>{% endif %}
       {% else %}<div class="empty"><span class="empty-icon" aria-hidden="true">{{ icon('tasks', 24) }}</span><h3>还没有续火任务</h3><a class="button quiet" href="{{ '/tasks#new-task' if accounts else '/accounts' }}">{{ '创建第一个任务' if accounts else '绑定抖音账号' }}</a></div>{% endif %}
     </section>
     <aside class="studio-account-column">

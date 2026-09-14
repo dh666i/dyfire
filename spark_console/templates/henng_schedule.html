@@ -5,7 +5,7 @@
     <div class="hn-schedule-controls"><span data-schedule-caption>全部时段</span><button type="button" class="icon-button" data-schedule-reset aria-label="清除时段选择" title="清除时段选择" hidden>×</button></div>
   </div>
   <div class="hn-schedule-plot" data-schedule-plot role="group" aria-label="选择发送时段"></div>
-  {% if not compact %}<div class="hn-schedule-detail" aria-live="polite"><span data-schedule-summary></span><div data-schedule-targets></div><a href="/tasks" data-schedule-link>查看任务 <span aria-hidden="true">→</span></a></div>{% endif %}
+  {% if not compact %}<div class="hn-schedule-detail" aria-live="polite"><span data-schedule-summary></span><div data-schedule-targets></div><a href="/studio" data-schedule-link>查看任务 <span aria-hidden="true">→</span></a></div>{% endif %}
   <div hidden>{% for task in tasks %}<span data-schedule-task data-time="{{ task.send_time }}" data-name="{{ task.target_name }}" data-enabled="{{ 'true' if task.enabled else 'false' }}"></span>{% endfor %}</div>
 </section>
 {% endmacro %}

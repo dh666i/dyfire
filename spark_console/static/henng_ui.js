@@ -64,7 +64,7 @@
         }
       }
       const link = section.querySelector("[data-schedule-link]");
-      if (link) link.href = selected === null ? "/tasks" : `/tasks?task_hour=${selected}`;
+      if (link) link.href = selected === null ? "/studio" : `/studio?task_hour=${selected}`;
       if (emit && section.dataset.scheduleMode === "filter") section.dispatchEvent(new CustomEvent("henng:hour", {bubbles: true, detail: selected}));
     };
     hours.forEach((bin) => {
@@ -159,7 +159,7 @@
           const editClose = close.cloneNode(true);
           editClose.setAttribute("aria-label", "关闭编辑任务");
           editClose.addEventListener("click", () => editDrawer.close());
-          editor.querySelectorAll('.edit-actions a[href="/tasks"]').forEach((cancel) => {
+          editor.querySelectorAll('.edit-actions a[href="/studio"]').forEach((cancel) => {
             cancel.addEventListener("click", (e) => { e.preventDefault(); editDrawer.close(); });
           });
           // Detach the dormant create form to keep form-control IDs unique.

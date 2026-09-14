@@ -79,5 +79,8 @@ def test_existing_recipient_is_fixed_and_cannot_be_created_again(site):
     assert 'id="task-target"' not in page
     result=client.post(f'/tasks/{task_id}/edit',data={'csrf_token':state['csrf'],'account_id':owned,'target_name':'Changed','send_time':'12:00','message_kind':'douyin_sticker','message_template':'续火花'},follow_redirects=False)
     assert result.status_code==303
+    assert result.headers['location']=='/studio?notice=task-updated'
+    assert 'href="/studio"' in page
+    assert 'href="/tasks"' not in page
     saved=client.get('/api/studio').json()['tasks'][0]
     assert saved['name']=='Friend' and saved['time']=='12:00' and saved['enabled'] is False

@@ -27,7 +27,7 @@ def site():
 
 
 @pytest.mark.parametrize('path',[
- '/login','/register','/forgot-password','/dashboard','/accounts','/tasks','/runs',
+ '/login','/register','/forgot-password','/dashboard','/accounts','/runs',
  '/subscription','/account-center','/change-password','/notifications','/attention','/help',
  '/admin/overview','/admin/users','/admin/subscriptions','/admin/codes','/admin/tasks',
  '/admin/runs','/admin/operations','/admin/settings/mail','/admin/audit','/admin/settings',
