@@ -4,7 +4,6 @@
 <header class="page-head compact-hero"><div><span class="eyebrow">每日计划</span><h1>续火任务</h1><p>{{ tasks|length }} 个计划 · {{ tasks|selectattr('enabled')|list|length }} 个已启用 · 北京时间</p></div><a class="button" href="#new-task" data-open-task-create>新建任务{{ icon('arrow', 16) }}</a></header>
 <div class="split wide task-workbench">
   <section class="panel task-list-panel">
-    <div class="batch-toolbar" data-batch-toolbar data-csrf="{{ csrf_token }}" hidden><label class="mail-switch"><input type="checkbox" data-batch-all>选择当前页</label><span data-batch-count>已选 0 个</span><select data-batch-action aria-label="批量操作"><option value="pause">批量暂停</option><option value="enable">批量恢复</option><option value="time">修改发送时间</option></select><input type="time" data-batch-time aria-label="新的发送时间" hidden><button class="quiet" type="button" data-batch-submit>预览并执行</button><div data-batch-result role="status"></div></div>
     <div class="studio-task-toolbar" data-task-filter-toolbar hidden>
       <label><span class="sr-only">发送账号</span><select data-task-account-filter><option value="">全部抖音账号</option>{% for account in accounts %}<option value="{{ account.id }}">{{ account.display_name }}</option>{% endfor %}</select></label>
       <div class="studio-segments" role="group" aria-label="筛选任务状态"><button type="button" data-task-filter="all" aria-pressed="true">全部<span>{{ tasks|length }}</span></button><button type="button" data-task-filter="enabled" aria-pressed="false">已启用</button><button type="button" data-task-filter="paused" aria-pressed="false">已暂停</button></div>
@@ -32,7 +31,6 @@
         <div class="task-overview-result" role="cell"><span class="task-cell-label">最近结果</span>{% if latest %}<span class="pill {{ latest_view.tone }}">{{ latest_view.label }}</span>{% else %}<span class="task-empty-result">尚未执行</span>{% endif %}</div>
         <div class="task-overview-state" role="cell"><span class="pill {{ 'good' if task.enabled else 'off' }}">{{ '已启用' if task.enabled else '已暂停' }}</span>{% if task.enabled and health and health.blocked %}<a class="task-health-note" href="/accounts">{{ health.label }}</a>{% endif %}</div>
         <div class="task-overview-actions" role="cell">
-          <label class="batch-checkbox"><input type="checkbox" data-batch-task value="{{ task.id }}" aria-label="选择 {{ task.target_name }} 的任务"></label>
           <a class="task-row-action" href="/tasks/{{ task.id }}/edit">编辑</a>
           <details class="row-menu"><summary aria-label="{{ task.target_name }} 的更多操作">更多</summary><div class="row-menu-panel">
           <form method="post" action="/tasks/{{ task.id }}/toggle" data-submit-lock data-submitting-label="处理中…"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="task-row-action" type="submit">{{ '暂停' if task.enabled else '启用' }}</button></form>
