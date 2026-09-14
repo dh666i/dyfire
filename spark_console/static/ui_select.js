@@ -1,6 +1,7 @@
 /* Progressive enhancement: native select remains the form/data source of truth. */
 (() => {
   'use strict';
+  if (window.SparkSelect) { window.SparkSelect.enhance(document); return; }
   const instances = new Map();
   let serial = 0, opened = null;
   const fine = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -58,7 +59,17 @@
       this.popup.hidden = true;
       this.popup.setAttribute('popover', 'manual');
       this.trigger.setAttribute('aria-controls', this.list.id);
-      this.toggle = () => this.isOpen ? this.close() : this.open();
+      // Touch focus changes may dismiss the popup between pointerdown and click.
+      // Preserve the intended toggle, and suppress label activation of the source.
+      this.pointerOpen = null;
+      this.trigger.addEventListener('pointerdown', () => { this.pointerOpen = !!this.isOpen; });
+      this.trigger.addEventListener('pointercancel', () => { this.pointerOpen = null; });
+      this.toggle = event => {
+        event.preventDefault();
+        const shouldClose = this.pointerOpen === true || this.isOpen;
+        this.pointerOpen = null;
+        shouldClose ? this.close() : this.open();
+      };
       this.key = event => this.onKey(event);
       this.change = () => this.sync();
       this.focus = () => this.trigger.focus();

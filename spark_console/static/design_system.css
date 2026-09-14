@@ -173,3 +173,9 @@ button,.button,.admin-button,input,textarea,select,.pill,.badge,.notice,.form-er
 .edit-task-form,.edit-form-grid,.edit-form-grid>label{min-width:0}
 .edit-task-form input[type=time]{box-sizing:border-box;width:100%;max-width:100%;min-width:0;appearance:none;-webkit-appearance:none}
 @media(max-width:680px){.task-edit-page .task-edit-card{padding:18px 14px}.task-edit-page .edit-heading{margin:16px 0 20px;padding:0 0 16px;gap:12px;align-items:flex-start}.task-edit-page .edit-heading h1{font-size:26px;margin:8px 0 12px}.task-edit-page .edit-heading p{font-size:12px;line-height:1.6;margin:0}.task-edit-page .edit-heading>.pill{align-self:flex-start;white-space:nowrap}.task-edit-page .edit-form-grid{grid-template-columns:minmax(0,1fr)}.edit-task-form input[type=time]::-webkit-date-and-time-value{text-align:left;min-width:0}.task-edit-page .edit-actions{padding-bottom:12px}}
+/* iOS time controls must not force their grid track wider than the drawer. */
+.composer .two-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.composer .two-fields>div{min-width:0}
+.composer input[type=time]{box-sizing:border-box!important;appearance:none;-webkit-appearance:none;width:100%;min-width:0;max-width:100%;min-height:45px}
+.composer input[type=time]::-webkit-date-and-time-value{min-width:0;text-align:left}
+@media(max-width:520px){.composer .two-fields{grid-template-columns:minmax(0,1fr);gap:18px}.composer .two-fields input,.composer .two-fields .ui-select-trigger{font-size:16px;min-height:46px}}

@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
-const {JSDOM}=require('../../.artifacts/ui-check/node_modules/jsdom');
+const {JSDOM}=require('jsdom');
 async function main(){
 const dom=new JSDOM('<form><label>消息类型<select name="kind" required><option value="">请选择</option><option value="sticker">原生续火花</option><option disabled value="bad">禁用</option><option value="text">文字消息</option></select></label></form><dialog open><select aria-label="发送账号"><option>A</option><option>B</option></select></dialog>',{url:'http://localhost',runScripts:'outside-only',pretendToBeVisual:true});
 const w=dom.window,d=w.document;
@@ -14,6 +14,13 @@ await tick();
 const source=d.querySelector('select'),trigger=source.parentElement.querySelector('button');
 assert.equal(trigger.getAttribute('aria-label'),'消息类型');
 assert.equal(d.querySelectorAll('.ui-select-trigger').length,2);
+// A second touch must close even if an intervening focus event dismissed it.
+trigger.click();
+trigger.dispatchEvent(new w.Event('pointerdown',{bubbles:true}));
+d.body.dispatchEvent(new w.FocusEvent('focusin',{bubbles:true}));
+assert.equal(trigger.getAttribute('aria-expanded'),'false');
+trigger.click();assert.equal(trigger.getAttribute('aria-expanded'),'false');
+trigger.click();trigger.click();assert.equal(trigger.getAttribute('aria-expanded'),'false');
 let changes=0;source.addEventListener('change',()=>changes++);
 const key=k=>trigger.dispatchEvent(new w.KeyboardEvent('keydown',{key:k,bubbles:true,cancelable:true}));
 trigger.click();assert.equal(trigger.getAttribute('aria-expanded'),'true');

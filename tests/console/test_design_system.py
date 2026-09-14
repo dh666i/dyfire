@@ -23,8 +23,8 @@ class DesignSystemTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200, response.text[:200])
-                self.assertIn('/static/design_system.css?v=0.2.0', response.text)
-                self.assertIn('/static/design_system.js?v=0.2.0', response.text)
+                self.assertIn('/static/design_system.css?v=0.2.1', response.text)
+                self.assertIn('/static/design_system.js?v=0.2.1', response.text)
                 self.assertIn('action="/logout"', response.text)
                 self.assertIn('name="csrf_token"', response.text)
         accounts = self.client.get('/accounts').text
@@ -41,7 +41,7 @@ class DesignSystemTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200, response.text[:200])
-                self.assertIn('/static/design_system.css?v=0.2.0', response.text)
+                self.assertIn('/static/design_system.css?v=0.2.1', response.text)
         with TemporaryDirectory() as directory, patch.dict(os.environ, DYFIRE_UPDATE_DIR=directory):
             Path(directory, 'backup-status.json').write_text(json.dumps({'status':'success','at':'2026-09-12T00:00:00Z'}))
             Path(directory, 'backup-schedule.json').write_text(json.dumps({'enabled':False}))
