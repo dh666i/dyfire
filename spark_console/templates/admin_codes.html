@@ -8,7 +8,7 @@
 {{ filter_bar('/admin/codes', q, status, [('available', '可使用'), ('redeemed', '已使用 / 已兑换'), ('expired', '已过期'), ('revoked', '已撤销')], '搜索编号或使用者') }}
 
 <div class="admin-grid admin-grid-even admin-code-layout">
-  <section class="admin-panel">
+  <section class="workspace-section admin-panel">
     <header class="admin-panel-head">
       <div><h2>注册邀请码</h2><p>用于创建平台账号，不包含会员时长。</p></div>
       <div class="admin-inline-actions"><button class="admin-icon-button" type="button" data-page-refresh aria-label="刷新状态" title="刷新状态">{{ icon('refresh', 17) }}</button><form method="post" action="/admin/codes/invites"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="admin-button admin-button-secondary admin-button-small" type="submit">{{ icon('plus', 15) }}生成邀请码</button></form></div>
@@ -36,7 +36,7 @@
     {% else %}{{ empty_state('key', '暂无注册邀请码', '点击“生成邀请码”创建客户注册凭证。') }}{% endif %}
   </section>
 
-  <section class="admin-panel">
+  <section class="workspace-section admin-panel">
     <header class="admin-panel-head"><div><h2>会员兑换码</h2><p>兑换后增加时长并设置资源额度。</p></div><button class="admin-button admin-button-secondary admin-button-small" type="button" data-dialog-open="create-redemption">{{ icon('plus', 15) }}生成兑换码</button></header>
     {% if redemption_codes %}
     <div class="admin-table-wrap">

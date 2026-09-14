@@ -1,18 +1,11 @@
 {% extends "base.html" %}{% block content %}
 {% set can_add_account = true %}
 {% if membership is defined and membership %}{% set can_add_account = membership.can_add_account %}{% endif %}
-<header class="page-head compact-hero">
-  <div>
-    <span class="eyebrow">账号管理</span>
-    <h1>抖音账号</h1>
-    <p>{{ accounts|length }} 个已绑定账号 · 登录状态与验证记录</p>
-  </div>
-  <div class="page-head-signal" aria-hidden="true"><span></span><span></span><i>{{ accounts|length }}</i><small>已绑定</small></div>
-</header>
+{% call heading('抖音账号', '02 / ACCOUNTS', (accounts|length|string) ~ ' 个已绑定账号 · 登录状态与验证记录') %}<a class="button quiet" href="/studio">续火任务 ↗</a>{% endcall %}
 
 <div data-account-scan data-csrf-token="{{ csrf_token }}">
   <div class="split accounts-layout">
-    <section class="panel account-list">
+    <section class="workspace-section panel account-list">
       <div class="section-head"><div><h2>已绑定账号</h2><p>共 {{ accounts|length }} 个账号</p></div></div>
       {% if accounts %}
         {% for account in accounts %}
@@ -65,13 +58,13 @@
         <div class="empty">
           <span aria-hidden="true">◎</span>
           <h3>暂无账号</h3>
-          <p>从右侧开始扫码绑定。</p>
+          <p>点击“扫码绑定抖音账号”开始。</p>
         </div>
       {% endif %}
     </section>
 
     {% if can_add_account %}
-    <section class="panel scan-entry">
+    <section class="workspace-section panel scan-entry">
       <span class="scan-kicker">绑定流程</span>
       <h2>绑定新账号</h2>
       <p class="muted">登录由抖音验证，可能需要短信或其他安全验证。</p>
@@ -83,7 +76,7 @@
       <button id="scan-start" type="button"><span aria-hidden="true">＋</span>扫码绑定抖音账号<span class="button-arrow" aria-hidden="true">↗</span></button>
     </section>
     {% else %}
-    <section class="panel quota-panel">
+    <section class="workspace-section panel quota-panel">
       <span class="scan-kicker">账号额度</span>
       <h2>暂时无法绑定新账号</h2>
       {% if membership is defined and membership and membership.active %}

@@ -22,7 +22,7 @@
 
 <section class="stats"><article><span>用户</span><strong>{{ users|length }}</strong><small>含管理员</small></article><article><span>全部任务</span><strong>{{ tasks|length }}</strong><small>可暂停或删除</small></article><article><span>最近执行</span><strong>{{ runs|length }}</strong><small>脱敏执行状态</small></article></section>
 
-<section id="admin-users" class="panel admin-wide-panel admin-users-panel">
+<section id="admin-users" class="workspace-section panel admin-wide-panel admin-users-panel">
   <div class="section-head"><div><h2>用户与会员</h2><p>创建平台账号，开通会员并调整账号、任务额度。</p></div></div>
   <form method="post" action="/admin/users" class="inline-form admin-create-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="sr-only" for="admin-new-username">新用户名</label><input id="admin-new-username" name="username" placeholder="新用户名" minlength="3" required><button type="submit">创建用户</button></form>
   <div class="admin-user-list">
@@ -61,7 +61,7 @@
 </section>
 
 <div id="admin-codes" class="admin-grid admin-code-grid">
-  <section class="panel">
+  <section class="workspace-section panel">
     <div class="section-head"><div><h2>注册邀请码</h2><p>仅用于注册平台账号，不包含会员时长。</p></div><button type="button" class="quiet compact-button" onclick="location.reload()">刷新状态</button></div>
     <form method="post" action="/admin/invites" class="admin-primary-action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button>生成注册邀请码</button></form>
     {% for item in invites %}
@@ -72,7 +72,7 @@
     {% else %}<div class="empty"><span aria-hidden="true">◇</span><h3>暂无注册邀请码</h3></div>{% endfor %}
   </section>
 
-  <section class="panel">
+  <section class="workspace-section panel">
     <div class="section-head"><div><h2>会员兑换码</h2><p>兑换后增加会员有效期并设置使用额度。</p></div></div>
     <form method="post" action="/admin/redemption-codes" class="redemption-create-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -97,12 +97,12 @@
   </section>
 </div>
 
-<section id="admin-tasks" class="panel admin-wide-panel">
+<section id="admin-tasks" class="workspace-section panel admin-wide-panel">
   <div class="section-head"><div><h2>所有定时任务</h2><p>“已启用”表示任务会在 Worker 在线时按计划执行。</p></div></div>
   <div class="admin-task-grid">{% for task, owner in tasks %}<article class="task-card"><div class="task-top"><time class="time">{{ task.send_time }}</time><span class="pill {{ 'good' if task.enabled else 'off' }}">{{ '已启用' if task.enabled else '已暂停' }}</span></div><h3>{{ task.target_name }}</h3><p class="muted">归属：{{ owner.username }}</p><div class="actions action-group"><form method="post" action="/admin/tasks/{{ task.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="quiet">{{ '暂停' if task.enabled else '启用' }}</button></form><form method="post" action="/admin/tasks/{{ task.id }}/delete"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet">删除</button></form></div></article>{% else %}<div class="empty"><span aria-hidden="true">◇</span><h3>暂无任务</h3></div>{% endfor %}</div>
 </section>
 
-<section id="admin-runs" class="panel admin-wide-panel recent-runs">
+<section id="admin-runs" class="workspace-section panel admin-wide-panel recent-runs">
   <div class="section-head"><div><h2>最近执行</h2><p>展示最近 20 次执行，失败原因已经脱敏。</p></div></div>
   {% if runs %}<div class="recent-run-list">{% for run, task, owner in runs %}<article class="recent-run"><span class="run-status-mark run-{{ run.status }}" aria-hidden="true"></span><div><strong>{{ task.target_name }}</strong><p>{{ owner.username }} · {{ run.scheduled_for|shanghai_time }}</p></div><span class="pill {{ 'good' if run.status == 'success' else ('warn' if run.status == 'skipped' else 'off') }}">{{ run.status|run_status }}</span></article>{% endfor %}</div>{% else %}<div class="empty"><span aria-hidden="true">◷</span><h3>暂无执行记录</h3></div>{% endif %}
 </section>

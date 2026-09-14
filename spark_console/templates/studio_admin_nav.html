@@ -1,0 +1,9 @@
+{% set groups = [
+('运营', [('overview','/admin/overview','业务概览'),('users','/admin/users','用户管理'),('tasks','/admin/tasks','任务管理'),('runs','/admin/runs','执行记录')]),
+('会员', [('subscriptions','/admin/subscriptions','会员订阅'),('codes','/admin/codes','兑换与邀请')]),
+('系统', [('operations','/admin/operations','运维监控'),('mail','/admin/settings/mail','邮件设置'),('audit','/admin/audit','审计日志'),('settings','/admin/settings','系统设置')])
+] %}
+<details class="workspace-admin-mobile"><summary>管理导航 · {{ title }} <span aria-hidden="true">＋</span></summary></details>
+<nav class="workspace-admin-nav" aria-label="管理员导航">
+{% for group, links in groups %}<section><h2>{{ group }}</h2>{% for key,url,label in links %}<a href="{{ url }}"{% if (key==section and request.url.path!='/admin/settings/mail') or (key=='mail' and request.url.path=='/admin/settings/mail') %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</section>{% endfor %}
+</nav>

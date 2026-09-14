@@ -4,7 +4,7 @@
 {% block breadcrumb %}系统设置{% endblock %}
 {% block content %}
 {{ page_header('系统设置', '版本更新、邮件服务和运行参数。', '系统运行') }}
-<section class="admin-panel" data-system-updates data-csrf="{{ csrf_token }}">
+<section class="workspace-section admin-panel" data-system-updates data-csrf="{{ csrf_token }}">
   <header class="admin-panel-head"><div><h2>版本更新</h2><p>当前版本 <span data-current-version>正在读取</span></p></div></header>
   <div class="admin-panel-body"><p role="status">正在读取更新服务状态</p><button class="admin-button" type="button" data-update-check disabled>检查更新</button> <button class="admin-button admin-button-primary" type="button" data-update-install disabled>安装更新</button></div>
 </section>
@@ -15,7 +15,7 @@
 <div class="action-summary"><div><strong>邮件通知</strong><p>SMTP、测试邮件、通知模板和最近发送记录。</p></div><a class="admin-button admin-button-primary" href="/admin/settings/mail">邮件设置</a></div>
 
 <div class="admin-grid admin-grid-even admin-settings-grid">
-  <section class="admin-panel">
+  <section class="workspace-section admin-panel">
     <header class="admin-panel-head"><div><h2>Web 服务</h2><p>控制台当前使用的基础运行参数。</p></div>{{ status_badge('healthy', '运行正常') }}</header>
     <div class="admin-settings-list">
       <div class="admin-settings-row"><div><strong>时区</strong><small>任务排期与后台时间展示基准</small></div><code class="admin-setting-value">{{ system_settings.timezone }}</code></div>
@@ -26,7 +26,7 @@
     </div>
   </section>
 
-  <section class="admin-panel">
+  <section class="workspace-section admin-panel">
     <header class="admin-panel-head"><div><h2>任务执行器</h2><p>Worker 心跳、轮询和时钟保护。</p></div>{{ status_badge(worker.status, '在线' if worker.online else '离线') }}</header>
     <div class="admin-settings-list">
       <div class="admin-settings-row"><div><strong>Worker ID</strong><small>当前持有执行锁的实例</small></div><code class="admin-setting-value">{{ worker.worker_id or '未连接' }}</code></div>
@@ -37,7 +37,7 @@
   </section>
 </div>
 
-<section class="admin-panel admin-settings-summary">
+<section class="workspace-section admin-panel admin-settings-summary">
   <header class="admin-panel-head"><div><h2>数据摘要</h2><p>用于快速确认迁移或部署后的业务数据量。</p></div></header>
   <div class="admin-settings-kpis">
     <a href="/admin/users"><span>用户</span><strong>{{ stats.total_users|default(0) }}</strong></a>

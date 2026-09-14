@@ -23,22 +23,23 @@
 <!doctype html>
 <html lang="zh-CN" data-app-surface="console"><head>
 {% include 'studio_head.html' %}
-<link rel="stylesheet" href="/static/studio_site.css?v=0.1.1">
-<link rel="stylesheet" href="/static/motion.css?v=0.1.19">
-<script defer src="/static/motion.js?v=0.1.19"></script>
+<link rel="stylesheet" href="/static/workspace_features.css?v=0.2.0">
+<link rel="stylesheet" href="/static/motion.css?v=0.2.0">
+<script defer src="/static/motion.js?v=0.2.0"></script>
 <script defer src="/static/app_ui.js"></script>
-<script defer src="/static/task_experience.js?v=0.1.19"></script>
-<script defer src="/static/console_studio.js?v=0.1.19"></script>
-<link rel="stylesheet" href="/static/design_system.css?v=0.1.19">
-<script defer src="/static/design_system.js?v=0.1.19"></script>
-<script defer src="/static/mobile_workspace.js?v=0.1.19"></script>
+<script defer src="/static/task_experience.js?v=0.2.0"></script>
+<link rel="stylesheet" href="/static/design_system.css?v=0.2.0">
+<link rel="stylesheet" href="/static/workspace.css?v=0.2.0">
+<link rel="stylesheet" href="/static/studio_components.css?v=0.2.0">
+<script defer src="/static/design_system.js?v=0.2.0"></script>
+<script defer src="/static/mobile_workspace.js?v=0.2.0"></script>
 </head>
 {% set route=request.url.path %}
 <body data-route="{{ route }}" data-design="dyfire-studio" class="{{ 'studio-auth-body' if nav is defined and not nav else 'studio-site' }}">
 <a class="skip-link" href="#main-content">跳到主要内容</a>
 {% include 'studio_header.html' %}
 {% if ui_notice is defined and ui_notice %}<div class="app-toast-region" aria-live="polite"><div class="app-toast" data-app-toast role="status"><span>{{ ui_notice.message }}</span><button data-toast-close type="button" aria-label="关闭提示">×</button></div></div>{% endif %}
-<main id="main-content" class="studio-content" tabindex="-1">{% block content %}{% endblock %}</main>
+<main id="main-content" class="studio-content workspace-body" tabindex="-1">{% from 'studio_components.html' import heading, section_heading with context %}{% block content %}{% endblock %}</main>
 <footer class="studio-footer"><span>火花 / KEEP IN TOUCH.</span><span>让关系持续，让操作简单。</span></footer>
 <dialog class="app-confirm-dialog" data-app-confirm-dialog aria-labelledby="app-confirm-title" aria-describedby="app-confirm-message">
   <div class="app-confirm-icon" aria-hidden="true">{{ icon('spark', 20) }}</div>

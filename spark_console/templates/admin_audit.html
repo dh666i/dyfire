@@ -7,7 +7,7 @@
 
 {{ filter_bar('/admin/audit', q, status, [('user', '用户'), ('subscription', '订阅'), ('redemption_code', '兑换码'), ('invite_code', '邀请码'), ('spark_task', '任务'), ('douyin_account', '抖音账号')], '搜索操作、资源、操作者或详情') }}
 
-<section class="admin-panel">
+<section class="workspace-section admin-panel">
   <header class="admin-panel-head"><div><h2>操作流水</h2><p>共 {{ pagination.total|default(0) }} 条记录，按时间倒序展示。</p></div></header>
   {% if audit_events %}
   <div class="admin-table-wrap">

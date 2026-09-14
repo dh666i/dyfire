@@ -9,3 +9,4 @@ COPY --chown=spark:spark spark_console/version.py /app/spark_console/version.py
 COPY --chown=spark:spark spark_console/templates /app/spark_console/templates
 COPY --chown=spark:spark spark_console/static /app/spark_console/static
 COPY --chown=spark:spark frontend/dist /app/frontend/dist
+RUN rm -f /app/spark_console/templates/tasks.html /app/spark_console/static/studio_site.css

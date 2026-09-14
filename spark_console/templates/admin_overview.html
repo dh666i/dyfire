@@ -29,7 +29,7 @@
 </section>
 
 <div class="admin-grid">
-  <section class="admin-panel">
+  <section class="workspace-section admin-panel">
     <header class="admin-panel-head">
       <div><h2>最近执行</h2><p>最新任务运行结果与失败摘要。</p></div>
       <a class="admin-button admin-button-ghost admin-button-small" href="/admin/runs">查看全部</a>
@@ -55,7 +55,7 @@
   </section>
 
   <div class="admin-stack">
-    <section class="admin-panel">
+    <section class="workspace-section admin-panel">
       <header class="admin-panel-head"><div><h2>即将到期</h2><p>未来 7 天内到期的客户订阅。</p></div><a class="admin-button admin-button-ghost admin-button-small" href="/admin/subscriptions?status=expiring">管理</a></header>
       {% if expiring_users %}
       <div class="admin-list">
@@ -69,7 +69,7 @@
       {% else %}{{ empty_state('clock', '近期没有到期订阅', '未来 7 天内暂无需要续费的客户。') }}{% endif %}
     </section>
 
-    <section class="admin-panel">
+    <section class="workspace-section admin-panel">
       <header class="admin-panel-head"><div><h2>执行器状态</h2><p>续火 Worker 心跳与租约状态。</p></div>{{ status_badge(worker.status, '在线' if worker.online else '离线') }}</header>
       <div class="admin-settings-list">
         <div class="admin-settings-row"><div><strong>Worker ID</strong><small>当前持有执行锁的实例</small></div><code class="admin-setting-value">{{ worker.worker_id or '未连接' }}</code></div>

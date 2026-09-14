@@ -12,7 +12,7 @@
 
 {{ filter_bar('/admin/subscriptions', q, status, [('active', '使用中'), ('expiring', '即将到期'), ('expired', '已过期'), ('inactive', '未开通')], '搜索客户账号') }}
 
-<section class="admin-panel">
+<section class="workspace-section admin-panel">
   <header class="admin-panel-head"><div><h2>客户订阅</h2><p>共 {{ pagination.total|default(0) }} 位客户；管理员账号不计入订阅。</p></div></header>
   {% if subscriptions %}
   <div class="admin-table-wrap admin-table-wrap-actions">

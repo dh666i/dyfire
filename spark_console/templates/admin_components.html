@@ -51,14 +51,10 @@
 {%- endmacro %}
 
 {% macro page_header(title, description='', eyebrow='运营工作台', action_label=none, action_target=none, action_icon='plus') -%}
-<header class="admin-page-header">
-  <div>
-    <span class="admin-eyebrow"><i aria-hidden="true"></i>{{ eyebrow }}</span>
-    <h1>{{ title }}</h1>
-    {% if description %}<p>{{ description }}</p>{% endif %}
-  </div>
-  {% if action_label and action_target %}<button class="admin-button admin-button-primary" type="button" data-dialog-open="{{ action_target }}">{{ icon(action_icon, 17) }}<span>{{ action_label }}</span></button>{% endif %}
-</header>
+{% from 'studio_components.html' import heading %}
+{% call heading(title, 'ADMIN / ' ~ eyebrow, description) %}
+{% if action_label and action_target %}<button class="admin-button admin-button-primary" type="button" data-dialog-open="{{ action_target }}">{{ icon(action_icon, 17) }}<span>{{ action_label }}</span></button>{% endif %}
+{% endcall %}
 {%- endmacro %}
 
 {% macro filter_bar(action, q='', status='', options=(), placeholder='搜索关键词') -%}

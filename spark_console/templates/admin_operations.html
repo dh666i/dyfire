@@ -14,7 +14,7 @@
 <div class="admin-operations" data-operations-monitor data-endpoint="/admin/operations/snapshot" data-refresh-seconds="{{ operations.refresh_interval_seconds }}">
   {{ page_header('运维监控', '服务器资源、核心服务与业务队列。', '运行与系统') }}
   {% include 'business_health_panel.html' %}
-  <section class="panel" data-diagnostics><div class="section-head"><h2>执行耗时与备份状态</h2><button class="quiet" type="button">刷新诊断</button></div><p role="status">正在读取诊断</p><p class="muted">最近 30 次执行。启动至提交包含浏览器启动与页面操作；未记录的阶段显示“未记录”。历史备份成功不代表自动备份计划已启用。</p><div data-diagnostic-list></div></section><script defer src="/static/diagnostics.js?v=0.1.11"></script>
+  <section class="workspace-section panel" data-diagnostics><div class="section-head"><h2>执行耗时与备份状态</h2><button class="quiet" type="button">刷新诊断</button></div><p role="status">正在读取诊断</p><p class="muted">最近 30 次执行。启动至提交包含浏览器启动与页面操作；未记录的阶段显示“未记录”。历史备份成功不代表自动备份计划已启用。</p><div data-diagnostic-list></div></section><script defer src="/static/diagnostics.js?v=0.1.11"></script>
 
   <div class="ops-toolbar" role="status" aria-live="polite">
     <span class="ops-live-dot" aria-hidden="true"></span>
@@ -73,7 +73,7 @@
   </section>
 
   <div class="ops-main-grid">
-    <section class="admin-panel ops-services-panel">
+    <section class="workspace-section admin-panel ops-services-panel">
       <header class="admin-panel-head"><div><h2>核心服务</h2><p>Web、登录服务与续火执行器的健康状态。</p></div><span class="ops-panel-caption">3 个必要服务</span></header>
       <div class="ops-service-list">
         {% for key, service in operations.services.items() %}
@@ -90,7 +90,7 @@
       </div>
     </section>
 
-    <section class="admin-panel ops-load-panel">
+    <section class="workspace-section admin-panel ops-load-panel">
       <header class="admin-panel-head"><div><h2>系统负载</h2><p>1、5、15 分钟平均负载。</p></div><span class="ops-panel-caption">Load average</span></header>
       <div class="ops-load-values">
         <div><span>1 分钟</span><strong data-ops-value="load-one">{{ load.one if load.one is not none else '—' }}</strong></div>
@@ -102,7 +102,7 @@
   </div>
 
   <div class="ops-secondary-grid">
-    <section class="admin-panel">
+    <section class="workspace-section admin-panel">
       <header class="admin-panel-head"><div><h2>业务队列</h2><p>仅统计数量，不读取好友名称或消息正文。</p></div><a class="admin-button admin-button-ghost admin-button-small" href="/admin/tasks">查看任务</a></header>
       <div class="ops-queue-grid">
         <div><span>配置为启用</span><strong data-ops-queue="enabled_tasks">{{ operations.queue.enabled_tasks }}</strong></div>
@@ -116,7 +116,7 @@
       </div>
     </section>
 
-    <section class="admin-panel">
+    <section class="workspace-section admin-panel">
       <header class="admin-panel-head"><div><h2>数据存储</h2><p>数据库类型、占用与隐私边界。</p></div><span class="admin-badge admin-badge-success"><span aria-hidden="true"></span>连接正常</span></header>
       <div class="ops-database-body">
         <div class="ops-database-size"><span>数据库占用</span><strong data-ops-value="database-size">{{ '待换算' if operations.database.size_bytes is not none else '不可读取' }}</strong><small>SQLite 主文件及 WAL/SHM；外部数据库不展示文件大小</small></div>

@@ -2,28 +2,26 @@
 <!doctype html><html lang="zh-CN" data-app-surface="admin"><head>
 {% include 'studio_head.html' %}
 {% block admin_styles %}{% endblock %}
-<link rel="stylesheet" href="/static/studio_site.css?v=0.1.1">
-<link rel="stylesheet" href="/static/motion.css?v=0.1.19">
-<script defer src="/static/motion.js?v=0.1.19"></script>
+<link rel="stylesheet" href="/static/workspace_features.css?v=0.2.0">
+<link rel="stylesheet" href="/static/motion.css?v=0.2.0">
+<script defer src="/static/motion.js?v=0.2.0"></script>
 <script defer src="/static/app_ui.js?v=0.1.9"></script>
 <script src="/static/admin.js" defer></script>
 {% block admin_scripts %}{% endblock %}
-<link rel="stylesheet" href="/static/design_system.css?v=0.1.19">
-<script defer src="/static/design_system.js?v=0.1.19"></script>
-<script defer src="/static/mobile_workspace.js?v=0.1.19"></script>
+<link rel="stylesheet" href="/static/design_system.css?v=0.2.0">
+<link rel="stylesheet" href="/static/workspace.css?v=0.2.0">
+<link rel="stylesheet" href="/static/studio_components.css?v=0.2.0">
+<script defer src="/static/design_system.js?v=0.2.0"></script>
+<script defer src="/static/mobile_workspace.js?v=0.2.0"></script>
 </head>
 {% set section=admin_section|default('overview') %}
 <body data-admin-section="{{ section }}" data-design="dyfire-studio" class="studio-site studio-admin">
 <a class="skip-link" href="#admin-main">跳到主要内容</a>
 {% include 'studio_header.html' %}
-<main id="admin-main" class="studio-content" tabindex="-1">
+<main id="admin-main" class="studio-content workspace-body" tabindex="-1">
 <div class="studio-admin-context"><span>ADMIN WORKSPACE / 管理员工作区</span><a href="/studio">返回用户端 ↗</a></div>
-<nav class="studio-admin-tabs" aria-label="管理员导航">
-{% for key,url,label in [('overview','/admin/overview','业务概览'),('users','/admin/users','用户管理'),('tasks','/admin/tasks','任务管理'),('subscriptions','/admin/subscriptions','会员订阅'),('codes','/admin/codes','兑换与邀请'),('runs','/admin/runs','执行记录'),('operations','/admin/operations','运维监控'),('mail','/admin/settings/mail','邮件设置'),('audit','/admin/audit','审计日志'),('settings','/admin/settings','系统设置')] %}
-<a href="{{ url }}"{% if (key==section and request.url.path!='/admin/settings/mail') or (key=='mail' and request.url.path=='/admin/settings/mail') %} aria-current="page"{% endif %}>{{ label }}</a>
-{% endfor %}
-</nav>
-<div class="studio-admin-content">{% block content %}{% endblock %}</div></main>
+<div class="workspace-admin-layout">{% include 'studio_admin_nav.html' %}
+<div class="studio-admin-content">{% from 'studio_components.html' import heading, section_heading with context %}{% block content %}{% endblock %}</div></div></main>
 <footer class="studio-footer"><span>火花 / KEEP IN TOUCH.</span><span>管理清晰，连接持续。</span></footer>
 {% if one_time_password %}
 <dialog class="admin-dialog admin-credential-dialog" open data-admin-dialog="credential-result">

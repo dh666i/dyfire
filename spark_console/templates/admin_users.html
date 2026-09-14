@@ -8,7 +8,7 @@
 {% if error %}<div class="admin-notice danger">{{ icon('alert', 18) }}<span>{{ error }}</span></div>{% endif %}
 {{ filter_bar('/admin/users', q, status, [('active', '正常'), ('disabled', '已停用')], '搜索账号') }}
 
-<section class="admin-panel">
+<section class="workspace-section admin-panel">
   <header class="admin-panel-head">
     <div><h2>全部用户</h2><p>共 {{ pagination.total|default(0) }} 个账号；敏感操作会写入审计日志。</p></div>
     <form id="admin-users-bulk" class="admin-bulkbar" method="post" action="/admin/users/bulk" data-bulk-form="users" data-confirm="将对当前选中的客户账号执行批量启停操作。" data-confirm-title="确认批量操作？">

@@ -19,7 +19,7 @@
   <button class="admin-button" type="submit">筛选</button><a class="admin-button admin-button-ghost" href="/admin/runs">重置</a>
 </form>
 
-<section class="admin-panel">
+<section class="workspace-section admin-panel">
   <header class="admin-panel-head"><div><h2>任务运行流水</h2><p>共 {{ pagination.total|default(0) }} 条，按计划时间倒序展示。</p></div></header>
   {% if runs %}
   <div class="admin-table-wrap">

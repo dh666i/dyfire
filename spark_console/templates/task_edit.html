@@ -2,10 +2,7 @@
 <section class="task-edit-page">
   <div class="task-edit-card panel">
     <a class="edit-back" href="/studio">← 返回任务列表</a>
-    <header class="edit-heading">
-      <div><span class="eyebrow">修改计划</span><h1>编辑续火任务</h1><p>修改后会重新计算下一次发送时间，任务的启用状态保持不变。</p></div>
-      <span class="pill {{ 'good' if task.enabled else 'off' }}">{{ '已启用' if task.enabled else '已暂停' }}</span>
-    </header>
+    {% call heading('编辑续火任务', '01 / EDIT PLAN', '调整时间和发送内容，账号与好友保持不变') %}<span class="pill {{ 'good' if task.enabled else 'off' }}">{{ '已启用' if task.enabled else '已暂停' }}</span>{% endcall %}
     {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
     <form method="post" class="stack edit-task-form" data-submit-lock data-submitting-label="正在保存…">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

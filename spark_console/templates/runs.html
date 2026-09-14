@@ -1,10 +1,7 @@
 {% extends "base.html" %}
 {% from "admin_components.html" import icon as record_icon %}
 {% block content %}
-<header class="page-head records-page-head">
-  <div><h1>执行记录</h1></div>
-  <span class="records-count">共 {{ pagination.total }} 条</span>
-</header>
+{% call heading('执行记录', '03 / JOURNAL', '查看每次发送的进度、结果与诊断详情', 'records-page-head') %}<span class="records-count">共 {{ pagination.total }} 条</span>{% endcall %}
 <form method="get" action="/runs" class="records-filter" aria-label="筛选执行记录">
   <label><span class="sr-only">发送账号</span><select name="account_id"><option value="">全部抖音账号</option>{% for account in accounts %}<option value="{{ account.id }}" {{ 'selected' if account_id==account.id }}>{{ account.display_name }}</option>{% endfor %}</select></label>
   <label>开始日期<input type="date" name="start" value="{{ start }}"></label><label>结束日期<input type="date" name="end" value="{{ end }}"></label>

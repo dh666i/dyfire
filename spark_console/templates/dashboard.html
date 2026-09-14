@@ -4,10 +4,7 @@
 {% set enabled_tasks = tasks|selectattr('enabled')|list %}
 {% set attention_count = account_attention|default(0) + today_attention|default(0) %}
 <div class="studio-dashboard">
-  <header class="studio-heading">
-    <div><span class="studio-overline" data-studio-date>今日工作台</span><h1>今日续火</h1></div>
-    <div class="studio-heading-actions"><a class="button quiet" href="/runs">执行记录</a>{% if tasks %}<a class="button quiet" href="/studio#new-task">新建任务{{ icon('arrow', 16) }}</a>{% endif %}</div>
-  </header>
+  {% call heading('今日续火', '00 / OVERVIEW', '先确认账号状态，再查看今日续火安排') %}<a class="button quiet" href="/runs">执行记录</a>{% if tasks %}<a class="button" href="/studio#new-task">新建任务 ↗</a>{% endif %}{% endcall %}
   <section class="overview-accounts" aria-labelledby="overview-accounts-title">
     <header class="studio-section-title"><h2 id="overview-accounts-title">账号状态 <span class="studio-count">{{ accounts|length }}</span></h2><a href="/accounts">管理账号 ↗</a></header>
     <div class="overview-account-list">

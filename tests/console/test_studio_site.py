@@ -37,6 +37,11 @@ def test_routes_use_new_design_and_valid_assets(site,path):
     assert response.status_code==200,path
     assert 'data-design="dyfire-studio"' in response.text,path
     assert 'class="studio-header"' in response.text,path
+    assert '/static/workspace.css?v=0.2.0' in response.text,path
+    assert '/static/studio_tokens.css?v=0.2.0' in response.text,path
+    assert '/static/studio_site.css' not in response.text,path
+    if path not in ('/login','/register','/forgot-password'):
+        assert 'data-workspace-heading' in response.text,path
     inventory=Inventory(response.text)
     assert len(inventory.ids)==len(set(inventory.ids)),(path,'duplicate ids')
     assert len(inventory.scripts)==len(set(inventory.scripts)),(path,'duplicate script initialization')
