@@ -486,6 +486,19 @@ class TaskRun(Base):
     message_digest: Mapped[str | None] = mapped_column(String(64))
 
 
+class TaskRunAttempt(Base):
+    """One immutable completed attempt; excludes credentials and response bodies."""
+    __tablename__ = "task_run_attempts"
+    run_id: Mapped[str] = mapped_column(ForeignKey("task_runs.id", ondelete="CASCADE"), primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(24))
+    stage: Mapped[str] = mapped_column(String(24))
+    reason: Mapped[str | None] = mapped_column(String(240))
+
+
 class TaskHealthRetry(Base):
     """Durable, bounded recovery of one unsubmitted scheduled run."""
     __tablename__ = "task_health_retries"

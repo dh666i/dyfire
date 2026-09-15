@@ -63,7 +63,7 @@ class AccountHealthTests(unittest.TestCase):
         self.assertEqual(409,response.status_code)
         self.assertIn('完成验证',self.client.get('/accounts').text)
 
-    def test_recovery_skips_missed_and_does_not_enable_manual_pauses(self):
+    def test_recovery_preserves_recent_and_does_not_enable_manual_pauses(self):
         self.anomaly()
         with session_scope(self.engine) as db:
             db.add(TaskRun(task_id=self.tasks[0],scheduled_for=self.now-timedelta(days=1),status='submitted_unconfirmed',stage='submitted',submitted_at=self.now-timedelta(days=1)))
@@ -72,7 +72,9 @@ class AccountHealthTests(unittest.TestCase):
             self.assertGreater(db.get(SparkTask,self.tasks[0]).next_run_at.replace(tzinfo=self.now.tzinfo),self.now)
             self.assertFalse(db.get(SparkTask,self.tasks[1]).enabled)
             self.assertEqual('submitted_unconfirmed',db.scalar(select(TaskRun)).status)
-            self.assertIsNone(claim_next_due_task(db,self.now,'test'))
+            resumed = claim_next_due_task(db,self.now,'test')
+            self.assertIsNotNone(resumed)
+            self.assertEqual(self.tasks[0], resumed.task_id)
 
     def test_operation_lease_exclusive_and_login_waits_for_send(self):
         with session_scope(self.engine) as db:

@@ -246,7 +246,8 @@ class Worker:
                     run = db.get(TaskRun, run_id)
                     task = db.get(SparkTask, run.task_id)
                     retry_at = current_time + timedelta(seconds=30)
-                    task.next_run_at = retry_at
+                    if db.get(TaskHealthRetry, run.id) is None:
+                        task.next_run_at = retry_at
                     return finish_run(run, 'retrying', 'account_queue', current_time, 'account_busy', '等待该账号的云端操作完成', retry_after=retry_at)
         except BaseException:
             self._clear_cookie_payload(cookies)
@@ -567,6 +568,9 @@ class Worker:
                         error_summary,
                     )
 
+                from spark_console.run_attempts import save as save_attempt
+                save_attempt(run, "success" if result.success else "failed", result.stage,
+                             finished_at, result.error_summary)
                 health_recorded = False
                 if (
                     (result.health_state or result.error_code == "cookie_invalid")

@@ -1000,3 +1000,9 @@ legend {
     font-size: 10px;
   }
 }
+/* Compact attempt timeline shared by user and administrator records. */
+.run-attempt-history { margin-block: 12px; font-size: 13px; }
+.run-attempt-history > summary { cursor: pointer; padding-block: 8px; }
+.run-attempt-history ol { margin: 4px 0; padding-inline-start: 22px; }
+.run-attempt-history li { padding: 8px 4px; overflow-wrap: anywhere; }
+.run-attempt-history p { margin: 4px 0; line-height: 1.6; }

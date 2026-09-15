@@ -62,7 +62,7 @@ def record(db, account_id, expected, state, reason, *, now=None, recheck=False, 
         account.last_verified_at = now
         health.attempts = health.negative_checks = 0
         if previous in BLOCKED:
-            skip_missed(db, account_id, now)
+            skip_missed(db, account_id, now, preserve_recent=previous == "temporary")
     elif resolved == 'temporary' and health.attempts < 2:
         health.next_check_at = now + timedelta(seconds=30 if health.attempts == 0 else 120)
     AuditService(db).write(account.owner_user_id, 'account.health.'+resolved, 'douyin_account', account_id,
@@ -70,10 +70,25 @@ def record(db, account_id, expected, state, reason, *, now=None, recheck=False, 
     return True
 
 
-def skip_missed(db, account_id, now):
+def skip_missed(db, account_id, now, *, preserve_recent=False):
     from spark_console.scheduler import compute_next_run
     for task in db.scalars(select(SparkTask).where(SparkTask.douyin_account_id == account_id,
         SparkTask.enabled.is_(True), SparkTask.next_run_at <= now)):
+        from spark_console.health_retry import aware, WINDOW
+        from spark_console.models import TaskRun
+        from spark_console.scheduler import finish_run
+        scheduled = aware(task.next_run_at)
+        if preserve_recent and aware(now) < scheduled + WINDOW:
+            from spark_console.health_retry import queue_waiting_task
+            queue_waiting_task(db, task, now)
+            continue
+        existing = db.scalar(select(TaskRun).where(TaskRun.task_id == task.id,
+                                                   TaskRun.scheduled_for == scheduled))
+        if existing is None:
+            run = TaskRun(task_id=task.id, scheduled_for=scheduled, attempt=0)
+            db.add(run)
+            finish_run(run, "skipped", "authenticating", now,
+                       "account_recovery_skipped", "账号恢复时已超过发送窗口或完成重新登录，本次未发送")
         task.next_run_at = compute_next_run(task.send_time, now)
 
 
@@ -84,6 +99,13 @@ def recovered(db, account):
         health.next_check_at = None
         health.attempts = health.negative_checks = 0
         health.checked_at, health.reason = now, '已完成抖音登录验证'
+    from spark_console.models import TaskRun, TaskHealthRetry
+    from spark_console.scheduler import finish_run
+    for run in db.scalars(select(TaskRun).join(TaskHealthRetry, TaskHealthRetry.run_id == TaskRun.id)
+        .join(SparkTask, SparkTask.id == TaskRun.task_id).where(
+            SparkTask.douyin_account_id == account.id, TaskRun.status == "retrying")):
+        finish_run(run, "skipped" if run.attempt == 0 else "failed", "authenticating", now,
+                   "health_retry_cancelled", "账号已重新登录，取消旧会话下的恢复任务")
     skip_missed(db, account.id, now)
 
 

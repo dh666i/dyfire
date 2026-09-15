@@ -83,15 +83,18 @@ def claim(db, now, worker_id):
     rows = db.execute(select(TaskRun, TaskHealthRetry).join(
         TaskHealthRetry, TaskHealthRetry.run_id == TaskRun.id
     ).where(TaskRun.status.in_(("retrying", "running"))).order_by(
-        TaskRun.scheduled_for, TaskRun.id
+        TaskRun.scheduled_for, TaskRun.attempt, TaskRun.id
     )).all()
     for run, pending in rows:
         if run.status == "running" and run.lease_until and aware(run.lease_until) > aware(now):
             continue
+        if run.status == "running":
+            from spark_console.run_attempts import save
+            save(run, "failed", run.stage, now, "执行租约超时，发送未提交")
         invalid = invalid_reason(db, run, pending, now)
         if invalid or run.attempt >= MAX_ATTEMPTS:
             code, message = invalid or ("health_retry_exhausted", "已达到最多 2 次重试，本次停止")
-            status = "submitted_unconfirmed" if code == "health_retry_submitted" else "failed"
+            status = "submitted_unconfirmed" if code == "health_retry_submitted" else ("skipped" if run.attempt == 0 else "failed")
             finish_run(run, status, "submitted" if status == "submitted_unconfirmed" else "authenticating", now, code, message)
             continue
         task = db.get(SparkTask, run.task_id)
@@ -113,3 +116,43 @@ def claim(db, now, worker_id):
             db.refresh(run)
             return run
     return None
+
+
+def queue_blocked_tasks(db, now):
+    """Make due tasks visible while their account awaits a read-only recheck."""
+    from spark_console.scheduler import compute_next_run, finish_run
+    tasks = db.scalars(select(SparkTask).join(DouyinAccount,
+        DouyinAccount.id == SparkTask.douyin_account_id).where(
+        SparkTask.enabled.is_(True), SparkTask.next_run_at <= now,
+        DouyinAccount.validation_state.in_(("temporary", "verification", "invalid"))
+    ).order_by(SparkTask.next_run_at, SparkTask.id)).all()
+    for task in tasks:
+        queue_waiting_task(db, task, now)
+    db.flush()
+
+
+def queue_waiting_task(db, task, now):
+    from spark_console.scheduler import compute_next_run, finish_run
+    scheduled = aware(task.next_run_at)
+    existing = db.scalar(select(TaskRun).where(TaskRun.task_id == task.id,
+                                              TaskRun.scheduled_for == scheduled))
+    if existing:
+        return
+    prior = db.scalar(select(TaskRun).where(TaskRun.task_id == task.id,
+        TaskRun.status == "retrying", TaskRun.retry_after == scheduled).order_by(TaskRun.attempt.desc()).limit(1))
+    task.next_run_at = compute_next_run(task.send_time, now)
+    db.flush()
+    run = TaskRun(task_id=task.id, scheduled_for=scheduled, attempt=prior.attempt if prior else 0,
+                  status="retrying", stage="authenticating", retry_after=now)
+    db.add(run)
+    db.flush()
+    pending = TaskHealthRetry(run_id=run.id, task_revision=task.updated_at,
+        expires_at=original_schedule(db, run)+WINDOW, last_reason="账号暂时异常，尚未开始发送")
+    db.add(pending)
+    invalid = invalid_reason(db, run, pending, now)
+    if invalid:
+        finish_run(run, "skipped", "authenticating", now, *invalid)
+    else:
+        run.error_code = "health_retry_waiting"
+        run.error_summary = "等待账号复核，尚未开始发送；超过计划 10 分钟将跳过并保留记录"
+    db.flush()

@@ -94,8 +94,7 @@ class DouyinExecutor:
                         delivery_monitor = MessageNetworkAckMonitor(message)
                         delivery_monitor.attach(page)
                     page.on("response", user_info.capture)
-                    await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=120000)
-                    await require_session(page, context)
+                    await require_session(page, context, navigate=True)
                     stage = ExecutionStage.SELECTING_TARGET
                     try:
                         identity = (

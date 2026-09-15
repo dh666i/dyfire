@@ -39,6 +39,7 @@
         <div><dt>执行耗时</dt><dd>{% if run.started_at and run.finished_at %}{{ [0, (run.finished_at - run.started_at).total_seconds()]|max|round(1) }} 秒{% else %}—{% endif %}</dd></div>
         <div><dt>诊断编号</dt><dd>{{ run.id }} <button class="quiet" type="button" data-copy-text="{{ run.id }}" aria-label="复制诊断编号">复制</button></dd></div>
       </dl>
+      {% set history = attempt_history.get(run.id, []) %}{% set total_attempts = run.attempt %}{% include "run_attempts.html" %}
       {% if run.error_summary %}<p class="run-note{{ ' info' if run.status == 'success' else (' caution' if run.status == 'submitted_unconfirmed' else '') }}">{{ run.error_summary }}</p>{% endif %}
       {% if guidance %}<div class="run-guidance"><p>{{ guidance.text }}</p>{% if guidance.action == 'account' %}<a href="/accounts">重新绑定账号</a>{% elif guidance.action == 'subscription' %}<a href="/subscription">查看会员</a>{% elif guidance.action == 'task' %}<a href="/tasks/{{ task.id }}/edit">检查任务设置</a>{% endif %}</div>{% endif %}
     </div>

@@ -17,6 +17,7 @@ from core.avatars import safe_avatar_url
 from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
+from spark_console.run_attempts import for_runs as attempts_for_runs
 from spark_console.models import (
     DouyinAccount,
     DouyinContactIdentity,
@@ -795,6 +796,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 "runs.html",
                 title="执行记录",
                 runs=runs,
+                attempt_history=attempts_for_runs(db, [r.id for r, _ in runs]),
                 q=q,
                 status=status,
                 account_id=account_id,start=start,end=end,accounts=accounts,

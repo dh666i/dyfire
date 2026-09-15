@@ -30,19 +30,19 @@ async def process_health_check(engine, cipher, checker=None):
         account_id, expected = account.id, snapshot(account)
         import uuid
         token = str(uuid.uuid4())
-        if not acquire(db, account_id, token, 'health', now, 90):
+        if not acquire(db, account_id, token, 'health', now, 150):
             return False
         row.attempts += 1
         row.checked_at = now
         row.reason = f'正在进行第 {row.attempts} 次登录复核'
-        row.next_check_at = now + timedelta(seconds=100) if row.attempts < 2 else None
+        row.next_check_at = now + timedelta(seconds=160) if row.attempts < 2 else None
         try:
             raw = AccountService(db, cipher, AuditService(db)).decrypt_for_worker(account_id)
         except Exception:
             record(db, account_id, expected, 'invalid', '登录资料无法解密，需要重新登录', recheck=True, count_attempt=False)
             release(db, account_id, token)
             return True
-    reading = asyncio.create_task(asyncio.wait_for((checker or check_saved_session)(raw, expected[2]), timeout=45))
+    reading = asyncio.create_task(asyncio.wait_for((checker or check_saved_session)(raw, expected[2]), timeout=100))
     try:
         while not reading.done():
             await asyncio.wait({reading}, timeout=1)

@@ -174,3 +174,101 @@ def test_submitted_retry_crash_never_reclaims(case):
     with Session(engine) as db:
         assert claim_next_due_task(db, now+timedelta(minutes=21), "b") is None
         assert db.get(TaskRun, first.id).status == "submitted_unconfirmed"
+
+def add_four_due_tasks(case):
+    now, _, engine, aid, tid = case
+    with Session(engine) as db:
+        first = db.get(SparkTask, tid)
+        for n in range(4):
+            db.add(SparkTask(owner_user_id=first.owner_user_id, douyin_account_id=aid,
+                target_name=f"同时好友{n}", send_time=first.send_time, message_template="test",
+                enabled=True, next_run_at=first.next_run_at))
+        db.commit()
+
+
+def test_five_due_tasks_survive_first_login_failure(case):
+    add_four_due_tasks(case)
+    first = attempt(case, Executor())
+    assert attempt(case, Executor(), 35) is None
+    with Session(case[2]) as db:
+        rows = db.scalars(select(TaskRun)).all()
+        assert len(rows) == 5
+        assert sorted(r.attempt for r in rows) == [0, 0, 0, 0, 1]
+        assert all(r.status == "retrying" for r in rows)
+    recover(case)
+    executor = Executor(fail=False, submitted=True)
+    done = [attempt(case, executor, 70+n*35) for n in range(5)]
+    assert len({r.task_id for r in done}) == 5
+    assert all(r.status == "success" for r in done)
+    assert executor.calls == 5
+    assert attempt(case, executor, 250) is None
+
+
+def test_pending_siblings_expire_with_visible_records(case):
+    add_four_due_tasks(case)
+    attempt(case, Executor())
+    assert attempt(case, Executor(), 35) is None
+    assert attempt(case, Executor(fail=False), 601) is None
+    with Session(case[2]) as db:
+        rows = db.scalars(select(TaskRun)).all()
+        assert len(rows) == 5
+        assert sum(r.status == "skipped" and r.attempt == 0 for r in rows) == 4
+        assert all(r.error_code == "health_retry_expired" for r in rows)
+
+
+def test_recovery_before_scheduler_preserves_siblings_and_deadline(case):
+    add_four_due_tasks(case)
+    attempt(case, Executor())
+    recover(case, 450)
+    results = [attempt(case, Executor(fail=False), 460+n*30) for n in range(5)]
+    assert all(r and r.status == "success" for r in results), [(r.status, r.error_code) if r else None for r in results]
+    assert len({r.task_id for r in results}) == 5
+
+
+def test_attempt_history_keeps_original_reasons_and_times(case):
+    from spark_console.models import TaskRunAttempt
+    first = attempt(case, Executor())
+    recover(case)
+    second = attempt(case, Executor(), 60)
+    recover(case, 100)
+    third = attempt(case, Executor(fail=False, submitted=True), 120)
+    with Session(case[2]) as db:
+        history = db.scalars(select(TaskRunAttempt).where(
+            TaskRunAttempt.run_id == first.id).order_by(TaskRunAttempt.number)).all()
+        assert [h.number for h in history] == [1, 2, 3]
+        assert [h.status for h in history] == ["failed", "failed", "success"]
+        assert history[0].reason == "temporary test"
+        assert history[1].started_at > history[0].started_at
+        assert history[2].submitted_at is not None
+        assert third.id == second.id == first.id
+
+def test_relogin_cancels_waiting_siblings(case):
+    from spark_console.services.account_health import recovered
+    add_four_due_tasks(case)
+    attempt(case, Executor())
+    assert attempt(case, Executor(), 35) is None
+    with Session(case[2]) as db:
+        recovered(db, db.get(DouyinAccount, case[3]))
+        db.commit()
+        rows = db.scalars(select(TaskRun)).all()
+        assert len(rows) == 5
+        assert all(r.error_code == "health_retry_cancelled" for r in rows)
+
+
+def test_queued_generic_retry_cannot_reset_deadline_or_attempts(case):
+    from spark_console.health_retry import queue_blocked_tasks
+    now, _, engine, aid, tid = case
+    with Session(engine) as db:
+        task = db.get(SparkTask, tid)
+        task.next_run_at = now
+        db.get(DouyinAccount, aid).validation_state = "temporary"
+        prior = TaskRun(task_id=tid, scheduled_for=now-timedelta(minutes=6),
+                        status="retrying", retry_after=now, attempt=2)
+        db.add(prior)
+        db.flush()
+        queue_blocked_tasks(db, now)
+        run = db.scalar(select(TaskRun).where(TaskRun.scheduled_for == now))
+        pending = db.get(TaskHealthRetry, run.id)
+        assert run.attempt == 2
+        from spark_console.health_retry import aware
+        assert aware(pending.expires_at) == now+timedelta(minutes=4)

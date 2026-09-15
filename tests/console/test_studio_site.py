@@ -37,8 +37,8 @@ def test_routes_use_new_design_and_valid_assets(site,path):
     assert response.status_code==200,path
     assert 'data-design="dyfire-studio"' in response.text,path
     assert 'class="studio-header"' in response.text,path
-    assert '/static/workspace.css?v=0.2.2' in response.text,path
-    assert '/static/studio_tokens.css?v=0.2.2' in response.text,path
+    assert '/static/workspace.css?v=0.2.3' in response.text,path
+    assert '/static/studio_tokens.css?v=0.2.3' in response.text,path
     assert '/static/studio_site.css' not in response.text,path
     if path not in ('/login','/register','/forgot-password'):
         assert 'data-workspace-heading' in response.text,path
@@ -78,3 +78,28 @@ def test_no_old_shell_styles_are_loaded():
         text=(root/name).read_text(encoding='utf-8')
         for retired in ('mineradio.css','mineradio_admin.css','smoke_cards.css','smoke_production.css','layout_refinement.css'):
             assert retired not in text
+
+
+def test_attempt_details_render_for_owner_and_admin(site):
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from spark_console.db import session_scope
+    from spark_console.models import User, SparkTask, TaskRun, TaskRunAttempt
+    with session_scope(site.engine) as db:
+        admin = db.scalar(select(User).where(User.username == "admin"))
+        task = SparkTask(owner_user_id=admin.id, target_name="历史详情测试",
+                        send_time="09:30", message_template="test", enabled=False)
+        db.add(task)
+        db.flush()
+        run = TaskRun(task_id=task.id, scheduled_for=datetime.now(timezone.utc),
+                      status="failed", stage="authenticating", attempt=2)
+        db.add(run)
+        db.flush()
+        db.add(TaskRunAttempt(run_id=run.id, number=1, started_at=run.scheduled_for,
+            finished_at=run.scheduled_for, status="failed", stage="authenticating",
+            reason="测试加载异常 <private>"))
+    for path in ("/runs", "/admin/runs"):
+        response = site.real_client.get(path)
+        assert response.status_code == 200
+        assert "查看 1 次尝试详情" in response.text
+        assert "测试加载异常 &lt;private&gt;" in response.text

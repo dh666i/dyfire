@@ -11,3 +11,6 @@ COPY --chown=spark:spark spark_console/static /app/spark_console/static
 COPY --chown=spark:spark frontend/dist /app/frontend/dist
 RUN rm -f /app/spark_console/templates/tasks.html /app/spark_console/static/studio_site.css
 COPY --chown=spark:spark spark_console/models.py spark_console/scheduler.py spark_console/health_retry.py spark_console/ops_monitor.py /app/spark_console/
+COPY --chown=spark:spark spark_console/run_attempts.py /app/spark_console/
+COPY --chown=spark:spark spark_console/services/account_health.py /app/spark_console/services/
+COPY --chown=spark:spark core/session_health.py /app/core/

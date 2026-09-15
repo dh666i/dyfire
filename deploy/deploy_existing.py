@@ -18,7 +18,8 @@ def run(*args):
 
 
 def main():
-    previous=run('docker','inspect','douyin-spark-console-spark-web-1','--format','{{.Image}}')
+    previous_tag=run('docker','inspect','douyin-spark-console-spark-web-1','--format','{{.Config.Image}}')
+    previous=run('docker','image','inspect',previous_tag,'--format','{{.Id}}')
     backup=ROOT/'source-backups'/('dyfire-'+VERSION+'-'+time.strftime('%Y%m%d-%H%M%S'))
     backup.mkdir(parents=True)
     shutil.copy2(COMPOSE,backup/'compose.console.yml')

@@ -120,8 +120,47 @@ async def wait_for_session(page, context, *, timeout=15, interval=.5):
     return replace(evidence, reason=f'已等待页面就绪 {timeout:g} 秒；{evidence.reason}')
 
 
-async def require_session(page, context):
-    evidence = await wait_for_session(page, context)
+async def open_chat_session(page, context):
+    """Identical bounded navigation for send and health check; no message actions."""
+    from core.web_chat import WEB_CHAT_URL
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    failures = 0
+    def request_failed(_request):
+        nonlocal failures
+        failures += 1
+    page.on("requestfailed", request_failed)
+    navigations = 0
+    document_status = None
+    evidence = SessionEvidence("temporary", "聊天页尚未就绪")
+    try:
+        for index in range(2):
+            navigations += 1
+            try:
+                response = (await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=20000)
+                    if index == 0 else await page.reload(wait_until="domcontentloaded", timeout=20000))
+                document_status = getattr(response, "status", None)
+                evidence = await wait_for_session(page, context)
+            except Exception as error:
+                # Inspect even after navigation timeout: verification UI may have appeared.
+                try:
+                    evidence = await asyncio.wait_for(inspect_session(page, context,
+                        api_result=("unknown", "导航未完整完成")), 6)
+                except asyncio.TimeoutError:
+                    evidence = SessionEvidence("temporary", "导航后页面检测超时")
+                if evidence.state == "temporary":
+                    evidence = replace(evidence, reason=f"聊天页加载未完成（{type(error).__name__[:40]}）")
+            if evidence.state != "temporary":
+                break
+        status = document_status if type(document_status) is int else "未知"
+        return replace(evidence, reason=(evidence.reason[:150] +
+            f"；页面加载 {navigations} 次，耗时 {loop.time()-started:.1f} 秒，主文档 {status}，网络失败 {failures}"))
+    finally:
+        page.remove_listener("requestfailed", request_failed)
+
+
+async def require_session(page, context, *, navigate=False):
+    evidence = await open_chat_session(page, context) if navigate else await wait_for_session(page, context)
     if evidence.state != 'valid':
         raise SessionUnavailable(evidence)
     return evidence
@@ -139,11 +178,7 @@ async def check_saved_session(raw, version):
             if payload.cookies_to_add():
                 await context.add_cookies(payload.cookies_to_add())
             page = await context.new_page()
-            try:
-                await page.goto(WEB_CHAT_URL, wait_until='domcontentloaded', timeout=20000)
-            except Exception as error:
-                return SessionEvidence('temporary', f'聊天页导航未完成（{type(error).__name__[:40]}），无法确认失效')
-            evidence = await wait_for_session(page, context)
+            evidence = await open_chat_session(page, context)
             if evidence.state == 'valid':
                 try:
                     evidence = replace(evidence, refreshed_storage_state=await context.storage_state())

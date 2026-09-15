@@ -1,0 +1,16 @@
+{% if history %}
+<details class="run-attempt-history">
+  <summary>查看 {{ history|length }} 次尝试详情</summary>
+  <ol>
+    {% for entry in history %}
+    <li><strong>第 {{ entry.number }} 次 · {{ entry.status|run_status }}</strong>
+      <p>{{ entry.started_at|shanghai_time }} → {{ entry.finished_at|shanghai_time }} · {{ entry.stage|run_stage }}</p>
+      <p>{{ entry.reason or '本次执行完成' }}</p>
+      {% if entry.submitted_at %}<p>已进入发送步骤，不会自动重发</p>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</details>
+{% elif total_attempts|default(0) > 1 %}
+<p class="run-note">共尝试 {{ total_attempts }} 次；此历史记录未保存逐次详情。</p>
+{% endif %}

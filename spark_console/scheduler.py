@@ -122,6 +122,8 @@ def claim_next_due_task(
     session: Session, now: datetime, worker_id: str
 ) -> TaskRun | None:
     now_utc = _utc(now)
+    from spark_console.health_retry import queue_blocked_tasks
+    queue_blocked_tasks(session, now_utc)
     _protect_expired_submissions(session, now_utc)
     from spark_console.health_retry import claim as claim_health_retry
     recovery = claim_health_retry(session, now_utc, worker_id)
@@ -212,6 +214,8 @@ def finish_run(
     retry_after: datetime | None = None,
 ) -> TaskRun:
     now_utc = _utc(now)
+    from spark_console.run_attempts import save
+    save(run, status, stage, now_utc, error_summary)
     run.status = status
     run.stage = stage
     run.finished_at = now_utc
