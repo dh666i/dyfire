@@ -80,7 +80,7 @@ async def collect_directory(page, limit=20, query=""):
             return rows[:limit]
         raise ValueError('当前抖音页面未读取到匹配结果，无法确认好友不存在。请尝试昵称或抖音号，或同步更多最近会话。')
     else:
-        await page.wait_for_selector('.conversationConversationItemwrapper', timeout=15000)
+        await page.wait_for_selector('.conversationConversationItemwrapper', timeout=45000)
     found = {}
     stalled = 0
     for _ in range(16):
@@ -116,17 +116,19 @@ async def read_directory(payload_bytes, version, limit, query):
             await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=45000)
             # A cold chat page may still be hydrating. Retry once only when
             # evidence is inconclusive, never when login/verification is explicit.
-            evidence = await wait_for_session(page, context, timeout=20)
+            evidence = await wait_for_session(page, context, timeout=45)
             if evidence.state == 'temporary':
                 await page.reload(wait_until='domcontentloaded', timeout=20000)
-                evidence = await wait_for_session(page, context, timeout=20)
+                evidence = await wait_for_session(page, context, timeout=45)
             if evidence.state != 'valid':
                 raise SessionUnavailable(evidence)
             profile = await read_self_profile(context)
             try:
                 rows = await collect_directory(page, limit, query)
             except Exception:
-                await require_session(page, context)
+                failed = await inspect_session(page, context)
+                if failed.state in ('verification','logged_out'):
+                    raise SessionUnavailable(failed)
                 raise
             # Search replaces the conversation list. Its absence is not logout.
             final = await inspect_session(page, context)
@@ -150,7 +152,13 @@ async def read_directory(payload_bytes, version, limit, query):
                     continue
                 items.append(value)
             if query and not items:
-                raise ValueError('当前抖音页面未读取到匹配结果，无法确认好友不存在。请尝试昵称或抖音号，或同步更多最近会话。')
+                structure = await page.evaluate(r'''(query) => {
+          const visible=n=>!!n.getClientRects().length;
+          const matches=[...document.querySelectorAll('body *')].filter(n=>visible(n)&&n.children.length===0&&n.textContent.trim()===query).slice(0,4);
+          return {inputs:[...document.querySelectorAll('input')].filter(visible).map(n=>({placeholder:n.placeholder,searchValue:n.value===query,cls:n.className})),matches:matches.map(n=>{const chain=[];for(let i=0;n&&i<4;i++,n=n.parentElement)chain.push({tag:n.tagName,cls:n.className,images:n.querySelectorAll('img').length,links:n.querySelectorAll('a').length});return chain;})};
+                }''', query)
+                import json
+                raise ValueError('当前抖音页面搜索结果未识别；结构诊断：'+json.dumps(structure,ensure_ascii=False))
             return {"items": items, "profile": profile, "has_more": len(rows) >= limit and limit < 100}
         finally:
             await browser.close()

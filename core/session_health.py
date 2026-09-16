@@ -87,7 +87,10 @@ async def inspect_session(page, context, *, api_result=None):
     return SessionEvidence('temporary', f'未检测到已登录会话列表；{diagnostic}；页面 {path}')
 
 
-async def wait_for_session(page, context, *, timeout=15, interval=.5):
+SESSION_WAIT_TIMEOUT = 45
+
+
+async def wait_for_session(page, context, *, timeout=SESSION_WAIT_TIMEOUT, interval=.5):
     """Wait for hydrated UI; inspect without clicking and probe API at most twice."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout

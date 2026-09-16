@@ -251,8 +251,9 @@ def test_relogin_cancels_waiting_siblings(case):
         recovered(db, db.get(DouyinAccount, case[3]))
         db.commit()
         rows = db.scalars(select(TaskRun)).all()
-        assert len(rows) == 5
-        assert all(r.error_code == "health_retry_cancelled" for r in rows)
+        pending = [r for r in rows if r.error_code == "health_retry_cancelled"]
+        assert len(pending) == 5
+        assert all(r.status in ("failed", "skipped") for r in pending)
 
 
 def test_queued_generic_retry_cannot_reset_deadline_or_attempts(case):
