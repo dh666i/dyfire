@@ -37,7 +37,7 @@ def test_routes_use_new_design_and_valid_assets(site,path):
     assert response.status_code==200,path
     assert 'data-design="dyfire-studio"' in response.text,path
     assert 'class="studio-header"' in response.text,path
-    assert '/static/workspace.css?v=0.2.4' in response.text,path
+    assert '/static/workspace.css?v=0.2.7' in response.text,path
     assert '/static/studio_tokens.css?v=0.2.4' in response.text,path
     assert '/static/studio_site.css' not in response.text,path
     if path not in ('/login','/register','/forgot-password'):
@@ -70,6 +70,18 @@ def test_task_editor_and_customer_detail(site):
         page=site.real_client.get(path)
         assert page.status_code==200
         assert 'data-design="dyfire-studio"' in page.text
+
+
+def test_mobile_filter_rows_stack_instead_of_overflowing():
+    root = Path(__file__).resolve().parents[2]
+    workspace = (root / "spark_console/static/workspace.css").read_text(encoding="utf-8")
+    features = (root / "spark_console/static/workspace_features.css").read_text(encoding="utf-8")
+    runs = (root / "spark_console/templates/admin_runs.html").read_text(encoding="utf-8")
+    assert "admin-run-filters" in runs
+    assert "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)" in workspace
+    assert 'input[type="date"]' in workspace
+    assert "min-width: 0" in workspace
+    assert "flex-wrap: wrap" in features.split(".workspace-options {", 1)[1][:280]
 
 
 def test_no_old_shell_styles_are_loaded():

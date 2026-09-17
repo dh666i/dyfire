@@ -558,6 +558,11 @@ legend {
   grid-template-columns: 185px minmax(0, 1fr);
   gap: 40px;
   align-items: start;
+  min-width: 0;
+}
+.studio-admin-content {
+  min-width: 0;
+  max-width: 100%;
 }
 .workspace-admin-nav {
   position: sticky;
@@ -807,6 +812,76 @@ legend {
   }
   .workspace-admin-layout .workspace-heading h1 {
     font-size: 32px;
+  }
+  .studio-admin-context {
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
+  }
+  .workspace-options,
+  .admin-filterbar,
+  .filter-form,
+  .run-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    justify-content: stretch;
+    align-items: end;
+    gap: 12px 8px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .workspace-options > label,
+  .admin-filterbar > label {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+    width: auto;
+    max-width: 100%;
+    flex: none;
+    gap: 6px;
+  }
+  .workspace-options > label:nth-child(-n + 2),
+  .admin-search-field,
+  .admin-select-field {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: none;
+  }
+  .workspace-options input,
+  .workspace-options select,
+  .admin-filterbar input,
+  .admin-filterbar select,
+  input[type="date"],
+  input[type="time"] {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .workspace-options > button,
+  .workspace-options > a,
+  .admin-filterbar .admin-button {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+  }
+  .ops-toolbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .ops-toolbar .admin-button {
+    margin-left: 0;
+    width: 100%;
+  }
+  .scan-input-row,
+  .scan-dialog-foot {
+    flex-wrap: wrap;
+  }
+  .scan-input-row button {
+    width: 100%;
   }
 }
 .workspace-body .subscription-summary {

@@ -11,7 +11,7 @@
   <a class="admin-stat-card {{ 'warning' if stats.unconfirmed_runs_today|default(0) else '' }}" href="/admin/runs?status=submitted_unconfirmed"><span>待人工核实</span><span class="admin-icon-wrap">{{ icon('clock', 18) }}</span><strong>{{ stats.unconfirmed_runs_today|default(0) }}</strong><small>已执行发送，系统不会自动重发</small></a>
 </section>
 
-<form class="workspace-options" method="get" action="/admin/runs">
+<form class="workspace-options admin-run-filters" method="get" action="/admin/runs" aria-label="筛选执行记录">
   <label>关键词<input name="q" value="{{ q }}" placeholder="客户、目标、阶段或错误"></label>
   <label>状态<select name="status">{% for value,label in [('', '全部状态'), ('running', '执行中'), ('success', '成功'), ('submitted_unconfirmed', '已提交，待核实'), ('failed', '失败'), ('skipped', '已跳过')] %}<option value="{{ value }}"{% if status==value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
   <label>起始日期<input type="date" name="start" value="{{ start }}"></label>
