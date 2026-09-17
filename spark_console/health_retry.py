@@ -7,7 +7,7 @@ from spark_console.models import (
     AccountOperation, DouyinLoginSession,
 )
 
-WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "20"))))
+WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "10"))))
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
 WAIT = timedelta(seconds=30)
 
