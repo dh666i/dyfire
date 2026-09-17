@@ -31,7 +31,7 @@
   <section class="studio-metrics" aria-label="今日运行总览">
     <a class="studio-metric studio-metric-lead" href="/runs?status=success"><span>今日确认成功</span><strong>{{ today_success|default(0) }}<small>条</small></strong><p>已确认的发送结果</p></a>
     <a class="studio-metric" href="/runs?status=submitted_unconfirmed"><span>已提交 · 待核实</span><strong>{{ today_unconfirmed|default(0) }}<small>条</small></strong><p>与确认成功分开统计</p></a>
-    <a class="studio-metric" href="/studio"><span>启用任务</span><strong>{{ enabled_tasks|length }}<small>个</small></strong><p>共 {{ tasks|length }} 个每日计划</p></a>
+    <a class="studio-metric{{ ' needs-attention' if today_failed|default(0) else '' }}" href="/runs?status=failed"><span>今日未发出</span><strong>{{ today_failed|default(0) }}<small>条</small></strong><p>通常不用重新扫码，可在记录里补发</p></a>
     <a class="studio-metric{{ ' needs-attention' if attention_count else '' }}" href="{{ '/accounts' if account_attention|default(0) else '/runs?status=attention' }}"><span>需要关注</span><strong>{{ attention_count }}<small>项</small></strong><p>{{ '有账号或执行结果待处理' if attention_count else '暂无待处理事项' }}</p></a>
   </section>
   <section class="studio-schedule" aria-labelledby="schedule-title">

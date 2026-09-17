@@ -90,6 +90,9 @@ UI_NOTICES = {
     "account-login-active": ("info", "该账号正在重新登录，请先完成或取消登录后再删除。"),
     "account-running": ("info", "该账号有任务正在执行，请完成后再删除。"),
     "task-running": ("info", "任务正在执行，请完成后再删除。"),
+    "retry-queued": ("success", "已安排立即补发。系统不会重复发送已经提交的消息。"),
+    "retry-rejected": ("info", "这条记录不能补发。若聊天里已经看到消息，请不要再发。"),
+    "retry-busy": ("info", "已有正在执行或排队的补发，请稍后再看执行记录。"),
 }
 
 
@@ -107,6 +110,12 @@ def run_view_status(run) -> dict[str, str]:
         return {"label": "等待账号复核后重试", "tone": "warn", "kind": "retry"}
     if error_code.startswith("retry_scheduled_"):
         return {"label": "等待重试", "tone": "warn", "kind": "retry"}
+    if status == "failed" and error_code in {
+        "health_retry_expired",
+        "health_retry_exhausted",
+        "health_retry_cancelled",
+    }:
+        return {"label": "本次未发出", "tone": "warn", "kind": "missed"}
     if status == "running":
         return {"label": "执行中", "tone": "progress", "kind": "running"}
     if status == "success":
@@ -124,14 +133,19 @@ def run_view_status(run) -> dict[str, str]:
 
 def run_guidance(run) -> dict[str, str] | None:
     code = str(getattr(run, "error_code", "") or "")
+    from spark_console.health_retry import WINDOW
+    window_minutes = int(WINDOW.total_seconds() // 60)
+    submitted = getattr(run, "submitted_at", None) is not None or str(getattr(run, "status", "")) == "submitted_unconfirmed"
     if code == 'health_retry_waiting':
-        return {'text':'本次尚未提交消息。账号复核正常后，将在原计划后 10 分钟内最多重试 2 次；暂停或修改任务会取消本次补发。', 'action':'account'}
+        return {'text':f'这次还没发出去，多半是聊天页暂时没加载完，不必重新扫码。系统会在原计划后 {window_minutes} 分钟内最多再试 2 次。', 'action':'none'}
+    if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'} and not submitted:
+        return {'text':'这次没有发出去，通常不是账号掉线。明天的计划还在；也可以立即补发一次。', 'action':'retry'}
     if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'}:
-        return {'text':'本次恢复重试已结束，不会继续补发。请查看账号状态；下一天的正常计划不受影响。', 'action':'account'}
+        return {'text':'本次恢复重试已结束。请查看账号状态；下一天的正常计划不受影响。', 'action':'account'}
     if code == 'health_retry_submitted':
         return {'text':'消息已进入提交步骤，为避免重复消息不会自动重发，请核对抖音聊天记录。', 'action':'none'}
     if code in {'account_health_pending', 'account_health_blocked'}:
-        return {'text':'账号暂缓发送，正在复核或等待处理；任务开关保持不变，恢复后继续后续计划，本次不会自动补发。', 'action':'account'}
+        return {'text':'账号暂缓发送，正在自动复核。通常不用重新扫码；需要验证时会在账号页标明。恢复后执行后续计划，本次不自动补发。', 'action':'account'}
     if code == 'account_verification_required':
         return {'text':'抖音要求安全验证，请前往账号页完成验证。系统不会自动尝试密码或验证码。', 'action':'account'}
     if code == 'account_busy':
@@ -455,6 +469,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 today_unconfirmed=sum(
                     run.status == "submitted_unconfirmed" for run in today_runs
                 ),
+                today_failed=sum(run.status == "failed" for run in today_runs),
                 next_task=next_task,
                 **context,
             )
@@ -804,6 +819,25 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 account_names={item.id: item.display_name for item in accounts},
                 **context,
             )
+
+    @app.post("/runs/{run_id}/retry")
+    def retry_unsubmitted_run(request: Request, run_id: str, csrf_token: str = Form(default="")):
+        with session_scope(engine) as db:
+            user, record, _context = auth.user_context(request, db)
+            auth.csrf(record, csrf_token)
+            try:
+                TaskService(
+                    db,
+                    AccountService(db, cipher, AuditService(db)),
+                    AuditService(db),
+                ).request_unsubmitted_retry(user.id, run_id, datetime.now(timezone.utc))
+            except NotFound:
+                raise HTTPException(404, "执行记录不存在")
+            except ValidationError:
+                return RedirectResponse("/runs?notice=retry-rejected", status_code=303)
+            except Conflict:
+                return RedirectResponse("/runs?notice=retry-busy", status_code=303)
+        return RedirectResponse("/runs?notice=retry-queued", status_code=303)
 
     return app
 

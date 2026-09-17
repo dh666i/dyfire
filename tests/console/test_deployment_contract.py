@@ -76,6 +76,7 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertIn("SPARK_AUTH_POLL_SECONDS=1", example)
         self.assertIn("SPARK_WORKER_POLL_SECONDS=10", example)
         self.assertIn("SPARK_HEALTH_RETRY_WINDOW_MINUTES=20", example)
+        self.assertIn("SPARK_TASK_STAGGER_MINUTES=5", example)
         self.assertIn("SPARK_OPS_MIN_FREE_GIB=5", example)
         self.assertIn("SPARK_OPS_WORKER_HEARTBEAT_MAX_AGE_SECONDS=90", example)
 

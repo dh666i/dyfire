@@ -16,6 +16,7 @@ class CommercialWorkflowTests(unittest.TestCase):
     def test_preview_does_not_create_and_rejects_wrong_owner(self):
         payload={'csrf_token':self.f.csrf,'account_id':self.f.account,'time':'12:00','targets':[{'name':'好友'}]}
         r=self.client.post('/tasks/preview',json=payload);self.assertEqual(200,r.status_code,r.text)
+        self.assertEqual(['12:00'], r.json()['times'])
         with session_scope(self.f.engine) as db:self.assertEqual(0,db.scalar(select(func.count()).select_from(SparkTask)))
         payload['account_id']='not-owned';self.assertEqual(404,self.client.post('/tasks/preview',json=payload).status_code)
         payload['account_id']=self.f.account;payload['targets'][0]['sec_uid']='unknown';self.assertEqual(400,self.client.post('/tasks/preview',json=payload).status_code)

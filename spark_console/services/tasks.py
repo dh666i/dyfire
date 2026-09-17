@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -219,27 +219,26 @@ class TaskService:
         ):
             raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")
 
-        local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
-        hour, minute = map(int, send_time.split(":"))
-        candidate = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        if candidate <= local_now:
-            from datetime import timedelta
-            candidate += timedelta(days=1)
+        from spark_console.schedule_slots import next_runs, plan as plan_slots
 
-        next_run_at = candidate.astimezone(timezone.utc)
+        planned = plan_slots(self.session, account.id, len(normalized_targets), send_time)
+        times = list(planned["times"])
+        runs = next_runs(times)
         tasks = [
             SparkTask(
                 owner_user_id=owner_id,
                 douyin_account_id=account.id,
                 target_name=target,
                 target_key=task_target_key(target, _stable_target),
-                send_time=send_time,
+                send_time=slot,
                 message_template=message,
                 message_kind=kind,
                 enabled=True,
-                next_run_at=next_run_at,
+                next_run_at=run_at,
             )
-            for target, _stable_target in normalized_targets
+            for (target, _stable_target), slot, run_at in zip(
+                normalized_targets, times, runs, strict=True
+            )
         ]
         try:
             with self.session.begin_nested():
@@ -287,6 +286,47 @@ class TaskService:
         except IntegrityError as error:
             raise Conflict("相同账号、好友和时间的启用任务已存在") from error
         self.audit.write(owner_id, "task.enabled" if enabled else "task.disabled", "spark_task", task.id)
+        return task
+
+    def request_unsubmitted_retry(self, owner_id: str, run_id: str, now: datetime) -> SparkTask:
+        run = self.session.get(TaskRun, run_id)
+        if run is None:
+            raise NotFound("执行记录不存在")
+        task = self.get_owned(owner_id, run.task_id)
+        if run.submitted_at is not None or run.status in (
+            "success",
+            "submitted_unconfirmed",
+            "running",
+        ):
+            raise ValidationError("消息可能已发出，不能自动补发")
+        if run.status not in ("failed", "skipped"):
+            raise ValidationError("当前状态不能补发")
+        if not task.enabled:
+            raise ValidationError("任务已暂停，请先恢复任务")
+        if self.session.scalar(
+            select(TaskRun.id)
+            .where(
+                TaskRun.task_id == task.id,
+                TaskRun.status.in_(("running", "retrying")),
+            )
+            .limit(1)
+        ):
+            raise Conflict("已有正在执行或等待中的发送")
+        next_at = task.next_run_at
+        if next_at is not None:
+            if next_at.tzinfo is None:
+                next_at = next_at.replace(tzinfo=timezone.utc)
+            current = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+            local_next = next_at.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%H:%M")
+            if next_at <= current + timedelta(minutes=2) and local_next != task.send_time:
+                raise Conflict("补发已在排队")
+        if not task.douyin_account_id:
+            raise ValidationError("发送账号不可用")
+        account = self.accounts.get_owned(owner_id, task.douyin_account_id)
+        if account.validation_state in ("invalid", "verification"):
+            raise ValidationError("请先完成账号验证或重新登录")
+        task.next_run_at = now
+        self.audit.write(owner_id, "task.retry_requested", "task_run", run.id)
         return task
 
     def update_owned(

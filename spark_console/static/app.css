@@ -1116,6 +1116,13 @@ th {
   background: var(--success-soft);
 }
 
+.account-health-temporary {
+  border-color: #ecd398;
+  color: #735015;
+  background: var(--warning-soft);
+}
+
+.account-health-verification,
 .account-health-invalid {
   border-color: #e5aaaa;
   color: #a53737;

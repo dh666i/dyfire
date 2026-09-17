@@ -2,7 +2,8 @@
 .account-health-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; grid-column:1/-1; }
 .account-health-actions button { min-height:40px; font-size:12px; }
 .account-health-actions span { color:var(--studio-secondary); font-size:12px; }
-.account-health-temporary, .account-health-verification, .account-health-relogin { color:var(--studio-warning); background:var(--studio-warning-soft); }
+.account-health-temporary { color:var(--studio-warning); background:var(--studio-warning-soft); }
+.account-health-verification, .account-health-relogin, .account-health-invalid { color:var(--studio-danger, #a53737); background:var(--studio-danger-soft, #fff1f1); }
 .account-profile-note:empty { display:none; }
 .task-health-note { display:block; color:var(--studio-warning); font-size:11px; line-height:1.5; }
 .directory-actions { display: flex; flex-wrap: wrap; gap: 8px; }

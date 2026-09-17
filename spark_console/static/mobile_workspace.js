@@ -5,9 +5,9 @@
     if(!document.querySelector('form[action="/logout"]')||document.querySelector('.mobile-dock'))return false;
     document.body.classList.add('has-mobile-dock');
     const dock=document.createElement('nav');dock.className='mobile-dock';dock.setAttribute('aria-label','移动端主导航');
-    const routes=[['/dashboard','概览','M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],['/accounts','账号','M6 3h12v18H6zM10 17h4'],['/studio','任务','M4 5h16v16H4zM8 3v4M16 3v4M4 11h16M8 15h3'],['/account-center','我的','M8 7a4 4 0 1 0 8 0a4 4 0 1 0-8 0M4 21v-2a8 6 0 0 1 16 0v2']];
+    const routes=[['/dashboard','概览','M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],['/accounts','账号','M6 3h12v18H6zM10 17h4'],['/studio','任务','M4 5h16v16H4zM8 3v4M16 3v4M4 11h16M8 15h3'],['/runs','记录','M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5']];
     const path=location.pathname;
-    const current=path==='/dashboard'?'概览':path.startsWith('/accounts')?'账号':path==='/studio'||path.startsWith('/tasks')?'任务':path.startsWith('/runs')?'': '我的';
+    const current=path==='/dashboard'?'概览':path.startsWith('/accounts')?'账号':path==='/studio'||path.startsWith('/tasks')?'任务':path.startsWith('/runs')?'记录':'';
     for(const [href,label,d] of routes){const a=document.createElement('a');a.href=href;a.innerHTML=`<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="${d}"/></svg><span>${label}</span>`;if(current===label)a.setAttribute('aria-current','page');dock.append(a);}
     document.body.append(dock);
     let baseline=innerHeight;

@@ -63,8 +63,9 @@ async function load(){
   $('.profile-popover').append(logout);
   $('#admin-link')?.remove();if(state.user.role==='admin')logout.insertAdjacentHTML('beforebegin','<div id="admin-link"><a href="/admin/overview">管理后台 ↗</a><a href="/studio?view=updates">版本更新 ↗</a></div>');
   $('.menu-identity')?.remove();$('.profile-popover').insertAdjacentHTML('afterbegin',`<div class="menu-identity"><strong>${esc(state.user.name)}</strong><small>${state.user.role==='admin'?'管理员':'个人工作台'}</small></div>`);
+  refreshSchedule();
 }
-$('header nav').innerHTML='<a class="active" href="/studio">续火任务 <sup>01</sup></a><a href="/accounts">抖音账号 <sup>02</sup></a><a href="/runs">执行记录 <sup>03</sup></a>';
+$('header nav').innerHTML='<a class="active" href="/studio">续火任务</a><a href="/accounts">抖音账号</a><a href="/runs">执行记录</a>';
 $('header .profile').outerHTML='<details class="profile-menu"><summary class="profile" aria-label="账户中心">·</summary><div class="profile-popover"><a href="/studio?view=overview">今日概览</a><a href="/subscription">会员订阅</a><a href="/account-center">账户中心</a><a href="/notifications">通知设置</a><a href="/help">使用帮助</a></div></details>';
 document.addEventListener('click',e=>{if(!e.target.closest('.profile-menu'))$('.profile-menu').open=false;});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('.profile-menu').open=false;});
@@ -89,17 +90,48 @@ async function loadContacts(searchItems=null){
     $('#friend-list').innerHTML=contacts.map((c,i)=>`<label class="friend-option" data-name="${esc([c.name,c.nickname,c.remark_name].filter(Boolean).join(' ').toLowerCase())}"><input type="checkbox" value="${i}" name="friend" ${existingTask(c)?'disabled aria-label="已有任务"':''}><span class="avatar">${c.avatar_url?`<img src="${esc(c.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`:esc(c.name[0])}</span><span>${esc(c.name)}<small>${esc(existingTask(c)?(existingTask(c).enabled?'已有任务':'已有任务 · 已暂停'):c.nickname||'抖音好友')}</small></span><span class="checkmark">✓</span></label>`).join('')||'暂无好友记录，请在账号页同步好友后刷新。';
     if(!searchItems)$('#friend-search').value='';
     $('#friend-empty').hidden=contacts.length>0;
+    refreshSchedule();
     document.querySelectorAll('[name=friend]').forEach(el=>{el.checked=!el.disabled&&chosenIds.has(identity(contacts[Number(el.value)]));});studio.syncSelection();
   }catch(error){if(generation===contactGeneration){if(sameAccount){contacts=previousContacts;$('#friend-list').innerHTML=previousMarkup;document.querySelectorAll('[name=friend]').forEach(el=>el.checked=chosenIds.has(identity(contacts[Number(el.value)])));studio.syncSelection();toast('读取未完成，保留上次列表和选择。');}else $('#friend-list').textContent=error.message;}}
   finally{if(generation===contactGeneration)$('#friend-list').setAttribute('aria-busy','false');}
 }
-$('#friend-list').addEventListener('change',studio.syncSelection);
+$('#friend-list').addEventListener('change',()=>{studio.syncSelection();refreshSchedule();});
+let timeTouched=false, scheduleTimer=0, idleApplied=false;
+function selectedFriends(){return [...document.querySelectorAll('[name=friend]:checked')].map(c=>contacts[Number(c.value)]).filter(Boolean);}
+function refreshSchedule(){
+  clearTimeout(scheduleTimer);
+  scheduleTimer=setTimeout(async()=>{
+    const account=$('#account').value, preferred=$('#time').value||'09:30', count=Math.max(1,selectedFriends().length);
+    const hint=$('#schedule-hint'), box=$('#schedule-suggestions');
+    if(!hint)return;
+    try{
+      const data=await request(`/api/studio/schedule?account_id=${encodeURIComponent(account)}&count=${count}&preferred=${encodeURIComponent(preferred)}`);
+      const times=data.times||[];
+      if(!idleApplied && !timeTouched && data.suggested?.[0] && data.load>(data.suggested[0].load||0)){
+        idleApplied=true;$('#time').value=data.suggested[0].start;refreshSchedule();return;
+      }
+      idleApplied=true;
+      if(times.length>1) hint.textContent=`将按 ${times[0]} 至 ${times[times.length-1]} 错开，每位好友间隔 ${data.gap_minutes||1} 分钟。`;
+      else hint.textContent='多位好友会自动错开 5 分钟，并优先安排到全站较空闲的时段。';
+      const chips=(data.suggested||[]).slice(0,3);
+      box.hidden=!chips.length;
+      box.innerHTML=chips.map(item=>`<button type="button" class="schedule-chip" data-start="${esc(item.start)}">${esc(item.start)}${item.times.length>1?` 起` : ''}<small>全站较空闲</small></button>`).join('');
+    }catch{/* keep last hint */}
+  },200);
+}
+$('#time').addEventListener('input',()=>{timeTouched=true;refreshSchedule();});
+$('#schedule-suggestions')?.addEventListener('click',e=>{
+  const chip=e.target.closest('[data-start]');if(!chip)return;
+  timeTouched=true;$('#time').value=chip.dataset.start;refreshSchedule();
+});
+$('#select-visible')?.addEventListener('click',refreshSchedule);
+$('#clear-selection')?.addEventListener('click',refreshSchedule);
 $('#account').addEventListener('change',()=>loadContacts());
 document.addEventListener('directory-updated',e=>{if(e.detail.accountId===$('#account').value)loadContacts(e.detail.query ? e.detail.items : null);});
 $('#choose-friends').onclick=async()=>{$('#friends-dialog').showModal();await load();await loadContacts();};
 $('#create-form').onsubmit=async e=>{
   e.preventDefault();if(busy||!state)return;
-  const selected=[...document.querySelectorAll('[name=friend]:checked')].map(c=>contacts[Number(c.value)]);
+  const selected=selectedFriends();
   if(!selected.length){$('#form-feedback').textContent='请至少选择一位好友';return;}
   const text=$('#kind').value==='文字消息';
   const snapshot=JSON.stringify([$('#account').value,$('#time').value,$('#kind').value,$('#message').value,selected.map(c=>c.sec_uid||c.name)]);
@@ -111,11 +143,15 @@ $('#create-form').onsubmit=async e=>{
     const preview=await request('/tasks/preview',{csrf_token:state.csrf,account_id:$('#account').value,time:$('#time').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''}))});
     if(preview.conflicts.length)throw Error('同一时间已有任务：'+preview.conflicts.join('、'));
     if(preview.blocked)throw Error('请先完成账号复核或验证');
-    if(!await window.sparkReview('确认每日计划',[`账号：${preview.account}`,`每天 ${preview.time}（北京时间） · ${preview.count} 位好友`,selected.map(c=>c.name).join('、'),text?$('#message').value:'续火花表情','从下一次计划时间开始执行，不补发历史消息。']))return;
-    const nowSelected=[...document.querySelectorAll('[name=friend]:checked')].map(c=>contacts[Number(c.value)]).filter(Boolean);
+    const times=preview.times||[preview.time];
+    const timeLine=times.length>1?`每天 ${times[0]}–${times[times.length-1]}（北京时间，${preview.count} 位好友各错开 ${preview.gap_minutes||1} 分钟）`:`每天 ${preview.time}（北京时间） · ${preview.count} 位好友`;
+    if(!await window.sparkReview('确认每日计划',[`账号：${preview.account}`,timeLine,selected.map(c=>c.name).join('、'),text?$('#message').value:'续火花表情','从下一次计划时间开始执行，不补发历史消息。']))return;
+    const nowSelected=selectedFriends();
     if(snapshot!==JSON.stringify([$('#account').value,$('#time').value,$('#kind').value,$('#message').value,nowSelected.map(c=>c.sec_uid||c.name)]))throw Error('表单内容已变化，请重新确认');
     const created=await request('/api/studio/tasks',{account_id:$('#account').value,targets:selected.map(c=>({name:c.name,sec_uid:c.sec_uid||''})),send_time:$('#time').value,message_kind:text?'text':'douyin_sticker',message_template:text?$('#message').value.trim():'续火花'});
-    $('#clear-selection').click();document.dispatchEvent(new Event('task-created'));await load();document.dispatchEvent(new CustomEvent('studio:tasks-created',{detail:{ids:created.ids,account:$('#account').value}}));toast(`已创建 ${created.ids.length} 个续火任务`);
+    $('#clear-selection').click();document.dispatchEvent(new Event('task-created'));await load();document.dispatchEvent(new CustomEvent('studio:tasks-created',{detail:{ids:created.ids,account:$('#account').value}}));
+    const range=created.times?.length>1?`，${created.times[0]}–${created.times[created.times.length-1]}`:'';
+    toast(`已创建 ${created.ids.length} 个续火任务${range}`);
     document.querySelector('#workspace')?.scrollIntoView({block:'start'});
     created.ids.forEach(id=>document.querySelector(`[data-toggle="${CSS.escape(id)}"]`)?.closest('.task-row')?.classList.add('task-just-created'));
   }catch(error){$('#form-feedback').textContent=error.message;}

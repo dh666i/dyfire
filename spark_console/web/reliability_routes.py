@@ -54,9 +54,16 @@ def build_reliability_router(engine,auth,cipher):
                 if user.role!='admin':SubscriptionService(db,AuditService(db)).require_task_capacity(user.id,len(targets))
                 for name,uid in targets:
                     if uid and not db.get(DouyinContactIdentity,(account.id,uid)):raise ValidationError('所选好友不属于当前账号')
-                existing=service._active_schedule_targets(account.id,send_time)
+                from spark_console.schedule_slots import plan as plan_slots
+                planned=plan_slots(db,account.id,len(targets),send_time)
+                times=list(planned['times'])
+                existing=list(db.execute(
+                    select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
+                    .outerjoin(SparkTaskTargetIdentity, SparkTaskTargetIdentity.task_id == SparkTask.id)
+                    .where(SparkTask.douyin_account_id == account.id)
+                ).all())
                 conflicts=[name for name,uid in targets if service._has_target_conflict(existing,name,uid)]
-                return JSONResponse({'account':account.display_name,'count':len(targets),'time':send_time,'conflicts':conflicts,'blocked':account.validation_state in ('invalid','verification','temporary'),'manual_count':sum(not uid for _,uid in targets)},headers={'Cache-Control':'no-store'})
+                return JSONResponse({'account':account.display_name,'count':len(targets),'time':send_time,'times':times,'suggested':planned['suggested'],'load':planned['load'],'gap_minutes':planned['gap_minutes'],'conflicts':conflicts,'blocked':account.validation_state in ('invalid','verification','temporary'),'manual_count':sum(not uid for _,uid in targets)},headers={'Cache-Control':'no-store'})
             except NotFound:raise HTTPException(404,'账号不存在')
             except (ValidationError,Conflict) as error:raise HTTPException(400,str(error))
 

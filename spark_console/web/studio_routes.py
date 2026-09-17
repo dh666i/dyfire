@@ -69,6 +69,22 @@ def build_studio_router(engine, auth, cipher):
                                'confirmed': latest.get(t.id) == 'success', 'status': latest.get(t.id, 'scheduled')} for t in tasks],
                     'subscription': {k: membership[k] for k in ('active','status_label','days_remaining','max_accounts','max_tasks','can_add_task')}}
 
+    @router.get('/api/studio/schedule')
+    def schedule(request: Request, account_id: str = '', count: int = Query(1, ge=1, le=100), preferred: str = Query('09:30', max_length=5)):
+        import re
+        if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', preferred):
+            raise HTTPException(400, '请选择发送时间')
+        from spark_console.schedule_slots import plan as plan_slots
+        with session_scope(engine) as db:
+            user, _ = auth.current(request, db)
+            owned = None
+            if account_id:
+                owned = db.scalar(select(DouyinAccount).where(DouyinAccount.id == account_id, DouyinAccount.owner_user_id == user.id))
+                if owned is None:
+                    raise HTTPException(404, '账号不存在')
+            planned = plan_slots(db, owned.id if owned else None, count, preferred)
+            return planned
+
     @router.post('/api/studio/tasks')
     def create(payload: NewTasks, request: Request):
         with session_scope(engine) as db:
@@ -81,7 +97,7 @@ def build_studio_router(engine, auth, cipher):
                 if user.role != 'admin':
                     SubscriptionService(db,audit).require_task_capacity(user.id,len(targets))
                 tasks = service.create_many(user.id,payload.account_id,targets,payload.send_time,payload.message_template,payload.message_kind)
-                return {'ids': [t.id for t in tasks]}
+                return {'ids': [t.id for t in tasks], 'times': [t.send_time for t in tasks]}
             except NotFound:
                 raise HTTPException(404, '账号不存在')
             except ValidationError as error:

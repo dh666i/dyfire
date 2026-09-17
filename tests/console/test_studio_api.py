@@ -45,6 +45,7 @@ def test_create_owned_and_idempotent_enabled(site):
     assert client.post('/api/studio/tasks',json={**payload,'account_id':foreign},headers=headers).status_code==404
     created=client.post('/api/studio/tasks',json=payload,headers=headers)
     assert created.status_code==200,created.text
+    assert created.json()['times']==['09:30']
     assert client.post('/api/studio/tasks',json=payload,headers=headers).status_code==409
     task_id=created.json()['ids'][0]
     for _ in range(2):
@@ -84,3 +85,82 @@ def test_existing_recipient_is_fixed_and_cannot_be_created_again(site):
     assert 'href="/tasks"' not in page
     saved=client.get('/api/studio').json()['tasks'][0]
     assert saved['name']=='Friend' and saved['time']=='12:00' and saved['enabled'] is False
+
+
+def test_batch_create_staggers_and_schedule_avoids_busy_hour(site):
+    client,(owned,foreign)=site
+    state=client.get('/api/studio').json()
+    headers={'X-CSRF-Token':state['csrf']}
+    from spark_console.db import session_scope
+    from spark_console.models import SparkTask, DouyinAccount
+    engine=client.app.state.engine
+    with session_scope(engine) as db:
+        other=db.get(DouyinAccount, foreign)
+        for minute in range(3):
+            db.add(SparkTask(owner_user_id=other.owner_user_id, douyin_account_id=other.id,
+                target_name=f'Busy{minute}', send_time=f'09:{30+minute:02d}',
+                message_template='续火花', enabled=True,
+                next_run_at=datetime.now(timezone.utc)+timedelta(days=1)))
+    preview=client.post('/tasks/preview',json={
+        'csrf_token':state['csrf'],'account_id':owned,'time':'09:30',
+        'targets':[{'name':'甲'},{'name':'乙'},{'name':'丙'}],
+    })
+    assert preview.status_code==200, preview.text
+    body=preview.json()
+    assert body['times']==['09:30','09:35','09:40']
+    assert body['suggested']
+    assert body['suggested'][0]['start']!='09:30'
+    created=client.post('/api/studio/tasks',json={
+        'account_id':owned,
+        'targets':[{'name':'甲'},{'name':'乙'},{'name':'丙'}],
+        'send_time':'09:30',
+    },headers=headers)
+    assert created.status_code==200, created.text
+    assert created.json()['times']==['09:30','09:35','09:40']
+    times=sorted(item['time'] for item in client.get('/api/studio').json()['tasks'])
+    assert times==['09:30','09:35','09:40']
+    schedule=client.get('/api/studio/schedule',params={'account_id':owned,'count':1,'preferred':'09:30'})
+    assert schedule.status_code==200
+    assert schedule.json()['times'][0]=='09:45'
+
+
+def test_unsubmitted_failure_can_retry_once(site):
+    from spark_console.db import session_scope
+    from spark_console.models import SparkTask, TaskRun
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    headers={'X-CSRF-Token':state['csrf']}
+    task_id=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':[{'name':'补发好友'}],'send_time':'18:00',
+    },headers=headers).json()['ids'][0]
+    now=datetime.now(timezone.utc)
+    with session_scope(client.app.state.engine) as db:
+        run=TaskRun(task_id=task_id, scheduled_for=now-timedelta(hours=2),
+                    status='failed', stage='authenticating',
+                    error_code='health_retry_exhausted', submitted_at=None)
+        db.add(run)
+        db.flush()
+        run_id=run.id
+        submitted=TaskRun(task_id=task_id, scheduled_for=now-timedelta(hours=3),
+                          status='submitted_unconfirmed', stage='submitted',
+                          submitted_at=now-timedelta(hours=3))
+        db.add(submitted)
+        db.flush()
+        submitted_id=submitted.id
+    page=client.get('/runs')
+    assert '立即补发一次' in page.text
+    first=client.post(f'/runs/{run_id}/retry', data={'csrf_token':state['csrf']}, follow_redirects=False)
+    assert first.status_code==303
+    assert 'retry-queued' in first.headers['location']
+    with session_scope(client.app.state.engine) as db:
+        task=db.get(SparkTask, task_id)
+        queued=task.next_run_at
+        if queued.tzinfo is None:
+            queued=queued.replace(tzinfo=timezone.utc)
+        assert queued <= datetime.now(timezone.utc)+timedelta(seconds=3)
+    second=client.post(f'/runs/{run_id}/retry', data={'csrf_token':state['csrf']}, follow_redirects=False)
+    assert second.status_code==303
+    assert 'retry-busy' in second.headers['location']
+    blocked=client.post(f'/runs/{submitted_id}/retry', data={'csrf_token':state['csrf']}, follow_redirects=False)
+    assert blocked.status_code==303
+    assert 'retry-rejected' in blocked.headers['location']
