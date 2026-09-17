@@ -1449,7 +1449,7 @@ progress::-moz-progress-bar {
   margin-bottom: 32px;
 }
 .admin-stats-compact {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
 }
 .admin-icon-wrap {
   display: none;
@@ -2155,7 +2155,7 @@ progress::-moz-progress-bar {
   }
 }
 @media (max-width: 820px) {
-  .admin-stats,
+  .admin-stats:not(.admin-stats-compact),
   .studio-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2224,7 +2224,7 @@ progress::-moz-progress-bar {
   .record-detail {
     padding: 20px;
   }
-  .admin-stats,
+  .admin-stats:not(.admin-stats-compact),
   .studio-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

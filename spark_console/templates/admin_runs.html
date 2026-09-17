@@ -7,8 +7,8 @@
 
 <section class="admin-stats admin-stats-compact" aria-label="执行摘要">
   <a class="admin-stat-card" href="/admin/runs"><span>历史执行</span><span class="admin-icon-wrap">{{ icon('runs', 18) }}</span><strong>{{ stats.total_runs|default(0) }}</strong><small>数据库内保留的全部记录</small></a>
-  <a class="admin-stat-card {{ 'danger' if stats.failed_runs_today|default(0) else '' }}" href="/admin/runs?status=failed"><span>今日失败</span><span class="admin-icon-wrap">{{ icon('alert', 18) }}</span><strong>{{ stats.failed_runs_today|default(0) }}</strong><small>建议优先检查登录态与目标匹配</small></a>
-  <a class="admin-stat-card {{ 'warning' if stats.unconfirmed_runs_today|default(0) else '' }}" href="/admin/runs?status=submitted_unconfirmed"><span>待人工核实</span><span class="admin-icon-wrap">{{ icon('clock', 18) }}</span><strong>{{ stats.unconfirmed_runs_today|default(0) }}</strong><small>已执行发送，系统不会自动重发</small></a>
+  <a class="admin-stat-card" href="/admin/runs?status=failed"><span>今日失败</span><span class="admin-icon-wrap">{{ icon('alert', 18) }}</span><strong{% if stats.failed_runs_today|default(0) %} class="tone-danger"{% endif %}>{{ stats.failed_runs_today|default(0) }}</strong><small>建议优先检查登录态与目标匹配</small></a>
+  <a class="admin-stat-card" href="/admin/runs?status=submitted_unconfirmed"><span>待人工核实</span><span class="admin-icon-wrap">{{ icon('clock', 18) }}</span><strong{% if stats.unconfirmed_runs_today|default(0) %} class="tone-warn"{% endif %}>{{ stats.unconfirmed_runs_today|default(0) }}</strong><small>已执行发送，系统不会自动重发</small></a>
 </section>
 
 <form class="workspace-options admin-run-filters" method="get" action="/admin/runs" aria-label="筛选执行记录">
