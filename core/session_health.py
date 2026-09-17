@@ -1,5 +1,6 @@
 """Evidence-based session checks. No verification submission or message action."""
 import asyncio
+import os
 from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 from core.web_chat import _has_visible_exact_text, _locator_has_visible_match, CONVERSATION_ITEM_SELECTOR, LOGIN_REQUIRED_TEXTS
@@ -87,7 +88,8 @@ async def inspect_session(page, context, *, api_result=None):
     return SessionEvidence('temporary', f'未检测到已登录会话列表；{diagnostic}；页面 {path}')
 
 
-SESSION_WAIT_TIMEOUT = 45
+SESSION_WAIT_TIMEOUT = int(os.environ.get('SPARK_SESSION_WAIT_SECONDS', '45'))
+SESSION_API_RECHECK_INTERVAL = max(3, int(os.environ.get('SPARK_SESSION_API_RECHECK_SECONDS', '5')))
 
 
 async def wait_for_session(page, context, *, timeout=SESSION_WAIT_TIMEOUT, interval=.5):
@@ -95,15 +97,18 @@ async def wait_for_session(page, context, *, timeout=SESSION_WAIT_TIMEOUT, inter
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     cached = None
+    last_api_check = -SESSION_API_RECHECK_INTERVAL
     evidence = SessionEvidence('temporary', '页面检查未完成')
     async def inspect_cached():
-        nonlocal cached
+        nonlocal cached, last_api_check
         # Check verification controls before issuing an API request.
         preliminary = await inspect_session(page, context, api_result=('unknown', '尚未检查接口'))
         if preliminary.state == 'verification':
             return preliminary
-        if cached is None:
+        elapsed = timeout - max(0, deadline - loop.time())
+        if cached is None or elapsed - last_api_check >= SESSION_API_RECHECK_INTERVAL:
             cached = await read_login_api(context)
+            last_api_check = elapsed
         return await inspect_session(page, context, api_result=cached)
     while loop.time() < deadline:
         try:

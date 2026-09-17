@@ -67,6 +67,8 @@ class Worker:
         self._custom_clock = clock is not None
         self.started_at = started_at or self._clock()
         self.cipher = CookieCipher(settings.cookie_key_file.read_bytes())
+        self._account_last_started: dict[str, datetime] = {}
+        self.account_task_gap_seconds = max(0, int(os.environ.get("SPARK_ACCOUNT_TASK_GAP_SECONDS", "8")))
 
     async def run_once(self, now: datetime | None = None):
         current_time = now or self._clock()
@@ -257,6 +259,16 @@ class Worker:
         execution = None
         heartbeat = None
         try:
+            # Keep jobs for one Douyin account gently serialized.  The account
+            # lock prevents overlap across workers; this small gap also avoids
+            # hammering the chat page when several friends share a schedule.
+            previous = self._account_last_started.get(account_id)
+            if previous is not None and self.account_task_gap_seconds:
+                elapsed = (self._clock() - previous).total_seconds()
+                remaining = self.account_task_gap_seconds - elapsed
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
+            self._account_last_started[account_id] = self._clock()
             kwargs = dict(
                 credential_version=credential_version,
                 target_sec_uid=target_sec_uid,

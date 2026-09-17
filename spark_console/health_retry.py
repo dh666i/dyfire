@@ -1,12 +1,13 @@
 """Recovery policy for temporary login checks; never a generic resend queue."""
 from datetime import timedelta, timezone
+import os
 from sqlalchemy import select, update
 from spark_console.models import (
     TaskHealthRetry, TaskRun, SparkTask, DouyinAccount, User, UserSubscription,
     AccountOperation, DouyinLoginSession,
 )
 
-WINDOW = timedelta(minutes=10)
+WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "20"))))
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
 WAIT = timedelta(seconds=30)
 
@@ -19,7 +20,7 @@ def invalid_reason(db, run, pending, now, *, require_valid=False):
     if run.submitted_at is not None or run.stage == "submitted":
         return "health_retry_submitted", "已进入发送步骤，不会自动重发"
     if aware(now) >= aware(pending.expires_at):
-        return "health_retry_expired", "超过原计划 10 分钟恢复窗口，本次不再补发"
+        return "health_retry_expired", f"超过原计划 {int(WINDOW.total_seconds() // 60)} 分钟恢复窗口，本次不再补发"
     if run.attempt > MAX_ATTEMPTS:
         return "health_retry_exhausted", "已达到最多 2 次重试，本次停止"
     task = db.get(SparkTask, run.task_id)
@@ -72,7 +73,7 @@ def queue(db, task, run, now, reason):
         code, message = invalid or ("health_retry_exhausted", "已重试 2 次仍未通过登录检测，本次停止")
         return finish_run(run, "failed", "authenticating", now, code, message)
     return finish_run(run, "retrying", "authenticating", now,
-        "health_retry_waiting", "发送前登录检测暂时异常，等待复核正常后重试；原计划后 10 分钟内最多重试 2 次",
+        "health_retry_waiting", f"发送前登录检测暂时异常，等待复核正常后重试；原计划后 {int(WINDOW.total_seconds() // 60)} 分钟内最多重试 2 次",
         retry_after=now + WAIT)
 
 
@@ -154,5 +155,5 @@ def queue_waiting_task(db, task, now):
         finish_run(run, "skipped", "authenticating", now, *invalid)
     else:
         run.error_code = "health_retry_waiting"
-        run.error_summary = "等待账号复核，尚未开始发送；超过计划 10 分钟将跳过并保留记录"
+        run.error_summary = f"等待账号复核，尚未开始发送；超过计划 {int(WINDOW.total_seconds() // 60)} 分钟将跳过并保留记录"
     db.flush()
