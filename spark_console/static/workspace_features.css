@@ -2339,7 +2339,7 @@ progress::-moz-progress-bar {
   min-width: 0;
 }
 .business-kpis article:last-child {
-  border: 0;
+  border-right: 0;
 }
 .business-kpis small,
 .business-kpis a {

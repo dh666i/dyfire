@@ -402,9 +402,7 @@ legend {
 .password-visibility-toggle[aria-pressed="true"] .password-eye-show {
   display: none;
 }
-.workspace-heading:has(+ .today-send-totals),
-.workspace-heading:has(+ .admin-stats),
-.workspace-heading:has(+ .admin-metric-board) {
+.workspace-body .workspace-heading {
   margin-bottom: 0;
 }
 .today-send-totals,
@@ -682,9 +680,8 @@ legend {
 }
 .workspace-admin-layout .admin-filterbar {
   background: transparent;
-  padding: 0 0 20px;
+  padding: 16px 0 8px;
   border: 0;
-  border-bottom: 1px solid var(--line);
   border-radius: 0;
 }
 .workspace-body table {
@@ -1061,8 +1058,11 @@ legend {
 }
 .workspace-body .admin-task-group > summary {
   background: transparent;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
   padding: 16px;
+}
+.workspace-body .admin-task-group[open] > summary {
+  border-bottom: 1px solid var(--line);
 }
 .workspace-body .admin-task-group {
   border: 0;
@@ -1227,10 +1227,53 @@ legend {
   .workspace-body .ops-resource-head small {
     font-size: 10px;
   }
+  .workspace-body .business-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workspace-body .business-kpis article:nth-child(2n) {
+    border-right: 0;
+  }
+  .workspace-body .business-kpis article:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
 }
 /* Compact attempt timeline shared by user and administrator records. */
 .run-attempt-history { margin-block: 12px; font-size: 13px; }
 .run-attempt-history > summary { cursor: pointer; padding-block: 8px; }
 .run-attempt-history ol { margin: 4px 0; padding-inline-start: 22px; }
+
+.workspace-body .workspace-heading + .admin-panel,
+.workspace-body .workspace-heading + .workspace-section,
+.workspace-admin-layout .workspace-heading + .admin-panel,
+.workspace-admin-layout .workspace-heading + .workspace-section,
+.workspace-heading + .mail-workspace > .admin-panel:nth-child(-n + 2),
+.workspace-heading + .mail-workspace > .workspace-section:nth-child(-n + 2),
+.workspace-heading + .admin-grid > .admin-panel:nth-child(-n + 2),
+.workspace-heading + .admin-grid > .workspace-section:nth-child(-n + 2),
+.workspace-heading + .subscription-layout > .workspace-section,
+.workspace-heading + .accounts-layout > .workspace-section,
+.workspace-heading + .split > .workspace-section {
+  border-top: 0;
+}
+.action-summary + .admin-grid > .admin-panel:nth-child(-n + 2),
+.action-summary + .admin-grid > .workspace-section:nth-child(-n + 2),
+.action-summary + .admin-panel,
+.action-summary + .workspace-section {
+  border-top: 0;
+}
+.workspace-body .business-kpis {
+  margin: 16px 0 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-body .business-kpis + .business-kpis {
+  border-top: 0;
+}
+.workspace-body .business-kpis article {
+  padding: 18px 20px;
+}
+.workspace-body .business-kpis article:last-child {
+  border-right: 0;
+}
 .run-attempt-history li { padding: 8px 4px; overflow-wrap: anywhere; }
 .run-attempt-history p { margin: 4px 0; line-height: 1.6; }
