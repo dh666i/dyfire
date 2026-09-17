@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_session_recovery.py tests/console/test_directory.py tests/console/test_account_health.py tests/console/test_health_retry.py tests/console/test_scheduler_worker.py tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py tests/console/test_design_system.py tests/console/test_studio_site.py -q
+      - run: python -m pytest tests/console/test_session_recovery.py tests/console/test_directory.py tests/console/test_account_health.py tests/console/test_health_retry.py tests/console/test_scheduler_worker.py tests/console/test_executor_session.py tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py tests/console/test_design_system.py tests/console/test_studio_site.py -q
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

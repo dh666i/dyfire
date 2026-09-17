@@ -90,6 +90,7 @@ async def inspect_session(page, context, *, api_result=None):
 
 SESSION_WAIT_TIMEOUT = int(os.environ.get('SPARK_SESSION_WAIT_SECONDS', '45'))
 SESSION_API_RECHECK_INTERVAL = max(3, int(os.environ.get('SPARK_SESSION_API_RECHECK_SECONDS', '5')))
+RELOAD_COOLDOWN_SECONDS = float(os.environ.get('SPARK_SESSION_RELOAD_COOLDOWN_SECONDS', '15'))
 
 
 async def wait_for_session(page, context, *, timeout=SESSION_WAIT_TIMEOUT, interval=.5):
@@ -145,6 +146,8 @@ async def open_chat_session(page, context):
         for index in range(2):
             navigations += 1
             try:
+                if index == 1 and RELOAD_COOLDOWN_SECONDS > 0:
+                    await asyncio.sleep(RELOAD_COOLDOWN_SECONDS)
                 response = (await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=20000)
                     if index == 0 else await page.reload(wait_until="domcontentloaded", timeout=20000))
                 document_status = getattr(response, "status", None)

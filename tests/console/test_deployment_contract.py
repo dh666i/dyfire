@@ -40,6 +40,7 @@ class DeploymentContractTests(unittest.TestCase):
         worker = self.compose.split("  spark-worker:", 1)[1].split("\nvolumes:", 1)[0]
         self.assertNotIn("ports:", worker)
         self.assertIn('SPARK_WORKER_CONCURRENCY: "1"', worker)
+        self.assertIn('SPARK_HEALTH_RETRY_WINDOW_MINUTES: "20"', worker)
         self.assertIn("mem_limit: 768m", worker)
         self.assertIn("healthcheck:", worker)
         self.assertIn("spark_console.runtime_health, worker", worker)
@@ -74,6 +75,7 @@ class DeploymentContractTests(unittest.TestCase):
         self.assertNotRegex(example, r"(?im)^(?:.*password|.*token|.*secret)=.+$")
         self.assertIn("SPARK_AUTH_POLL_SECONDS=1", example)
         self.assertIn("SPARK_WORKER_POLL_SECONDS=10", example)
+        self.assertIn("SPARK_HEALTH_RETRY_WINDOW_MINUTES=20", example)
         self.assertIn("SPARK_OPS_MIN_FREE_GIB=5", example)
         self.assertIn("SPARK_OPS_WORKER_HEARTBEAT_MAX_AGE_SECONDS=90", example)
 

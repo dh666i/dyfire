@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -22,7 +23,7 @@ from core.web_chat import (
     select_web_chat_target,
 )
 from spark_console.credentials import CredentialError, CredentialPayload
-from core.session_health import require_session, SessionUnavailable
+from core.session_health import inspect_session, require_session, SessionUnavailable
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,67 @@ class ExecutionResult:
 
 
 class DouyinExecutor:
+    SESSION_IDLE_SECONDS = 180
+
+    def __init__(self):
+        self._live: dict[str, object] | None = None
+
+    async def close_session(self) -> None:
+        live = self._live
+        self._live = None
+        if not live:
+            return
+        for key in ("context", "browser"):
+            closer = getattr(live.get(key), "close", None)
+            if closer is None:
+                continue
+            try:
+                await closer()
+            except Exception as error:
+                logger.warning(
+                    "browser %s cleanup failed exception=%s",
+                    key,
+                    type(error).__name__,
+                )
+        stop = getattr(live.get("playwright"), "stop", None)
+        if stop is not None:
+            try:
+                await stop()
+            except Exception as error:
+                logger.warning("playwright stop failed exception=%s", type(error).__name__)
+
+    async def _open_browser(self, payload: CredentialPayload):
+        from playwright.async_api import async_playwright
+
+        manager = async_playwright()
+        start = getattr(manager, "start", None)
+        playwright = await start() if start is not None else await manager.__aenter__()
+        browser = await playwright.chromium.launch(headless=True)
+        context = await browser.new_context(**payload.context_options())
+        legacy_cookies = payload.cookies_to_add()
+        if legacy_cookies:
+            await context.add_cookies(legacy_cookies)
+        page = await context.new_page()
+        return {
+            "playwright": playwright,
+            "browser": browser,
+            "context": context,
+            "page": page,
+            "manager": manager,
+            "used_at": time.monotonic(),
+        }
+
+    def _live_matches(self, session_key: str, credential_version: int) -> bool:
+        live = self._live
+        if not live:
+            return False
+        if live.get("key") != session_key or live.get("version") != credential_version:
+            return False
+        used_at = live.get("used_at")
+        if not isinstance(used_at, (int, float)):
+            return False
+        return time.monotonic() - used_at < self.SESSION_IDLE_SECONDS
+
     async def execute(
         self,
         cookie_payload: bytes | bytearray,
@@ -63,6 +125,7 @@ class DouyinExecutor:
         target_sec_uid: str | None = None,
         on_submitted: Callable[[], object] | None = None,
         message_kind: str = "text",
+        session_key: str | None = None,
     ) -> ExecutionResult:
         from playwright.async_api import async_playwright
         from core.tasks import (
@@ -79,238 +142,292 @@ class DouyinExecutor:
         refreshed_storage_state = None
         delivery_monitor = None
         user_info = UserInfoCollector()
+        playwright_cm = None
+        context = None
+        browser = None
+        page = None
+        reused = False
         try:
             payload = CredentialPayload.parse(bytes(cookie_payload), credential_version)
-            async with async_playwright() as playwright:
+            if session_key:
+                if not self._live_matches(session_key, credential_version):
+                    await self.close_session()
+                    live = await self._open_browser(payload)
+                    live["key"] = session_key
+                    live["version"] = credential_version
+                    self._live = live
+                else:
+                    live = self._live
+                    reused = True
+                context = live["context"]
+                page = live["page"]
+                browser = live["browser"]
+            else:
+                playwright_cm = async_playwright()
+                playwright = await playwright_cm.__aenter__()
                 browser = await playwright.chromium.launch(headless=True)
-                context = None
-                try:
-                    context = await browser.new_context(**payload.context_options())
-                    legacy_cookies = payload.cookies_to_add()
-                    if legacy_cookies:
-                        await context.add_cookies(legacy_cookies)
-                    page = await context.new_page()
-                    if message_kind == "text":
-                        delivery_monitor = MessageNetworkAckMonitor(message)
-                        delivery_monitor.attach(page)
-                    page.on("response", user_info.capture)
+                context = await browser.new_context(**payload.context_options())
+                legacy_cookies = payload.cookies_to_add()
+                if legacy_cookies:
+                    await context.add_cookies(legacy_cookies)
+                page = await context.new_page()
+            try:
+                if message_kind == "text":
+                    delivery_monitor = MessageNetworkAckMonitor(message)
+                    delivery_monitor.attach(page)
+                page.on("response", user_info.capture)
+                if reused:
+                    evidence = await inspect_session(page, context)
+                    if evidence.state != "valid":
+                        await self.close_session()
+                        live = await self._open_browser(payload)
+                        live["key"] = session_key
+                        live["version"] = credential_version
+                        self._live = live
+                        context = live["context"]
+                        page = live["page"]
+                        browser = live["browser"]
+                        if message_kind == "text":
+                            delivery_monitor = MessageNetworkAckMonitor(message)
+                            delivery_monitor.attach(page)
+                        page.on("response", user_info.capture)
+                        reused = False
+                if not reused:
                     await require_session(page, context, navigate=True)
-                    stage = ExecutionStage.SELECTING_TARGET
+                stage = ExecutionStage.SELECTING_TARGET
+                try:
+                    identity = (
+                        await user_info.wait_for(target_sec_uid)
+                        if target_sec_uid
+                        else None
+                    )
+                    await select_web_chat_target(
+                        page,
+                        target,
+                        timeout=45000,
+                        aliases=identity.aliases if identity else (),
+                    )
+                    await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
+                except Exception:
+                    # Login surfaces can render after domcontentloaded or while
+                    # target selection is waiting. Reclassify before the page is
+                    # closed so an expired session is never reported as a target
+                    # or automation failure.
+                    await require_session(page, context)
+                    raise
+                stage = ExecutionStage.SENDING
+                if message_kind == "douyin_sticker":
                     try:
-                        identity = (
-                            await user_info.wait_for(target_sec_uid)
-                            if target_sec_uid
-                            else None
-                        )
-                        await select_web_chat_target(
+                        sticker_result = await send_douyin_sticker(
                             page,
-                            target,
+                            message or DOUYIN_SPARK_STICKER,
+                            on_submitted=on_submitted,
                             timeout=45000,
-                            aliases=identity.aliases if identity else (),
                         )
-                        await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
-                    except Exception:
-                        # Login surfaces can render after domcontentloaded or while
-                        # target selection is waiting. Reclassify before the page is
-                        # closed so an expired session is never reported as a target
-                        # or automation failure.
-                        await require_session(page, context)
-                        raise
-                    stage = ExecutionStage.SENDING
-                    if message_kind == "douyin_sticker":
-                        try:
-                            sticker_result = await send_douyin_sticker(
-                                page,
-                                message or DOUYIN_SPARK_STICKER,
-                                on_submitted=on_submitted,
-                                timeout=45000,
-                            )
-                        except NativeStickerPreparationError as error:
-                            return ExecutionResult(
-                                False,
-                                ExecutionStage.SENDING,
-                                "native_sticker_unavailable",
-                                str(error),
-                                retryable=True,
-                            )
-                        except NativeStickerSubmissionError as error:
-                            message_submitted = True
-                            try:
-                                refreshed_storage_state = await context.storage_state()
-                            except Exception:
-                                logger.warning(
-                                    "native sticker submitted but credential refresh failed"
-                                )
-                            return ExecutionResult(
-                                True,
-                                ExecutionStage.SUBMITTED,
-                                "delivery_confirmation_unavailable",
-                                str(error),
-                                refreshed_storage_state=refreshed_storage_state,
-                                contact_avatars=user_info.avatar_urls,
-                            )
-                        message_submitted = sticker_result.submitted
+                    except NativeStickerPreparationError as error:
+                        return ExecutionResult(
+                            False,
+                            ExecutionStage.SENDING,
+                            "native_sticker_unavailable",
+                            str(error),
+                            retryable=True,
+                        )
+                    except NativeStickerSubmissionError as error:
+                        message_submitted = True
                         try:
                             refreshed_storage_state = await context.storage_state()
                         except Exception:
                             logger.warning(
-                                "native sticker sent but credential refresh failed"
-                            )
-                        delivery_confirmed = sticker_result.confirmed
-                        if delivery_confirmed:
-                            return ExecutionResult(
-                                True,
-                                ExecutionStage.COMPLETE,
-                                refreshed_storage_state=refreshed_storage_state,
-                                contact_avatars=user_info.avatar_urls,
+                                "native sticker submitted but credential refresh failed"
                             )
                         return ExecutionResult(
                             True,
                             ExecutionStage.SUBMITTED,
                             "delivery_confirmation_unavailable",
-                            "原生续火花已提交，页面未能二次确认",
+                            str(error),
                             refreshed_storage_state=refreshed_storage_state,
                             contact_avatars=user_info.avatar_urls,
                         )
-                    if message_kind != "text":
-                        return ExecutionResult(
-                            False,
-                            ExecutionStage.SENDING,
-                            "unsupported_message_kind",
-                            "不支持的消息类型",
-                            retryable=False,
-                        )
-                    editor = page.locator(CHAT_EDITOR_SELECTOR).first
-                    lines = message.splitlines() or [message]
-                    for index, line in enumerate(lines):
-                        await editor.type(line)
-                        if index < len(lines) - 1:
-                            await editor.press("Shift+Enter")
-                    confirmation_baseline = None
+                    message_submitted = sticker_result.submitted
                     try:
-                        confirmation_baseline = (
-                            await capture_message_confirmation_baseline(
-                                page,
-                                message,
-                                network_monitor=delivery_monitor,
-                            )
-                        )
-                    except Exception as error:
-                        logger.warning(
-                            "message confirmation baseline unavailable exception=%s",
-                            type(error).__name__,
-                        )
-                    if on_submitted is not None:
-                        try:
-                            callback_result = on_submitted()
-                            if isawaitable(callback_result):
-                                await callback_result
-                        except Exception:
-                            logger.warning(
-                                "submission checkpoint failed before message send"
-                            )
-                            await dispose_message_confirmation_probe(
-                                page, confirmation_baseline
-                            )
-                            return ExecutionResult(
-                                False,
-                                ExecutionStage.SENDING,
-                                "submission_checkpoint_failed",
-                                "发送前安全记录失败，本次未执行发送",
-                                retryable=True,
-                            )
-                    # Once the durable checkpoint exists, delivery becomes
-                    # intentionally at-most-once. If Enter or the process fails
-                    # after this point, the run must stay unconfirmed instead of
-                    # being retried and potentially sending a duplicate message.
-                    message_submitted = True
-                    try:
-                        await editor.press("Enter")
+                        refreshed_storage_state = await context.storage_state()
                     except Exception:
+                        logger.warning(
+                            "native sticker sent but credential refresh failed"
+                        )
+                    delivery_confirmed = sticker_result.confirmed
+                    if delivery_confirmed:
+                        return ExecutionResult(
+                            True,
+                            ExecutionStage.COMPLETE,
+                            refreshed_storage_state=refreshed_storage_state,
+                            contact_avatars=user_info.avatar_urls,
+                        )
+                    return ExecutionResult(
+                        True,
+                        ExecutionStage.SUBMITTED,
+                        "delivery_confirmation_unavailable",
+                        "原生续火花已提交，页面未能二次确认",
+                        refreshed_storage_state=refreshed_storage_state,
+                        contact_avatars=user_info.avatar_urls,
+                    )
+                if message_kind != "text":
+                    return ExecutionResult(
+                        False,
+                        ExecutionStage.SENDING,
+                        "unsupported_message_kind",
+                        "不支持的消息类型",
+                        retryable=False,
+                    )
+                editor = page.locator(CHAT_EDITOR_SELECTOR).first
+                lines = message.splitlines() or [message]
+                for index, line in enumerate(lines):
+                    await editor.type(line)
+                    if index < len(lines) - 1:
+                        await editor.press("Shift+Enter")
+                confirmation_baseline = None
+                try:
+                    confirmation_baseline = (
+                        await capture_message_confirmation_baseline(
+                            page,
+                            message,
+                            network_monitor=delivery_monitor,
+                        )
+                    )
+                except Exception as error:
+                    logger.warning(
+                        "message confirmation baseline unavailable exception=%s",
+                        type(error).__name__,
+                    )
+                if on_submitted is not None:
+                    try:
+                        callback_result = on_submitted()
+                        if isawaitable(callback_result):
+                            await callback_result
+                    except Exception:
+                        logger.warning(
+                            "submission checkpoint failed before message send"
+                        )
                         await dispose_message_confirmation_probe(
                             page, confirmation_baseline
                         )
                         return ExecutionResult(
-                            True,
-                            ExecutionStage.SUBMITTED,
-                            "delivery_confirmation_unavailable",
-                            "消息已进入发送步骤，但页面未能确认是否送达",
+                            False,
+                            ExecutionStage.SENDING,
+                            "submission_checkpoint_failed",
+                            "发送前安全记录失败，本次未执行发送",
+                            retryable=True,
                         )
-                    try:
-                        refreshed_storage_state = await context.storage_state()
-                    except Exception:
-                        logger.warning("message submitted but credential refresh failed")
-                    stage = ExecutionStage.CONFIRMING
-                    try:
-                        if confirmation_baseline is None:
-                            raise RuntimeError("message confirmation baseline unavailable")
-                        confirmation = await confirm_message_sent(
-                            page,
-                            editor,
-                            message,
-                            timeout=45000,
-                            baseline_count=confirmation_baseline,
-                        )
-                        if confirmation is None:
-                            # The original confirmation helper returned None
-                            # on success. Keep accepting that result for
-                            # compatibility with legacy probes and adapters;
-                            # the helper itself has already waited for its
-                            # confirmation signal before returning.
-                            logger.info(
-                                "message delivery confirmed source=legacy reason=helper_returned_none"
-                            )
-                        else:
-                            logger.info(
-                                "message delivery confirmed source=%s reason=%s",
-                                confirmation.source,
-                                confirmation.reason,
-                            )
-                    except Exception as error:
-                        logger.warning(
-                            "message submitted but confirmation was unavailable exception=%s",
-                            type(error).__name__,
-                        )
-                        return ExecutionResult(
-                            True,
-                            ExecutionStage.SUBMITTED,
-                            "delivery_confirmation_unavailable",
-                            "消息已提交，页面未能二次确认",
-                            refreshed_storage_state=refreshed_storage_state,
-                            contact_avatars=user_info.avatar_urls,
-                        )
-                    delivery_confirmed = True
+                # Once the durable checkpoint exists, delivery becomes
+                # intentionally at-most-once. If Enter or the process fails
+                # after this point, the run must stay unconfirmed instead of
+                # being retried and potentially sending a duplicate message.
+                message_submitted = True
+                try:
+                    await editor.press("Enter")
+                except Exception:
+                    await dispose_message_confirmation_probe(
+                        page, confirmation_baseline
+                    )
                     return ExecutionResult(
                         True,
-                        ExecutionStage.COMPLETE,
+                        ExecutionStage.SUBMITTED,
+                        "delivery_confirmation_unavailable",
+                        "消息已进入发送步骤，但页面未能确认是否送达",
+                    )
+                try:
+                    refreshed_storage_state = await context.storage_state()
+                except Exception:
+                    logger.warning("message submitted but credential refresh failed")
+                stage = ExecutionStage.CONFIRMING
+                try:
+                    if confirmation_baseline is None:
+                        raise RuntimeError("message confirmation baseline unavailable")
+                    confirmation = await confirm_message_sent(
+                        page,
+                        editor,
+                        message,
+                        timeout=45000,
+                        baseline_count=confirmation_baseline,
+                    )
+                    if confirmation is None:
+                        # The original confirmation helper returned None
+                        # on success. Keep accepting that result for
+                        # compatibility with legacy probes and adapters;
+                        # the helper itself has already waited for its
+                        # confirmation signal before returning.
+                        logger.info(
+                            "message delivery confirmed source=legacy reason=helper_returned_none"
+                        )
+                    else:
+                        logger.info(
+                            "message delivery confirmed source=%s reason=%s",
+                            confirmation.source,
+                            confirmation.reason,
+                        )
+                except Exception as error:
+                    logger.warning(
+                        "message submitted but confirmation was unavailable exception=%s",
+                        type(error).__name__,
+                    )
+                    return ExecutionResult(
+                        True,
+                        ExecutionStage.SUBMITTED,
+                        "delivery_confirmation_unavailable",
+                        "消息已提交，页面未能二次确认",
                         refreshed_storage_state=refreshed_storage_state,
                         contact_avatars=user_info.avatar_urls,
                     )
-                finally:
+                delivery_confirmed = True
+                return ExecutionResult(
+                    True,
+                    ExecutionStage.COMPLETE,
+                    refreshed_storage_state=refreshed_storage_state,
+                    contact_avatars=user_info.avatar_urls,
+                )
+            finally:
+                if delivery_monitor is not None:
                     try:
-                        if delivery_monitor is not None:
-                            delivery_monitor.detach()
+                        delivery_monitor.detach()
+                    except Exception:
+                        pass
+                if session_key:
+                    if stage == ExecutionStage.AUTHENTICATING and not message_submitted:
+                        await self.close_session()
+                    elif self._live is not None:
+                        self._live["used_at"] = time.monotonic()
+                else:
+                    try:
                         if context is not None:
-                            try:
-                                await context.close()
-                            except Exception as error:
-                                logger.warning(
-                                    "browser context cleanup failed exception=%s",
-                                    type(error).__name__,
-                                )
-                    finally:
-                        try:
+                            await context.close()
+                    except Exception as error:
+                        logger.warning(
+                            "browser context cleanup failed exception=%s",
+                            type(error).__name__,
+                        )
+                    try:
+                        if browser is not None:
                             await browser.close()
+                    except Exception as error:
+                        logger.warning(
+                            "browser cleanup failed exception=%s",
+                            type(error).__name__,
+                        )
+                    if playwright_cm is not None:
+                        try:
+                            await playwright_cm.__aexit__(None, None, None)
                         except Exception as error:
                             logger.warning(
-                                "browser cleanup failed exception=%s",
+                                "playwright cleanup failed exception=%s",
                                 type(error).__name__,
                             )
         except SessionUnavailable as error:
+            await self.close_session()
             return ExecutionResult(False, ExecutionStage.AUTHENTICATING,
                 'account_verification_required' if error.evidence.state == 'verification' else 'account_health_pending',
                 error.evidence.reason, health_state=error.evidence.state, health_reason=error.evidence.reason)
         except WebChatLoginRequiredError:
+            await self.close_session()
             return ExecutionResult(
                 False,
                 ExecutionStage.AUTHENTICATING,

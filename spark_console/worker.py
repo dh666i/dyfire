@@ -26,6 +26,7 @@ from spark_console.models import (
     User,
     WorkerLock,
 )
+from spark_console.health_retry import WINDOW
 from spark_console.scheduler import RUN_LEASE, claim_next_due_task, finish_run
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -108,14 +109,15 @@ class Worker:
                 "worker_was_offline",
                 "执行器离线期间任务已错过，未补发",
             )
-        if not reclaimed and current_time - scheduled > timedelta(minutes=10):
+        if not reclaimed and current_time - scheduled > WINDOW:
+            minutes = int(WINDOW.total_seconds() // 60)
             return self._finish_claimed(
                 run_id,
                 "skipped",
                 "late",
                 current_time,
                 "missed_window",
-                "任务已超过 10 分钟发送窗口",
+                f"任务已超过 {minutes} 分钟发送窗口",
             )
 
         cookies = None
@@ -275,6 +277,8 @@ class Worker:
             )
             if self._supports_message_kind():
                 kwargs["message_kind"] = message_kind
+            if self._supports_session_key():
+                kwargs["session_key"] = account_id
             if self._supports_submission_callback():
                 kwargs["on_submitted"] = lambda: self._mark_submitted(
                     run_id,
@@ -435,6 +439,17 @@ class Worker:
             return False
         return any(
             parameter.name == "message_kind"
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+
+    def _supports_session_key(self) -> bool:
+        try:
+            parameters = inspect.signature(self.executor.execute).parameters.values()
+        except (TypeError, ValueError):
+            return False
+        return any(
+            parameter.name == "session_key"
             or parameter.kind is inspect.Parameter.VAR_KEYWORD
             for parameter in parameters
         )
@@ -688,20 +703,27 @@ async def run_loop() -> None:
             loop.add_signal_handler(signum, stopping.set)
         except NotImplementedError:
             pass
-    while not stopping.is_set():
-        try:
-            processed = await worker.run_once()
-        except Exception as error:
-            logger.error(
-                "worker iteration failed exception=%s", type(error).__name__
-            )
-            processed = None
-        if processed is not None:
-            continue
-        try:
-            await asyncio.wait_for(stopping.wait(), timeout=settings.worker_poll_seconds)
-        except TimeoutError:
-            continue
+    try:
+        while not stopping.is_set():
+            try:
+                processed = await worker.run_once()
+            except Exception as error:
+                logger.error(
+                    "worker iteration failed exception=%s", type(error).__name__
+                )
+                processed = None
+            if processed is not None:
+                continue
+            try:
+                await asyncio.wait_for(stopping.wait(), timeout=settings.worker_poll_seconds)
+            except TimeoutError:
+                continue
+    finally:
+        closer = getattr(worker.executor, "close_session", None)
+        if closer is not None:
+            result = closer()
+            if inspect.isawaitable(result):
+                await result
 
 
 if __name__ == "__main__":

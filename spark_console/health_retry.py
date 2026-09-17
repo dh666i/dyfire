@@ -9,7 +9,14 @@ from spark_console.models import (
 
 WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "10"))))
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
-WAIT = timedelta(seconds=30)
+
+
+def retry_wait(attempt):
+    """Backoff after a failed login check so retries do not hammer Douyin."""
+    first = max(1, int(os.environ.get("SPARK_HEALTH_RETRY_WAIT_1_MINUTES", "2")))
+    second = max(1, int(os.environ.get("SPARK_HEALTH_RETRY_WAIT_2_MINUTES", "5")))
+    minutes = first if max(1, int(attempt or 1)) <= 1 else second
+    return timedelta(minutes=minutes)
 
 
 def aware(value):
@@ -72,9 +79,11 @@ def queue(db, task, run, now, reason):
     if invalid or run.attempt >= MAX_ATTEMPTS:
         code, message = invalid or ("health_retry_exhausted", "已重试 2 次仍未通过登录检测，本次停止")
         return finish_run(run, "failed", "authenticating", now, code, message)
+    delay = retry_wait(run.attempt)
+    minutes = int(delay.total_seconds() // 60)
     return finish_run(run, "retrying", "authenticating", now,
-        "health_retry_waiting", f"发送前登录检测暂时异常，等待复核正常后重试；原计划后 {int(WINDOW.total_seconds() // 60)} 分钟内最多重试 2 次",
-        retry_after=now + WAIT)
+        "health_retry_waiting", f"发送前登录检测暂时异常，{minutes} 分钟后重试；原计划后 {int(WINDOW.total_seconds() // 60)} 分钟内最多重试 2 次",
+        retry_after=now + delay)
 
 
 def claim(db, now, worker_id):

@@ -191,6 +191,7 @@ class _RecordingExecutor:
         credential_version=1,
         target_sec_uid=None,
         message_kind="text",
+        **_kwargs,
     ):
         self.credential_version = credential_version
         self.payload_reference = cookie_payload

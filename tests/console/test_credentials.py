@@ -426,6 +426,9 @@ class _FakePage:
     def on(self, _event, _callback):
         return None
 
+    def remove_listener(self, *_args, **_kwargs):
+        return None
+
     async def goto(self, *_args, **_kwargs):
         return None
 

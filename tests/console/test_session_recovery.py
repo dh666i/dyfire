@@ -3,6 +3,12 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from core.session_health import SessionEvidence, open_chat_session, require_session, SessionUnavailable
 
+
+@pytest.fixture(autouse=True)
+def no_reload_cooldown():
+    with patch("core.session_health.RELOAD_COOLDOWN_SECONDS", 0):
+        yield
+
 @pytest.mark.parametrize("state", ["valid", "verification", "logged_out"])
 def test_terminal_evidence_never_reloads(state):
     page = Mock()
@@ -34,6 +40,23 @@ def test_failed_navigation_verification_does_not_reload():
     assert result.state == "verification"
     assert "sensitive" not in result.reason
     page.reload.assert_not_called()
+
+def test_temporary_check_waits_before_reload():
+    page = Mock()
+    page.goto = AsyncMock(return_value=Mock(status=200))
+    page.reload = AsyncMock(return_value=Mock(status=200))
+    with patch("core.session_health.RELOAD_COOLDOWN_SECONDS", 15), patch(
+        "core.session_health.asyncio.sleep", AsyncMock()
+    ) as slept, patch(
+        "core.session_health.wait_for_session",
+        AsyncMock(side_effect=[SessionEvidence("temporary", "loading"), SessionEvidence("valid", "ready")]),
+    ):
+        result = asyncio.run(open_chat_session(page, Mock()))
+    assert result.state == "valid"
+    slept.assert_awaited()
+    assert slept.await_args.args[0] == 15
+    page.reload.assert_awaited_once()
+
 
 def test_shared_entry_refuses_send_after_two_temporary_checks():
     page = Mock()

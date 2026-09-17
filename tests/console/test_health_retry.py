@@ -56,7 +56,7 @@ def test_recovery_retries_same_run_without_changing_next_day(case):
         following=db.get(SparkTask,tid).next_run_at
         assert claim_next_due_task(db,now+timedelta(seconds=35),"other") is None
     recover(case)
-    result=attempt(case,Executor(fail=False),60)
+    result=attempt(case,Executor(fail=False),130)
     assert result.id==first.id and result.status=="success" and result.attempt==2
     with Session(engine) as db:
         assert db.get(SparkTask,tid).next_run_at==following
@@ -65,7 +65,7 @@ def test_recovery_retries_same_run_without_changing_next_day(case):
 
 def test_two_retries_max(case):
     first=attempt(case,Executor())
-    for seconds in (60,120):
+    for seconds in (120,420):
         recover(case,seconds-10)
         result=attempt(case,Executor(),seconds)
     assert result.id==first.id and result.attempt==3 and result.status=="failed"
@@ -86,7 +86,7 @@ def test_ineligible_recovery_never_executes(case,reason):
         if reason in ("verification","invalid"): db.get(DouyinAccount,aid).validation_state=reason
         db.commit()
     executor=Executor(fail=False)
-    assert attempt(case,executor,601 if reason=="expiry" else 60) is None
+    assert attempt(case,executor,601 if reason=="expiry" else 130) is None
     assert executor.calls==0
     with Session(engine) as db:
         run=db.get(TaskRun,first.id)
@@ -115,14 +115,14 @@ def test_claim_is_not_duplicated_and_expired_crash_is_bounded(case):
     recover(case)
     now,_,engine,_,_=case
     with Session(engine) as db:
-        run=claim_next_due_task(db,now+timedelta(seconds=60),"a")
+        run=claim_next_due_task(db,now+timedelta(seconds=130),"a")
         assert run.id==first.id
         db.commit()
     with Session(engine) as db:
-        assert claim_next_due_task(db,now+timedelta(seconds=61),"b") is None
+        assert claim_next_due_task(db,now+timedelta(seconds=131),"b") is None
         db.commit()
     with Session(engine) as db:
-        assert claim_next_due_task(db,now+timedelta(minutes=21),"b") is None
+        assert claim_next_due_task(db,now+timedelta(minutes=23),"b") is None
         db.commit()
         assert db.get(TaskRun,first.id).error_code=="health_retry_expired"
 
@@ -167,12 +167,12 @@ def test_submitted_retry_crash_never_reclaims(case):
     recover(case)
     now, _, engine, _, _ = case
     with Session(engine) as db:
-        run = claim_next_due_task(db, now+timedelta(seconds=60), "a")
+        run = claim_next_due_task(db, now+timedelta(seconds=130), "a")
         run.submitted_at = now+timedelta(seconds=65)
         run.stage = "submitted"
         db.commit()
     with Session(engine) as db:
-        assert claim_next_due_task(db, now+timedelta(minutes=21), "b") is None
+        assert claim_next_due_task(db, now+timedelta(minutes=23), "b") is None
         assert db.get(TaskRun, first.id).status == "submitted_unconfirmed"
 
 def add_four_due_tasks(case):
@@ -229,9 +229,9 @@ def test_attempt_history_keeps_original_reasons_and_times(case):
     from spark_console.models import TaskRunAttempt
     first = attempt(case, Executor())
     recover(case)
-    second = attempt(case, Executor(), 60)
-    recover(case, 100)
-    third = attempt(case, Executor(fail=False, submitted=True), 120)
+    second = attempt(case, Executor(), 130)
+    recover(case, 400)
+    third = attempt(case, Executor(fail=False, submitted=True), 430)
     with Session(case[2]) as db:
         history = db.scalars(select(TaskRunAttempt).where(
             TaskRunAttempt.run_id == first.id).order_by(TaskRunAttempt.number)).all()
@@ -273,3 +273,9 @@ def test_queued_generic_retry_cannot_reset_deadline_or_attempts(case):
         assert run.attempt == 2
         from spark_console.health_retry import aware
         assert aware(pending.expires_at) == now+timedelta(minutes=4)
+
+
+def test_retry_wait_backs_off_two_then_five_minutes():
+    from spark_console.health_retry import retry_wait
+    assert retry_wait(1) == timedelta(minutes=2)
+    assert retry_wait(2) == timedelta(minutes=5)
