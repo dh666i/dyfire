@@ -33,10 +33,10 @@
       {% if item.can_retry %}
       <form method="post" action="/admin/runs/{{ item.id }}/retry" data-submit-lock>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="quiet" type="submit">补发</button>
+        <button class="today-send-action" type="submit">补发</button>
       </form>
       {% else %}
-      <a class="quiet" href="/admin/runs?q={{ item.target_name|urlencode }}">记录</a>
+      <a class="today-send-action" href="/admin/runs?q={{ item.target_name|urlencode }}">记录</a>
       {% endif %}
     </li>
     {% endfor %}

@@ -21,13 +21,13 @@
   {% if users %}
   <div class="admin-table-wrap admin-table-wrap-actions">
     <table class="admin-table admin-table-users">
-      <thead><tr><th class="admin-col-check"><input class="admin-check" type="checkbox" data-bulk-toggle="users" aria-label="选择本页全部客户"></th><th>用户</th><th class="admin-col-compact">账号状态</th><th>会员状态</th><th>资源使用</th><th>创建时间</th><th class="admin-col-actions">操作</th></tr></thead>
+      <thead><tr><th class="admin-col-check"><input class="admin-check" type="checkbox" data-bulk-toggle="users" aria-label="选择本页全部客户"></th><th>用户</th><th class="admin-col-status">账号状态</th><th>会员状态</th><th>资源使用</th><th>创建时间</th><th class="admin-col-actions">操作</th></tr></thead>
       <tbody>
         {% for item in users %}
         <tr>
           <td class="admin-col-check"><input class="admin-check" type="checkbox" name="user_ids" value="{{ item.id }}" form="admin-users-bulk" data-bulk-item="users" aria-label="选择 {{ item.username }}"{% if item.role == 'admin' %} disabled{% endif %}></td>
           <td><div class="admin-identity"><span class="admin-identity-avatar">{{ item.username[:2]|upper }}</span><span><a href="/admin/customers/{{ item.id }}"><strong>{{ item.username }}</strong></a><small>{{ '超级管理员' if item.role == 'admin' else '客户账号' }} · {{ item.id[:8] }}</small></span></div></td>
-          <td>{{ status_badge(item.status, '正常' if item.status == 'active' else '已停用') }}</td>
+          <td class="admin-col-status">{{ status_badge(item.status, '正常' if item.status == 'active' else '已停用') }}</td>
           <td><div class="admin-cell-stack">{{ status_badge(item.membership_status, item.membership_label) }}{% if item.valid_until %}<small>至 {{ item.valid_until|shanghai_time }}</small>{% endif %}</div></td>
           <td>
             {% if item.role == 'admin' %}<span class="admin-secondary-text">不受额度限制</span>

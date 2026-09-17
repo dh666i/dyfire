@@ -24,7 +24,7 @@
   {% if runs %}
   <div class="admin-table-wrap">
     <table class="admin-table admin-table-runs admin-table-mobile">
-      <thead><tr><th>目标任务</th><th>客户</th><th>计划时间</th><th>执行阶段</th><th>结果摘要</th><th class="admin-col-compact">状态</th></tr></thead>
+      <thead><tr><th>目标任务</th><th>客户</th><th>计划时间</th><th>执行阶段</th><th>结果摘要</th><th class="admin-col-status">状态</th></tr></thead>
       <tbody>
         {% for item in runs %}
         <tr>
@@ -33,7 +33,7 @@
           <td class="admin-mono" data-label="计划时间">{{ item.scheduled_for|shanghai_time }}</td>
           <td data-label="执行阶段"><div class="admin-cell-stack"><strong>{{ item.stage|run_stage }}</strong><small class="admin-mono">{{ item.stage }}</small></div></td>
           <td class="admin-run-summary" data-label="结果摘要">{% set history = attempt_history.get(item.id, []) %}{% set total_attempts = item.run.attempt|default(0) %}{% include "run_attempts.html" %}{% if item.status == 'submitted_unconfirmed' %}<span class="admin-text-warning">{{ item.error_summary or '已执行发送，但未能确认送达；系统不会自动重发' }}</span>{% elif item.error_summary %}<span class="admin-text-danger">{{ item.error_summary }}</span>{% elif item.status == 'success' %}<span class="admin-text-success">消息已按流程提交</span>{% elif item.status == 'running' %}<span class="admin-secondary-text">正在执行，请稍后刷新</span>{% else %}<span class="admin-secondary-text">无附加信息</span>{% endif %}</td>
-          <td data-label="状态">{% set view = item.run|run_view_status %}<span class="pill {{ view.tone }}">{{ view.label }}</span></td>
+          <td class="admin-col-status" data-label="状态">{% set view = item.run|run_view_status %}<span class="pill {{ view.tone }}">{{ view.label }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

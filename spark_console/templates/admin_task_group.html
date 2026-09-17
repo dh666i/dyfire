@@ -1,7 +1,7 @@
 {% from "admin_components.html" import icon, status_badge, pagination_nav %}
   <div class="admin-table-wrap admin-table-wrap-actions">
     <table class="admin-table admin-table-tasks">
-      <thead><tr><th class="admin-col-check"><span class="admin-sr-only">选择</span></th><th>目标好友</th><th>归属客户</th><th>发送账号</th><th>每日时间</th><th>下次执行</th><th class="admin-col-compact">状态</th><th class="admin-col-actions">操作</th></tr></thead>
+      <thead><tr><th class="admin-col-check"><span class="admin-sr-only">选择</span></th><th>目标好友</th><th>归属客户</th><th>发送账号</th><th>每日时间</th><th>下次执行</th><th class="admin-col-status">状态</th><th class="admin-col-actions">操作</th></tr></thead>
       <tbody>
         {% for item in tasks %}
         <tr>
@@ -11,7 +11,7 @@
           <td>{% if item.account_name %}<div class="admin-cell-stack"><strong>{{ item.account_name }}</strong><small>已绑定抖音账号</small></div>{% else %}<span class="admin-badge admin-badge-danger"><span></span>账号已解绑</span>{% endif %}</td>
           <td><time class="admin-time-chip">{{ item.send_time }}</time></td>
           <td class="admin-mono">{{ item.next_run_at|shanghai_time if item.next_run_at else '—' }}</td>
-          <td>{{ status_badge('enabled' if item.enabled else 'disabled', '已启用' if item.enabled else '已暂停') }}</td>
+          <td class="admin-col-status">{{ status_badge('enabled' if item.enabled else 'disabled', '已启用' if item.enabled else '已暂停') }}</td>
           <td class="admin-col-actions"><div class="admin-row-actions"><form method="post" action="/admin/tasks/{{ item.id }}/toggle"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="admin-icon-button" type="submit" aria-label="{{ '暂停' if item.enabled else '启用' }}任务" title="{{ '暂停' if item.enabled else '启用' }}">{{ icon('pause' if item.enabled else 'play', 15) }}</button></form><form method="post" action="/admin/tasks/{{ item.id }}/delete" data-confirm="将永久删除发给“{{ item.target_name }}”的续火任务，历史执行记录也可能一并移除。" data-confirm-title="删除任务？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="admin-icon-button admin-icon-button-danger" type="submit" aria-label="删除任务" title="删除">{{ icon('trash', 15) }}</button></form></div></td>
         </tr>
         {% endfor %}

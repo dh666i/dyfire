@@ -29,10 +29,10 @@
     <strong>{{ stats.enabled_tasks|default(0) }}</strong>
     <small>共 {{ stats.total_tasks|default(0) }} 个续火任务</small>
   </a>
-  <a class="admin-stat-card {{ 'danger' if stats.attention_runs_today|default(0) else '' }}" href="/admin/runs">
+  <a class="admin-stat-card" href="/admin/today">
     <span>今日执行</span><span class="admin-icon-wrap">{{ icon('runs', 18) }}</span>
     <strong>{{ stats.runs_today|default(0) }}</strong>
-    <small><b>{{ stats.attention_runs_today|default(0) }}</b> 条结果需要关注</small>
+    <small>{% if today.totals.login %}<b>{{ today.totals.login }}</b> 条需要验证{% elif today.totals.missed %}<b>{{ today.totals.missed }}</b> 条未发出{% else %}到点任务的执行次数{% endif %}</small>
   </a>
 </section>
 
@@ -45,15 +45,14 @@
     {% if recent_runs %}
     <div class="admin-table-wrap">
       <table class="admin-table admin-table-overview admin-table-mobile">
-        <thead><tr><th>目标</th><th>客户</th><th>执行时间</th><th>阶段</th><th class="admin-col-compact">状态</th></tr></thead>
+        <thead><tr><th>目标</th><th>客户</th><th>执行时间</th><th class="admin-col-status">状态</th></tr></thead>
         <tbody>
           {% for item in recent_runs %}
           <tr>
             <td data-label="目标"><div class="admin-cell-stack"><strong>{{ item.target_name }}</strong><small>计划 {{ item.send_time }}</small></div></td>
             <td data-label="客户">{{ item.username }}</td>
             <td class="admin-mono" data-label="执行时间">{{ item.scheduled_for|shanghai_time }}</td>
-            <td data-label="阶段"><div class="admin-cell-stack"><strong>{{ item.stage|run_stage }}</strong>{% if item.error_summary %}<small class="{{ 'admin-text-warning' if item.status == 'submitted_unconfirmed' else 'admin-text-danger' }}">{{ item.error_summary }}</small>{% endif %}</div></td>
-            <td data-label="状态">{% set view = item.run|run_view_status %}<span class="pill {{ view.tone }}">{{ view.label }}</span></td>
+            <td class="admin-col-status" data-label="状态">{% set view = item.run|run_view_status %}<span class="pill {{ view.tone }}">{{ view.label }}</span></td>
           </tr>
           {% endfor %}
         </tbody>

@@ -214,7 +214,11 @@ tbody tr:hover {
   background: var(--field);
 }
 .admin-table-wrap table {
-  min-width: 680px;
+  width: 100%;
+  min-width: 0;
+}
+.admin-table-runs {
+  min-width: 44rem;
 }
 .admin-col-check {
   width: 40px;
@@ -222,6 +226,14 @@ tbody tr:hover {
 .admin-col-actions {
   width: 75px;
   text-align: right;
+}
+.admin-col-status {
+  width: 1%;
+  white-space: nowrap;
+}
+.admin-col-status .pill {
+  flex-shrink: 0;
+  max-width: none;
 }
 .admin-cell-stack,
 .admin-identity > span:last-child {
