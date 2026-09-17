@@ -45,6 +45,7 @@ from spark_console.web.admin_queries import (
     overview_recent_runs,
 )
 from spark_console.web.auth import WebAuth
+from spark_console.today_sends import board as today_send_board
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.web.registration_routes import AdminInvite
 from spark_console.web.subscription_routes import AdminRedemptionCode
@@ -475,11 +476,50 @@ def build_admin_router(
                 title="业务概览",
                 admin_section="overview",
                 stats=admin_stats(db),
+                today=today_send_board(db),
                 recent_runs=overview_recent_runs(db),
                 expiring_users=overview_expiring_users(db),
                 worker=_worker_summary(db),
                 **context,
             )
+
+    @router.get("/admin/today")
+    def today_page(request: Request):
+        with session_scope(engine) as db:
+            _admin, _record, context = auth.admin_context(request, db)
+            return page_renderer(
+                request,
+                "admin_today.html",
+                title="今日发送",
+                admin_section="today",
+                today=today_send_board(db),
+                **context,
+            )
+
+    @router.post("/admin/runs/{run_id}/retry")
+    def admin_retry_run(request: Request, run_id: str, csrf_token: str = Form(default="")):
+        with session_scope(engine) as db:
+            _admin, record, _context = auth.admin_context(request, db)
+            auth.csrf(record, csrf_token)
+            run = db.get(TaskRun, run_id)
+            if run is None:
+                raise HTTPException(404, "执行记录不存在")
+            task = db.get(SparkTask, run.task_id)
+            if task is None:
+                raise HTTPException(404, "任务不存在")
+            from spark_console.services.tasks import TaskService
+            from spark_console.services.accounts import AccountService
+            try:
+                TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).request_unsubmitted_retry(
+                    task.owner_user_id, run_id, datetime.now(timezone.utc)
+                )
+            except NotFound:
+                raise HTTPException(404, "执行记录不存在")
+            except ValidationError:
+                return RedirectResponse("/admin/today?notice=retry-rejected", status_code=303)
+            except Conflict:
+                return RedirectResponse("/admin/today?notice=retry-busy", status_code=303)
+        return RedirectResponse("/admin/today?notice=retry-queued", status_code=303)
 
     @router.get("/admin/users")
     def users_page(

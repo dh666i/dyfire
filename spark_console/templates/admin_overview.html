@@ -5,6 +5,14 @@
 {% block content %}
 {{ page_header('业务概览', '查看用户、订阅、续火任务与执行器的当前运营状态。', '今日运营', '创建用户', 'create-user') }}
 
+<section class="today-send-totals" aria-label="今日发送">
+  <a href="/admin/today"><span>今日计划</span><strong>{{ today.totals.planned|default(0) }}</strong></a>
+  <a href="/admin/today"><span>已发出</span><strong class="tone-good">{{ today.totals.success|default(0) }}</strong></a>
+  <a href="/admin/today"><span>未发出</span><strong class="tone-warn">{{ today.totals.missed|default(0) }}</strong></a>
+  <a href="/admin/today"><span>需要验证</span><strong class="tone-danger">{{ today.totals.login|default(0) }}</strong></a>
+</section>
+<p class="muted today-send-day">绿=已发出或账号正常 · 黄=聊天页异常，不用扫码 · 红=需要验证。<a href="/admin/today">按账号查看今日发送 ↗</a></p>
+
 <section class="admin-stats" aria-label="核心数据">
   <a class="admin-stat-card primary" href="/admin/users">
     <span>平台用户</span><span class="admin-icon-wrap">{{ icon('users', 18) }}</span>
@@ -45,7 +53,7 @@
             <td data-label="客户">{{ item.username }}</td>
             <td class="admin-mono" data-label="执行时间">{{ item.scheduled_for|shanghai_time }}</td>
             <td data-label="阶段"><div class="admin-cell-stack"><strong>{{ item.stage|run_stage }}</strong>{% if item.error_summary %}<small class="{{ 'admin-text-warning' if item.status == 'submitted_unconfirmed' else 'admin-text-danger' }}">{{ item.error_summary }}</small>{% endif %}</div></td>
-            <td data-label="状态">{{ status_badge(item.status, item.status|run_status) }}</td>
+            <td data-label="状态">{% set view = item.run|run_view_status %}<span class="pill {{ view.tone }}">{{ view.label }}</span></td>
           </tr>
           {% endfor %}
         </tbody>

@@ -44,8 +44,8 @@
 {% set tone = 'neutral' %}
 {% if normalized in ['active', 'enabled', 'success', 'succeeded', 'valid', 'healthy', 'online', '有效', '成功', '已启用', '正常'] %}{% set tone = 'success' %}
 {% elif normalized in ['queued', 'running', 'loading_qr', 'awaiting_scan', 'confirming', 'processing', 'available', '进行中', '排队中', '待执行', '待兑换'] %}{% set tone = 'info' %}
-{% elif normalized in ['expiring', 'skipped', 'warning', 'submitted_unconfirmed', '已跳过', '即将到期', '已提交，待核实'] %}{% set tone = 'warning' %}
-{% elif normalized in ['disabled', 'failed', 'expired', 'revoked', 'inactive', 'cancelled', 'locked', 'offline', '失败', '已过期', '已撤销', '已停用', '已暂停'] %}{% set tone = 'danger' %}
+{% elif normalized in ['expiring', 'skipped', 'warning', 'submitted_unconfirmed', 'retrying', 'temporary', '本次未发出', '等待重试', '待核实', '已跳过', '即将到期', '已提交，待核实', '暂时异常'] %}{% set tone = 'warning' %}
+{% elif normalized in ['disabled', 'failed', 'expired', 'revoked', 'inactive', 'cancelled', 'locked', 'offline', 'invalid', 'verification', '失败', '已过期', '已撤销', '已停用', '已暂停', '需要验证', '确认失效'] %}{% set tone = 'danger' %}
 {% endif %}
 <span class="admin-badge admin-badge-{{ tone }}"><span aria-hidden="true"></span>{{ label if label is not none else value }}</span>
 {%- endmacro %}

@@ -281,6 +281,7 @@ class AdminWebTests(unittest.TestCase):
             "/admin/codes",
             "/admin/tasks",
             "/admin/runs",
+            "/admin/today",
             "/admin/audit",
             "/admin/settings",
         ):
@@ -288,8 +289,17 @@ class AdminWebTests(unittest.TestCase):
                 response = self.real_client.get(path)
                 self.assertEqual(200, response.status_code)
                 self.assertIn('data-design="dyfire-studio"', response.text)
-                self.assertIn('class="studio-admin-tabs"', response.text)
+                self.assertIn('class="workspace-admin-nav"', response.text)
                 self.assertNotIn('/static/mineradio_admin.css', response.text)
+
+    def test_today_send_page_is_linked_from_overview(self):
+        overview = self.real_client.get("/admin/overview")
+        today = self.real_client.get("/admin/today")
+        self.assertEqual(200, overview.status_code)
+        self.assertEqual(200, today.status_code)
+        self.assertIn("/admin/today", overview.text)
+        self.assertIn("今日发送", today.text)
+        self.assertIn("绿=已发出或账号正常", today.text)
 
     def test_admin_sections_require_an_active_admin_session(self):
         anonymous = TestClient(
@@ -314,6 +324,7 @@ class AdminWebTests(unittest.TestCase):
             "/admin/codes": "admin_codes.html",
             "/admin/tasks": "admin_tasks.html",
             "/admin/runs": "admin_runs.html",
+            "/admin/today": "admin_today.html",
             "/admin/audit": "admin_audit.html",
             "/admin/settings": "admin_settings.html",
         }

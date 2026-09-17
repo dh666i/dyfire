@@ -35,7 +35,7 @@ class DesignSystemTests(TestCase):
     def test_admin_pages_and_disabled_backup_are_distinct_from_historical_success(self):
         with session_scope(self.fixture.engine) as db:
             db.get(User, self.fixture.owner).role = 'admin'
-        for route in ['/admin/overview', '/admin/users', '/admin/tasks', '/admin/runs',
+        for route in ['/admin/overview', '/admin/today', '/admin/users', '/admin/tasks', '/admin/runs',
                       '/admin/subscriptions', '/admin/codes', '/admin/audit',
                       '/admin/operations', '/admin/settings', '/admin/settings/mail']:
             with self.subTest(route=route):

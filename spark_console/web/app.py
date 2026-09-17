@@ -103,32 +103,42 @@ def shanghai_time(value) -> str:
     return aware.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
 
 
+LOGIN_ERROR_CODES = {"cookie_invalid", "credential_invalid", "account_verification_required"}
+MISS_ERROR_CODES = {
+    "health_retry_waiting",
+    "health_retry_expired",
+    "health_retry_exhausted",
+    "health_retry_cancelled",
+    "account_health_pending",
+    "account_health_blocked",
+    "account_busy",
+    "missed_window",
+    "worker_was_offline",
+}
+
+
 def run_view_status(run) -> dict[str, str]:
     status = str(getattr(run, "status", "") or "")
     error_code = str(getattr(run, "error_code", "") or "")
-    if status == "retrying" and error_code == "health_retry_waiting":
-        return {"label": "等待账号复核后重试", "tone": "warn", "kind": "retry"}
-    if error_code.startswith("retry_scheduled_"):
+    if status == "success":
+        return {"label": "已发出", "tone": "good", "kind": "success"}
+    if status == "submitted_unconfirmed" or error_code == "delivery_confirmation_unavailable":
+        return {"label": "待核实", "tone": "warn", "kind": "unconfirmed"}
+    if error_code in LOGIN_ERROR_CODES:
+        return {"label": "需要验证", "tone": "danger", "kind": "login"}
+    if status == "retrying" or error_code.startswith("retry_scheduled_") or error_code == "health_retry_waiting":
         return {"label": "等待重试", "tone": "warn", "kind": "retry"}
-    if status == "failed" and error_code in {
-        "health_retry_expired",
-        "health_retry_exhausted",
-        "health_retry_cancelled",
-    }:
-        return {"label": "本次未发出", "tone": "warn", "kind": "missed"}
     if status == "running":
         return {"label": "执行中", "tone": "progress", "kind": "running"}
-    if status == "success":
-        return {"label": "成功", "tone": "good", "kind": "success"}
-    if status == "submitted_unconfirmed":
-        return {
-            "label": "已提交，待核实",
-            "tone": "warn",
-            "kind": "unconfirmed",
-        }
+    if error_code == "subscription_inactive":
+        return {"label": "会员不可用", "tone": "danger", "kind": "failed"}
+    if error_code in MISS_ERROR_CODES:
+        return {"label": "本次未发出", "tone": "warn", "kind": "missed"}
     if status == "skipped":
-        return {"label": "已跳过", "tone": "warn", "kind": "skipped"}
-    return {"label": RUN_STATUS_LABELS.get(status, status or "未知"), "tone": "off", "kind": "failed"}
+        return {"label": "本次未发出", "tone": "warn", "kind": "missed"}
+    if status == "failed":
+        return {"label": RUN_STATUS_LABELS.get(status, "失败"), "tone": "danger", "kind": "failed"}
+    return {"label": RUN_STATUS_LABELS.get(status, status or "未知"), "tone": "off", "kind": "other"}
 
 
 def run_guidance(run) -> dict[str, str] | None:

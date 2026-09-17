@@ -29,7 +29,7 @@ def site():
 @pytest.mark.parametrize('path',[
  '/login','/register','/forgot-password','/dashboard','/accounts','/runs',
  '/subscription','/account-center','/change-password','/notifications','/attention','/help',
- '/admin/overview','/admin/users','/admin/subscriptions','/admin/codes','/admin/tasks',
+ '/admin/overview','/admin/today','/admin/users','/admin/subscriptions','/admin/codes','/admin/tasks',
  '/admin/runs','/admin/operations','/admin/settings/mail','/admin/audit','/admin/settings',
 ])
 def test_routes_use_new_design_and_valid_assets(site,path):
@@ -37,7 +37,7 @@ def test_routes_use_new_design_and_valid_assets(site,path):
     assert response.status_code==200,path
     assert 'data-design="dyfire-studio"' in response.text,path
     assert 'class="studio-header"' in response.text,path
-    assert '/static/workspace.css?v=0.2.7' in response.text,path
+    assert '/static/workspace.css?v=0.2.9' in response.text,path
     assert '/static/studio_tokens.css?v=0.2.4' in response.text,path
     assert '/static/studio_site.css' not in response.text,path
     if path not in ('/login','/register','/forgot-password'):

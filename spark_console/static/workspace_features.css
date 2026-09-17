@@ -134,17 +134,29 @@ html[data-theme="light"] #scan-start {
 }
 .pill.good,
 .admin-badge-success,
+.admin-badge-good,
 .account-health-valid {
   color: var(--green);
+  background: color-mix(in srgb, var(--green) 16%, transparent);
 }
+.pill.warn,
 .admin-badge-warning,
-.account-health-verification,
+.admin-badge-warn,
 .account-health-temporary {
   color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
 }
+.pill.danger,
 .admin-badge-danger,
-.account-health-invalid {
+.account-health-invalid,
+.account-health-verification,
+.account-health-relogin {
   color: var(--red);
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+}
+.pill.progress,
+.admin-badge-info {
+  color: var(--muted);
 }
 .admin-badge > span {
   width: 4px;
