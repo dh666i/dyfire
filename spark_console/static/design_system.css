@@ -164,6 +164,15 @@ button,.button,.admin-button,input,textarea,select,.pill,.badge,.notice,.form-er
 .ui-workspace-actions>.ui-select .ui-select-trigger{min-height:38px;padding:8px 12px;background:transparent;font-size:12px}
 .ui-workspace-actions>button.submit{flex:0 0 auto;width:auto;min-width:112px;min-height:38px;padding:8px 18px;margin:0 0 0 auto;display:inline-flex;justify-content:center;align-items:center;font-size:12px}
 .ui-group-toggle{background:transparent;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+/* Hover is a desktop affordance. Keep touch taps from leaving list rows in a hover state. */
+@media (hover: none), (pointer: coarse){
+  .task-overview-row:hover,.record-row:hover,.record-summary:hover,.admin-table tbody tr:hover,
+  .studio-plan-row:hover,.studio-account-row:hover,.account-item:hover{background:transparent!important}
+}
+@media (hover: hover) and (pointer: fine){
+  .task-overview-row:hover,.record-row:hover,.record-summary:hover,.admin-table tbody tr:hover,
+  .studio-plan-row:hover,.studio-account-row:hover,.account-item:hover{transition:background-color 150ms ease}
+}
 @media(max-width:560px){.ui-workspace-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.ui-workspace-actions>.ui-select{width:100%;min-width:0}.ui-workspace-actions>button.submit{grid-column:2;justify-self:end;width:auto;min-height:42px}.ui-workspace-actions>.ui-select .ui-select-trigger{min-height:42px}}
 /* Existing-task editor: fixed recipient and intrinsic mobile form sizing. */
 .edit-identity{padding:12px 0;color:var(--ink);overflow-wrap:anywhere}
