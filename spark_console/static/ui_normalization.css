@@ -1,6 +1,11 @@
 /* Final visual normalization: preserve the editorial surface, remove structural noise. */
 :root { --ui-section-space: 38px; --ui-control-gap: 12px; }
 
+/* Keep wide monitors from stretching text and controls into a loose canvas. */
+@media (min-width: 1280px) {
+  .studio-content { max-width: 1480px; margin-inline: auto; }
+}
+
 /* Pages are organized by rhythm, not by a rule above every section. */
 .workspace-body > .workspace-section,
 .workspace-admin-layout .admin-panel,
@@ -21,7 +26,13 @@
   .admin-task-group,.help-sections details,.workspace-body td,.workspace-body th) {
   border-color: color-mix(in srgb, var(--line) 82%, transparent);
 }
-.workspace-body .workspace-heading { padding-bottom: 0; }
+.workspace-body .workspace-heading {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.workspace-period { display: none; }
+.workspace-heading h1 { font-size: clamp(30px, 3.6vw, 48px); letter-spacing: -0.03em; }
+.workspace-heading p { max-width: 48ch; line-height: 1.65; }
 .workspace-body .workspace-heading + :is(.admin-panel,.workspace-section) { margin-top: 0; }
 .page-head,.studio-heading,.admin-page-head,.workspace-heading { margin-bottom: 24px; }
 .section-head,.admin-panel-head { margin-bottom: 16px; }
@@ -54,6 +65,8 @@
 .workspace-body .record-detail { margin-block: 4px 12px; }
 .workspace-body .task-overview-row { min-height: 66px; }
 .workspace-body .task-row { min-height: 66px; }
+.workspace-body .action-summary { border-bottom: 0; padding-block: 12px; }
+.workspace-body .action-summary strong { font-size: 16px; font-weight: 600; }
 
 /* One control rhythm across filters, headings, forms, and action rows. */
 .workspace-options,.admin-filterbar,.filter-form,.run-filters,
@@ -86,4 +99,5 @@
   .section-head,.admin-panel-head { margin-bottom: 14px; }
   .workspace-body .account-item { padding-block: 16px; }
   .workspace-body .record-detail { margin-inline: -2px; padding: 16px; }
+  .workspace-heading h1 { font-size: 30px; }
 }
