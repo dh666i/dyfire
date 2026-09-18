@@ -404,6 +404,7 @@ legend {
 }
 .workspace-body .workspace-heading {
   margin-bottom: 0;
+  padding-bottom: 10px;
 }
 .today-send-totals,
 .workspace-body .admin-stats,
@@ -1278,9 +1279,41 @@ legend {
 .run-attempt-history li { padding: 8px 4px; overflow-wrap: anywhere; }
 .run-attempt-history p { margin: 4px 0; line-height: 1.6; }
 .overview-danger { color: var(--red) !important; }
-.studio-day-periods { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px; }
-.studio-day-periods .studio-hour { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px; border: 1px solid var(--line); color: inherit; }
+.studio-day-periods {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 0;
+  margin: 0 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+.studio-day-periods .studio-hour {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 14px 16px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: inherit;
+}
+.studio-day-periods .studio-hour:last-child {
+  border-right: 0;
+}
 .record-retry-inline { margin-left: 8px; font-size: 12px; }
+.workspace-body .studio-next-plan {
+  border-top: 0;
+  margin-top: 0;
+}
+.workspace-body .studio-plan-head {
+  border-bottom: 0;
+  padding-bottom: 8px;
+}
+.workspace-body .account-list .account-controls,
+.workspace-body .account-list .product-actions {
+  border-top: 0;
+  padding-top: 8px;
+  margin-top: 8px;
+}
 @media (min-width: 821px) {
   .studio-admin .studio-main-nav { display: none; }
 }
