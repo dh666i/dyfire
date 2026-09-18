@@ -190,7 +190,14 @@
     event.preventDefault();
     pendingForm = form;
     confirmDialog.querySelector("[data-confirm-title]").textContent = form.dataset.confirmTitle || "确认操作";
-    confirmDialog.querySelector("[data-confirm-message]").textContent = form.dataset.confirm || "此操作可能无法撤销。";
+    var message = form.dataset.confirm || "此操作可能无法撤销。";
+    var action = form.querySelector("select[name='action']");
+    var countNode = form.querySelector("[data-bulk-count]");
+    if (action && countNode) {
+      var verb = action.value === "disable" ? "停用" : action.value === "enable" ? "启用" : "处理";
+      message = "将" + verb + "已勾选项目。" + (form.dataset.confirm || "");
+    }
+    confirmDialog.querySelector("[data-confirm-message]").textContent = message;
     showDialog(confirmDialog);
   });
 
@@ -198,6 +205,12 @@
     button.addEventListener("click", function () {
       pendingForm = null;
       closeDialog(confirmDialog);
+    });
+  });
+
+  document.querySelectorAll(".admin-filterbar select[name='status']").forEach(function (select) {
+    select.addEventListener("change", function () {
+      if (select.form) select.form.requestSubmit();
     });
   });
 

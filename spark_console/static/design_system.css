@@ -99,7 +99,7 @@ dialog::backdrop{background:#090b1066;backdrop-filter:blur(3px)}
 /* Straight-edged editorial controls; circular identity images stay circular. */
 .mobile-dock,.mobile-record-search,.mobile-filter-summary{display:none}
 .studio-dashboard{display:flex;flex-direction:column}
-.studio-dashboard>.studio-heading{order:0}.studio-dashboard>.overview-accounts{order:1}.studio-dashboard>.action-summary{order:2}.studio-dashboard>.studio-metrics{order:3}.studio-dashboard>.studio-overview-columns{order:4}.studio-dashboard>.studio-schedule{order:5}.studio-dashboard>.setup-progress{order:6}
+.studio-dashboard>.studio-heading{order:0}.studio-dashboard>.setup-progress{order:1}.studio-dashboard>.action-summary{order:2}.studio-dashboard>.overview-accounts{order:3}.studio-dashboard>.studio-metrics{order:4}.studio-dashboard>.studio-schedule{order:5}.studio-dashboard>.studio-overview-columns{order:6}
 .overview-accounts{margin-bottom:24px}.overview-accounts .studio-section-title{margin-top:0}
 .overview-account-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
 .overview-account{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--line);min-width:0}

@@ -63,6 +63,26 @@ def test_recovery_retries_same_run_without_changing_next_day(case):
         assert len(db.scalars(select(TaskRun)).all())==1
         assert claim_next_due_task(db,now+timedelta(seconds=65),"other") is None
 
+def test_chat_list_flake_retries_inside_window(case, monkeypatch):
+    from spark_console import health_retry
+    monkeypatch.setattr(health_retry, "WINDOW", timedelta(minutes=20))
+    class Flake(Executor):
+        async def execute(self, cookies, target_name, message, *, on_submitted=None, **kwargs):
+            self.calls += 1
+            return ExecutionResult(False, "authenticating", "account_health_pending",
+                "已等待页面就绪 45 秒；未检测到已登录会话列表；HTTP 200，业务码缺失或格式异常，未取得有效登录信息；页面 /chat",
+                health_state="temporary", health_reason="test")
+    first=attempt(case,Flake())
+    recover(case,110)
+    second=attempt(case,Flake(),120)
+    recover(case,410)
+    third=attempt(case,Flake(),420)
+    assert third.id==first.id and third.attempt==3 and third.status=="retrying"
+    recover(case,710)
+    fourth=attempt(case,Executor(fail=False),720)
+    assert fourth.id==first.id and fourth.status=="success"
+
+
 def test_two_retries_max(case):
     first=attempt(case,Executor())
     for seconds in (120,420):

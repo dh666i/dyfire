@@ -23,11 +23,11 @@
               </span>
             </div>
             {% if profile and profile.nickname and account.display_name != profile.nickname %}<p class="account-profile-note">备注：{{ account.display_name }}</p>{% endif %}
-            <p class="account-profile-note" data-health-reason>{{ '登录状态正常' if health_state == 'valid' else '聊天页暂时异常，通常不用重新扫码' if health_state == 'temporary' else '请完成抖音安全验证' if health_state == 'verification' else '登录已失效，请重新登录' if health_state == 'invalid' else '' }}</p>
-            <p class="account-profile-note" data-health-progress>{% if health and health.checking %}正在进行第 {{ health.attempts }} 次登录复核…{% elif health and health.next_check_at %}已安排第 {{ health.attempts + 1 }} 次复核，预计 {{ health.next_check_at|shanghai_time }}{% elif health_state == 'temporary' %}自动复核已结束，仍无法确认，请稍后复核或重新登录。{% elif health_state == 'verification' %}请点击“完成验证”，系统不会自动尝试密码或验证码。{% endif %}</p>
-            <p class="account-profile-note" data-health-blocked{% if not health or not health.blocked %} hidden{% endif %}>已启用的计划等待账号恢复，错过的消息不自动补发；已暂停的任务需要手动启用。</p>
-            <p class="account-verified" data-health-verified>最近验证：{% if account.last_verified_at %}{{ account.last_verified_at|shanghai_time }}{% else %}尚未验证{% endif %}</p>
-            <details class="account-diagnostics"><summary>诊断详情</summary><small data-health-diagnostic>{{ health.reason if health else '' }}</small></details>
+            {% if health_state != 'valid' %}<p class="account-profile-note" data-health-reason>{{ '聊天页暂时异常，通常不用重新扫码' if health_state == 'temporary' else '请完成抖音安全验证' if health_state == 'verification' else '登录已失效，请重新登录' if health_state == 'invalid' else '' }}</p>{% else %}<p class="account-profile-note" data-health-reason hidden></p>{% endif %}
+            <p class="account-profile-note" data-health-progress{% if health_state == 'valid' and not (health and health.checking) %} hidden{% endif %}>{% if health and health.checking %}正在进行第 {{ health.attempts }} 次登录复核…{% elif health and health.next_check_at %}已安排第 {{ health.attempts + 1 }} 次复核，预计 {{ health.next_check_at|shanghai_time }}{% elif health_state == 'temporary' %}自动复核已结束，仍无法确认，请稍后复核或重新登录。{% elif health_state == 'verification' %}请点击“完成验证”，系统不会自动尝试密码或验证码。{% endif %}</p>
+            <p class="account-profile-note" data-health-blocked{% if not health or not health.blocked %} hidden{% endif %}>已启用的计划等待账号恢复，错过的消息不自动补发。</p>
+            <p class="account-verified" data-health-verified>{% if health_state == 'valid' %}最近验证：{% if account.last_verified_at %}{{ account.last_verified_at|shanghai_time }}{% else %}尚未验证{% endif %}{% endif %}</p>
+            {% if health_state != 'valid' %}<details class="account-diagnostics"><summary>诊断详情</summary><small data-health-diagnostic>{{ health.reason if health else '' }}</small></details>{% endif %}
           </div>
           </div>
           <div class="account-controls">
@@ -67,11 +67,11 @@
     <section class="workspace-section panel scan-entry">
       <span class="scan-kicker">绑定流程</span>
       <h2>绑定新账号</h2>
-      <p class="muted">建议用另一台设备展示二维码，再用抖音扫码。登录由抖音验证，可能需要短信或其他安全验证。</p>
+      <p class="muted">只有一台手机时：先截图本页二维码，打开抖音「扫一扫」或相册识别，再回到本页看结果。登录由抖音验证，可能要短信或安全验证。</p>
       <ol class="scan-steps">
-        <li><span>1</span>用电脑或另一台手机打开本页</li>
-        <li><span>2</span>打开抖音 App 扫描二维码</li>
-        <li><span>3</span>在手机上确认登录</li>
+        <li><span>1</span>点下方按钮，截图显示的二维码</li>
+        <li><span>2</span>打开抖音 App，用扫一扫或相册识别</li>
+        <li><span>3</span>回到本页，等待绑定结果</li>
       </ol>
       <button id="scan-start" type="button"><span aria-hidden="true">＋</span>扫码绑定抖音账号<span class="button-arrow" aria-hidden="true">↗</span></button>
     </section>
@@ -115,7 +115,7 @@
           <p id="scan-browser-hint" class="scan-browser-hint">直接点击云端页面中的输入框，键入内容后按回车或点击下方按钮；每次操作只发送一次。</p>
           <div class="scan-input-row">
             <label class="sr-only" for="scan-text">云端安全输入</label>
-            <input id="scan-text" type="password" inputmode="text" autocomplete="current-password" maxlength="256" placeholder="点击云端输入框后直接键入内容">
+            <input id="scan-text" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="256" placeholder="验证码或抖音提示的内容">
             <button id="scan-type" type="button">发送到云端</button>
           </div>
           <p id="scan-interaction-status" class="scan-interaction-status" role="status" aria-live="polite" hidden></p>

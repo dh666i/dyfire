@@ -15,7 +15,7 @@
 <section class="admin-panel">
   <header class="admin-panel-head">
     <div><h2>全部续火任务</h2><p>共 {{ pagination.total|default(0) }} 个发送账号分组；展开查看任务，批量操作仅针对已勾选的任务。</p></div>
-    <form id="admin-tasks-bulk" class="admin-bulkbar" method="post" action="/admin/tasks/bulk" data-bulk-form="tasks" data-confirm="将对当前选中的续火任务执行批量启停操作。" data-confirm-title="确认批量操作？">
+    <form id="admin-tasks-bulk" class="admin-bulkbar" method="post" action="/admin/tasks/bulk" data-bulk-form="tasks" data-confirm="将按所选操作处理已勾选任务。未展开分组里的任务不会被选中。" data-confirm-title="确认批量操作？">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <span data-bulk-count>已选 0 项</span>
       <label><span class="admin-sr-only">批量操作</span><select name="action" aria-label="批量操作"><option value="enable">批量启用</option><option value="disable">批量暂停</option></select></label>

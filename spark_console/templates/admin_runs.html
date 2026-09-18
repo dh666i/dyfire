@@ -13,7 +13,7 @@
 
 <form class="workspace-options admin-run-filters" method="get" action="/admin/runs" aria-label="筛选执行记录">
   <label>关键词<input name="q" value="{{ q }}" placeholder="客户、目标、阶段或错误"></label>
-  <label>状态<select name="status">{% for value,label in [('', '全部状态'), ('running', '执行中'), ('success', '成功'), ('submitted_unconfirmed', '已提交，待核实'), ('failed', '失败'), ('skipped', '已跳过')] %}<option value="{{ value }}"{% if status==value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+  <label>状态<select name="status">{% for value,label in [('', '全部状态'), ('running', '执行中'), ('success', '已发出'), ('submitted_unconfirmed', '待核实'), ('failed', '未发出'), ('skipped', '已跳过')] %}<option value="{{ value }}"{% if status==value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
   <label>起始日期<input type="date" name="start" value="{{ start }}"></label>
   <label>结束日期<input type="date" name="end" value="{{ end }}"></label>
   <button class="admin-button" type="submit">筛选</button><a class="admin-button admin-button-ghost" href="/admin/runs">重置</a>

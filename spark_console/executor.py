@@ -23,7 +23,7 @@ from core.web_chat import (
     select_web_chat_target,
 )
 from spark_console.credentials import CredentialError, CredentialPayload
-from core.session_health import inspect_session, require_session, SessionUnavailable
+from core.session_health import inspect_session, require_session, wait_for_session, SessionUnavailable
 
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,7 @@ class DouyinExecutor:
                     delivery_monitor.attach(page)
                 page.on("response", user_info.capture)
                 if reused:
-                    evidence = await inspect_session(page, context)
+                    evidence = await wait_for_session(page, context, timeout=20)
                     if evidence.state != "valid":
                         await self.close_session()
                         live = await self._open_browser(payload)

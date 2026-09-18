@@ -2,24 +2,25 @@
 <!doctype html><html lang="zh-CN" data-app-surface="admin"><head>
 {% include 'studio_head.html' %}
 {% block admin_styles %}{% endblock %}
-<link rel="stylesheet" href="/static/workspace_features.css?v=0.2.12">
+<link rel="stylesheet" href="/static/workspace_features.css?v=0.2.13">
 <link rel="stylesheet" href="/static/motion.css?v=0.2.4">
 <script defer src="/static/motion.js?v=0.2.4"></script>
 <script defer src="/static/app_ui.js?v=0.1.9"></script>
-<script src="/static/admin.js" defer></script>
+<script src="/static/admin.js?v=0.2.13" defer></script>
 {% block admin_scripts %}{% endblock %}
-<link rel="stylesheet" href="/static/design_system.css?v=0.2.4">
-<link rel="stylesheet" href="/static/workspace.css?v=0.2.12">
+<link rel="stylesheet" href="/static/design_system.css?v=0.2.13">
+<link rel="stylesheet" href="/static/workspace.css?v=0.2.13">
 <link rel="stylesheet" href="/static/studio_components.css?v=0.2.4">
 <script defer src="/static/design_system.js?v=0.2.4"></script>
-<script defer src="/static/mobile_workspace.js?v=0.2.4"></script>
+<script defer src="/static/mobile_workspace.js?v=0.2.13"></script>
 </head>
 {% set section=admin_section|default('overview') %}
 <body data-admin-section="{{ section }}" data-design="dyfire-studio" class="studio-site studio-admin">
 <a class="skip-link" href="#admin-main">跳到主要内容</a>
 {% include 'studio_header.html' %}
 <main id="admin-main" class="studio-content workspace-body" tabindex="-1">
-<div class="studio-admin-context"><span>ADMIN WORKSPACE / 管理员工作区</span><a href="/studio">返回用户端 ↗</a></div>
+{% if ui_notice is defined and ui_notice %}<div class="app-toast-region" aria-live="polite"><div class="app-toast" data-app-toast role="status"><span>{{ ui_notice.message }}</span><button data-toast-close type="button" aria-label="关闭提示">×</button></div></div>{% endif %}
+<div class="studio-admin-context"><span>管理员工作区</span><a href="/dashboard">返回用户端 ↗</a></div>
 <div class="workspace-admin-layout">{% include 'studio_admin_nav.html' %}
 <div class="studio-admin-content">{% from 'studio_components.html' import heading, section_heading with context %}{% block content %}{% endblock %}</div></div></main>
 <footer class="studio-footer"><span>火花 / KEEP IN TOUCH.</span><span>管理清晰，连接持续。</span></footer>

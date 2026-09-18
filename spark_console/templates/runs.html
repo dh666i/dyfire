@@ -7,7 +7,7 @@
   <label>开始日期<input type="date" name="start" value="{{ start }}"></label><label>结束日期<input type="date" name="end" value="{{ end }}"></label>
   <label class="records-search"><span class="sr-only">目标好友</span><input type="search" name="q" value="{{ q }}" placeholder="搜索目标好友" maxlength="100"></label>
   <label><span class="sr-only">执行状态</span><select name="status">
-    {% for value, label in [('', '全部状态'), ('attention', '需要关注'), ('success', '成功'), ('submitted_unconfirmed', '已提交，待核实'), ('failed', '失败'), ('running', '执行中'), ('retrying', '等待重试'), ('skipped', '已跳过')] %}
+    {% for value, label in [('', '全部状态'), ('attention', '需要关注'), ('success', '已发出'), ('submitted_unconfirmed', '待核实'), ('failed', '未发出'), ('running', '执行中'), ('retrying', '等待重试'), ('skipped', '已跳过')] %}
     <option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select></label>
@@ -27,9 +27,14 @@
       <strong class="record-target">{{ task.target_name }}</strong>
       <span class="record-account">{{ account_names.get(task.douyin_account_id, '账号不可用') }}</span>
       <span class="record-stage">{{ run.stage|run_stage }}</span>
-      <span class="record-state"><span class="pill {{ run_view.tone }}">{{ run_view.label }}</span></span>
+      <span class="record-state"><span class="pill {{ run_view.tone }}">{{ run_view.label }}</span>{% if guidance and guidance.action == 'retry' %} <button class="quiet record-retry-inline" type="button" data-retry-form="retry-{{ run.id }}" onclick="event.preventDefault();event.stopPropagation();document.getElementById(this.dataset.retryForm).requestSubmit();">补发</button>{% elif run_view.kind == 'unconfirmed' %} <a class="record-retry-inline" href="/attention" onclick="event.stopPropagation();">去核对</a>{% endif %}</span>
       <span class="record-chevron" aria-hidden="true">{{ record_icon('chevron-down', 16) }}</span>
     </summary>
+    {% if guidance and guidance.action == 'retry' %}
+    <form id="retry-{{ run.id }}" method="post" action="/runs/{{ run.id }}/retry" data-submit-lock data-confirm="若聊天里已经看到这条消息，请取消，避免重复发送。" data-confirm-title="确认补发？">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    </form>
+    {% endif %}
     <div class="record-detail">
       <dl class="record-facts">
         <div><dt>开始时间</dt><dd>{{ run.started_at|shanghai_time }}</dd></div>
@@ -41,7 +46,7 @@
       </dl>
       {% set history = attempt_history.get(run.id, []) %}{% set total_attempts = run.attempt %}{% include "run_attempts.html" %}
       {% if run.error_summary %}<p class="run-note{{ ' info' if run.status == 'success' else (' caution' if run.status == 'submitted_unconfirmed' else '') }}">{{ run.error_summary }}</p>{% endif %}
-      {% if guidance %}<div class="run-guidance"><p>{{ guidance.text }}</p>{% if guidance.action == 'retry' %}<form method="post" action="/runs/{{ run.id }}/retry" data-submit-lock><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">立即补发一次</button></form>{% elif guidance.action == 'account' %}<a href="/accounts">查看账号状态</a>{% elif guidance.action == 'subscription' %}<a href="/subscription">查看会员</a>{% elif guidance.action == 'task' %}<a href="/tasks/{{ task.id }}/edit">检查任务设置</a>{% endif %}</div>{% endif %}
+      {% if guidance %}<div class="run-guidance"><p>{{ guidance.text }}</p>{% if guidance.action == 'retry' %}<p class="muted">可在上方直接补发。</p>{% elif guidance.action == 'account' %}<a href="/accounts">查看账号状态</a>{% elif guidance.action == 'subscription' %}<a href="/subscription">查看会员</a>{% elif guidance.action == 'task' %}<a href="/tasks/{{ task.id }}/edit">检查任务设置</a>{% endif %}</div>{% endif %}
     </div>
   </details>
   {% endfor %}

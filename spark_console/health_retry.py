@@ -9,6 +9,8 @@ from spark_console.models import (
 
 WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "10"))))
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
+FLAKE_ATTEMPT_CAP = 5  # Chat-page empty-list flakes may keep retrying until the window ends.
+CHAT_FLAKE = "未检测到已登录会话列表"
 
 
 def retry_wait(attempt):
@@ -29,7 +31,8 @@ def invalid_reason(db, run, pending, now, *, require_valid=False):
     if aware(now) >= aware(pending.expires_at):
         return "health_retry_expired", f"超过原计划 {int(WINDOW.total_seconds() // 60)} 分钟恢复窗口，本次不再补发"
     if run.attempt > MAX_ATTEMPTS:
-        return "health_retry_exhausted", "已达到最多 2 次重试，本次停止"
+        if not keep_retrying_chat_flake(run, pending, now, pending.last_reason):
+            return "health_retry_exhausted", "已达到最多 2 次重试，本次停止"
     task = db.get(SparkTask, run.task_id)
     if not task or not task.enabled or aware(task.updated_at) != aware(pending.task_revision):
         return "health_retry_cancelled", "任务已暂停或修改，取消本次恢复重试"
@@ -54,6 +57,16 @@ def invalid_reason(db, run, pending, now, *, require_valid=False):
     return None
 
 
+def keep_retrying_chat_flake(run, pending, now, reason):
+    text = str(reason or (pending.last_reason if pending is not None else "") or "")
+    if CHAT_FLAKE not in text:
+        return False
+    if run.attempt >= FLAKE_ATTEMPT_CAP:
+        return False
+    wait = retry_wait(max(int(run.attempt or 1), 2))
+    return aware(pending.expires_at) > aware(now) + wait
+
+
 def original_schedule(db, run):
     origin = aware(run.scheduled_for)
     for _ in range(MAX_ATTEMPTS):
@@ -76,13 +89,13 @@ def queue(db, task, run, now, reason):
         db.add(pending)
     pending.last_reason = reason[:240]
     invalid = invalid_reason(db, run, pending, now)
-    if invalid or run.attempt >= MAX_ATTEMPTS:
+    if invalid or (run.attempt >= MAX_ATTEMPTS and not keep_retrying_chat_flake(run, pending, now, reason)):
         code, message = invalid or ("health_retry_exhausted", "已重试 2 次仍未通过登录检测，本次停止")
         return finish_run(run, "failed", "authenticating", now, code, message)
     delay = retry_wait(run.attempt)
     minutes = int(delay.total_seconds() // 60)
     return finish_run(run, "retrying", "authenticating", now,
-        "health_retry_waiting", f"发送前登录检测暂时异常，{minutes} 分钟后重试；原计划后 {int(WINDOW.total_seconds() // 60)} 分钟内最多重试 2 次",
+        "health_retry_waiting", f"发送前登录检测暂时异常，{minutes} 分钟后重试；原计划后 {int(WINDOW.total_seconds() // 60)} 分钟内继续尝试",
         retry_after=now + delay)
 
 
@@ -102,7 +115,7 @@ def claim(db, now, worker_id):
             from spark_console.run_attempts import save
             save(run, "failed", run.stage, now, "执行租约超时，发送未提交")
         invalid = invalid_reason(db, run, pending, now)
-        if invalid or run.attempt >= MAX_ATTEMPTS:
+        if invalid or (run.attempt >= MAX_ATTEMPTS and not keep_retrying_chat_flake(run, pending, now, pending.last_reason)):
             code, message = invalid or ("health_retry_exhausted", "已达到最多 2 次重试，本次停止")
             status = "submitted_unconfirmed" if code == "health_retry_submitted" else ("skipped" if run.attempt == 0 else "failed")
             finish_run(run, status, "submitted" if status == "submitted_unconfirmed" else "authenticating", now, code, message)

@@ -55,10 +55,11 @@ templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
 
 RUN_STATUS_LABELS = {
     "running": "执行中",
-    "success": "成功",
-    "submitted_unconfirmed": "已提交，待核实",
-    "failed": "失败",
+    "success": "已发出",
+    "submitted_unconfirmed": "待核实",
+    "failed": "未发出",
     "skipped": "已跳过",
+    "retrying": "等待重试",
 }
 RUN_STAGE_LABELS = {
     "starting": "准备执行",
@@ -147,9 +148,9 @@ def run_guidance(run) -> dict[str, str] | None:
     window_minutes = int(WINDOW.total_seconds() // 60)
     submitted = getattr(run, "submitted_at", None) is not None or str(getattr(run, "status", "")) == "submitted_unconfirmed"
     if code == 'health_retry_waiting':
-        return {'text':f'这次还没发出去，多半是聊天页暂时没加载完，不必重新扫码。系统会在原计划后 {window_minutes} 分钟内最多再试 2 次。', 'action':'none'}
+        return {'text':f'这次还没发出去，多半是聊天页暂时没加载完，不必重新扫码。系统会在原计划后 {window_minutes} 分钟内继续重试。', 'action':'none'}
     if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'} and not submitted:
-        return {'text':'这次没有发出去，通常不是账号掉线。明天的计划还在；也可以立即补发一次。', 'action':'retry'}
+        return {'text':'这次没有发出去，通常不是账号掉线。明天的计划还在。若聊天里还没有这条，可以补发一次。', 'action':'retry'}
     if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'}:
         return {'text':'本次恢复重试已结束。请查看账号状态；下一天的正常计划不受影响。', 'action':'account'}
     if code == 'health_retry_submitted':

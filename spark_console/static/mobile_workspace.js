@@ -3,17 +3,22 @@
   const small=matchMedia('(max-width:680px)');
   function install(){
     if(!document.querySelector('form[action="/logout"]')||document.querySelector('.mobile-dock'))return false;
+    const admin=document.body.classList.contains('studio-admin')||location.pathname.startsWith('/admin');
     document.body.classList.add('has-mobile-dock');
-    const dock=document.createElement('nav');dock.className='mobile-dock';dock.setAttribute('aria-label','移动端主导航');
-    const routes=[['/dashboard','概览','M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],['/accounts','账号','M6 3h12v18H6zM10 17h4'],['/studio','任务','M4 5h16v16H4zM8 3v4M16 3v4M4 11h16M8 15h3'],['/runs','记录','M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5']];
+    const dock=document.createElement('nav');dock.className='mobile-dock';dock.setAttribute('aria-label',admin?'移动端管理导航':'移动端主导航');
+    const routes=admin
+      ?[['/admin/overview','概览','M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],['/admin/today','今日','M4 5h16v14H4zM8 3v4M16 3v4M4 11h16'],['/admin/users','用户','M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z'],['/admin/runs','记录','M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5']]
+      :[['/dashboard','今日','M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z'],['/accounts','账号','M6 3h12v18H6zM10 17h4'],['/studio','任务','M4 5h16v16H4zM8 3v4M16 3v4M4 11h16M8 15h3'],['/account-center','我的','M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z']];
     const path=location.pathname;
-    const current=path==='/dashboard'?'概览':path.startsWith('/accounts')?'账号':path==='/studio'||path.startsWith('/tasks')?'任务':path.startsWith('/runs')?'记录':'';
+    const current=admin
+      ?(path.startsWith('/admin/today')?'今日':path.startsWith('/admin/users')?'用户':path.startsWith('/admin/runs')?'记录':path.startsWith('/admin')?'概览':'')
+      :(path==='/dashboard'?'今日':path.startsWith('/accounts')?'账号':path==='/studio'||path.startsWith('/tasks')?'任务':path.startsWith('/account-center')||path.startsWith('/subscription')||path.startsWith('/notifications')||path.startsWith('/attention')||path.startsWith('/help')?'我的':'');
     for(const [href,label,d] of routes){const a=document.createElement('a');a.href=href;a.innerHTML=`<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="${d}"/></svg><span>${label}</span>`;if(current===label)a.setAttribute('aria-current','page');dock.append(a);}
     document.body.append(dock);
     let baseline=innerHeight;
     const keyboard=()=>{const input=document.activeElement?.matches('input:not([type=checkbox]):not([type=radio]),textarea');const height=window.visualViewport?.height||innerHeight;if(!input)baseline=innerHeight;document.body.classList.toggle('mobile-keyboard-open',!!input&&height<baseline*.75);};
     window.visualViewport?.addEventListener('resize',keyboard);document.addEventListener('focusin',keyboard);document.addEventListener('focusout',()=>setTimeout(keyboard,0));
-    document.querySelectorAll('.studio-brand,.brand').forEach(a=>{a.href='/dashboard';a.setAttribute('aria-label','火花，返回概览');});
+    document.querySelectorAll('.studio-brand,.brand').forEach(a=>{a.href=admin?'/admin/overview':'/dashboard';a.setAttribute('aria-label',admin?'火花，返回管理概览':'火花，返回今日');});
     return true;
   }
   function filters(){

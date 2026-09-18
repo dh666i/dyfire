@@ -1277,3 +1277,18 @@ legend {
 }
 .run-attempt-history li { padding: 8px 4px; overflow-wrap: anywhere; }
 .run-attempt-history p { margin: 4px 0; line-height: 1.6; }
+.overview-danger { color: var(--red) !important; }
+.studio-day-periods { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px; }
+.studio-day-periods .studio-hour { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px; border: 1px solid var(--line); color: inherit; }
+.record-retry-inline { margin-left: 8px; font-size: 12px; }
+@media (min-width: 821px) {
+  .studio-admin .studio-main-nav { display: none; }
+}
+@media (max-width: 820px) {
+  .admin-table-runs { min-width: 0 !important; }
+  .workspace-heading .eyebrow { display: none; }
+}
+@media (max-width: 680px) {
+  .studio-content { margin-inline: 16px; }
+  .studio-header { margin-inline: 16px; }
+}

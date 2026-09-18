@@ -25,7 +25,7 @@ const $ = s => document.querySelector(s);
 const selected = () => [...document.querySelectorAll('[name=friend]:checked')].map(c => friends[Number(c.value)]);
 function render() {
   const shown = tasks.filter(t => (!term || t.name.toLowerCase().includes(term)) && (filter === 'all' || (filter === 'on' ? t.enabled : !t.enabled)));
-  $('#task-list').innerHTML = shown.length ? shown.map(t=>`<article class="task-row"><div class="person"><span class="avatar a${friends.indexOf(t.name)%4}" aria-hidden="true"></span><div><h3>${esc(t.name)}</h3><p>${esc(t.kind)}</p></div></div><div class="task-time">${t.time}<small>每天</small></div><span class="state ${!t.enabled?'paused':t.confirmed?'confirmed':'waiting'}"><i></i>${!t.enabled?'已暂停':t.confirmed?'发送已确认':t.status==='submitted_unconfirmed'?'待核实':t.status==='failed'?'本次未发出':t.status==='running'?'执行中':t.status==='retrying'?'等待重试':'等待执行'}</span><button class="toggle" data-toggle="${t.id}" aria-label="${t.enabled?'暂停':'恢复'} ${esc(t.name)} 的任务">${t.enabled?'暂停':'恢复'}</button></article>`).join('') : '<div class="empty">没有匹配的任务。<button id="reset">查看全部任务 ↗</button></div>';
+  $('#task-list').innerHTML = shown.length ? shown.map(t=>`<article class="task-row"><div class="person"><span class="avatar a${friends.indexOf(t.name)%4}" aria-hidden="true"></span><div><h3>${esc(t.name)}</h3><p>${esc(t.kind)}</p></div></div><div class="task-time">${t.time}<small>每天</small></div><span class="state ${!t.enabled?'paused':t.confirmed?'confirmed':'waiting'}"><i></i>${!t.enabled?'已暂停':t.confirmed?'已发出':t.status==='submitted_unconfirmed'?'待核实':t.status==='failed'?'未发出':t.status==='running'?'执行中':t.status==='retrying'?'等待重试':'等待执行'}</span><button class="toggle" data-toggle="${t.id}" aria-label="${t.enabled?'暂停':'恢复'} ${esc(t.name)} 的任务">${t.enabled?'暂停':'恢复'}</button></article>`).join('') : (term ? '<div class="empty">没有匹配的任务。<button id="reset">查看全部任务 ↗</button></div>' : '<div class="empty">还没有续火计划。<button id="compose-empty">选择续火好友 ↗</button></div>');
   $('#active-count').textContent = String(tasks.filter(t=>t.enabled).length).padStart(2,'0');
   $('#confirmed-count').textContent = String(tasks.filter(t=>t.confirmed).length).padStart(2,'0');
   $('#total-count').textContent = `(${String(tasks.length).padStart(2,'0')})`;
@@ -40,6 +40,7 @@ document.addEventListener('click', e => {
   const close = e.target.closest('[data-close]'); if(close) $('#'+close.dataset.close).close();
   const f = e.target.closest('[data-filter]'); if(f) {filter=f.dataset.filter;document.querySelectorAll('[data-filter]').forEach(b=>{b.classList.toggle('selected',b===f);b.setAttribute('aria-pressed',String(b===f));});render();}
   if(e.target.id==='reset') {term='';$('#search').value='';$('[data-filter="all"]').click();}
+  if(e.target.id==='compose-empty') {$('#choose-friends').click();}
 });
 $('#search').oninput=e=>{term=e.target.value.trim().toLowerCase();render();};
 $('#friend-search').oninput=e=>{let count=0;document.querySelectorAll('.friend-option').forEach(el=>{el.hidden=!el.dataset.name.includes(e.target.value.trim().toLowerCase());if(!el.hidden)count++;});$('#friend-empty').hidden=!!count;};

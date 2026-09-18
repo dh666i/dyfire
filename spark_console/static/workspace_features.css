@@ -172,7 +172,9 @@ html[data-theme="light"] #scan-start {
 }
 .empty > span,
 .admin-empty > span {
-  display: none;
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: var(--muted);
 }
 .empty h3,
 .admin-empty strong {
@@ -218,7 +220,7 @@ tbody tr:hover {
   min-width: 0;
 }
 .admin-table-runs {
-  min-width: 44rem;
+  min-width: 0;
 }
 .admin-col-check {
   width: 40px;
