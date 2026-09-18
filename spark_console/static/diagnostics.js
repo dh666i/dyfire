@@ -7,7 +7,7 @@
       const at=data.backup.at?new Date(data.backup.at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}):'时间未记录';
       status.textContent=schedule+' · '+(data.backup.status==='success'?`最近历史备份：${at}（北京时间），完整性检查通过`:(data.backup.message||'暂无备份记录'));
       const fragment=document.createDocumentFragment();
-      const labels={success:'发送已确认',submitted_unconfirmed:'已提交，待核实',failed:'执行失败',running:'执行中',retrying:'等待重试',skipped:'已跳过',queued:'等待执行'};
+      const labels={success:'已发出',submitted_unconfirmed:'待核实',failed:'未发出',running:'执行中',retrying:'等待重试',skipped:'已跳过',queued:'等待执行'};
       for(const item of data.items){const row=document.createElement('details'),summary=document.createElement('summary'),body=document.createElement('p');summary.textContent=`${item.name} · ${labels[item.status]||item.status}`;
         const sec=v=>v===null?'未记录':v+' 秒';body.textContent=`排期至启动：${sec(item.queue)}；启动至提交：${sec(item.before_submit)}；提交至结束：${sec(item.confirmation)}；执行总耗时：${sec(item.total)}。编号：${item.id}`;row.append(summary,body);fragment.append(row);}
       list.replaceChildren(fragment);if(!data.items.length)list.textContent='暂无执行样本。';

@@ -148,7 +148,8 @@ def test_unsubmitted_failure_can_retry_once(site):
         db.flush()
         submitted_id=submitted.id
     page=client.get('/runs')
-    assert '立即补发一次' in page.text
+    assert '补发' in page.text
+    assert f'/runs/{run_id}/retry' in page.text
     first=client.post(f'/runs/{run_id}/retry', data={'csrf_token':state['csrf']}, follow_redirects=False)
     assert first.status_code==303
     assert 'retry-queued' in first.headers['location']

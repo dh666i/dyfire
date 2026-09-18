@@ -213,7 +213,7 @@ class UserWebTests(unittest.TestCase):
         self.assertIn("绑定抖音账号", response.text)
         self.assertIn("创建任务", response.text)
         self.assertIn("确认发送", response.text)
-        self.assertIn("今日确认成功", response.text)
+        self.assertIn("已发出", response.text)
 
     def test_user_task_pages_show_operational_details_and_confirm_delete(self):
         self.login()
