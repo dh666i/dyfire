@@ -95,18 +95,18 @@ def test_chat_flake_waits_out_backoff_inside_window(case, monkeypatch):
     first=attempt(case,Flake())
     recover(case,170)
     attempt(case,Flake(),180)
-    recover(case,1130)
-    third=attempt(case,Flake(),1140)
+    recover(case,650)
+    third=attempt(case,Flake(),660)
     assert third.id==first.id and third.status=="retrying"
-    recover(case,1590)
-    poked=attempt(case,Executor(fail=False),1600)
+    recover(case,1000)
+    poked=attempt(case,Executor(fail=False),1010)
     assert poked is None or poked.status=="retrying"
     now,_,engine,_,_=case
     with Session(engine) as db:
         assert db.get(TaskRun, first.id).status=="retrying"
         assert db.get(TaskRun, first.id).error_code!="health_retry_exhausted"
-    recover(case,1610)
-    fourth=attempt(case,Executor(fail=False),1620)
+    recover(case,1130)
+    fourth=attempt(case,Executor(fail=False),1140)
     assert fourth.id==first.id and fourth.status=="success"
 
 
