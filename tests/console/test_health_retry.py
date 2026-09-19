@@ -56,7 +56,7 @@ def test_recovery_retries_same_run_without_changing_next_day(case):
         following=db.get(SparkTask,tid).next_run_at
         assert claim_next_due_task(db,now+timedelta(seconds=35),"other") is None
     recover(case)
-    result=attempt(case,Executor(fail=False),130)
+    result=attempt(case,Executor(fail=False),190)
     assert result.id==first.id and result.status=="success" and result.attempt==2
     with Session(engine) as db:
         assert db.get(SparkTask,tid).next_run_at==following
@@ -73,13 +73,13 @@ def test_chat_list_flake_retries_inside_window(case, monkeypatch):
                 "已等待页面就绪 45 秒；未检测到已登录会话列表；HTTP 200，业务码缺失或格式异常，未取得有效登录信息；页面 /chat",
                 health_state="temporary", health_reason="test")
     first=attempt(case,Flake())
-    recover(case,110)
-    second=attempt(case,Flake(),120)
-    recover(case,410)
-    third=attempt(case,Flake(),420)
+    recover(case,170)
+    second=attempt(case,Flake(),180)
+    recover(case,650)
+    third=attempt(case,Flake(),660)
     assert third.id==first.id and third.attempt==3 and third.status=="retrying"
-    recover(case,710)
-    fourth=attempt(case,Executor(fail=False),720)
+    recover(case,1130)
+    fourth=attempt(case,Executor(fail=False),1140)
     assert fourth.id==first.id and fourth.status=="success"
 
 
@@ -93,32 +93,32 @@ def test_chat_flake_waits_out_backoff_inside_window(case, monkeypatch):
                 "已等待页面就绪 45 秒；未检测到已登录会话列表；HTTP 200，业务码缺失或格式异常，未取得有效登录信息；页面 /chat",
                 health_state="temporary", health_reason="test")
     first=attempt(case,Flake())
-    recover(case,110)
-    attempt(case,Flake(),120)
-    recover(case,770)
-    third=attempt(case,Flake(),780)
+    recover(case,170)
+    attempt(case,Flake(),180)
+    recover(case,1130)
+    third=attempt(case,Flake(),1140)
     assert third.id==first.id and third.status=="retrying"
-    recover(case,890)
-    poked=attempt(case,Executor(fail=False),900)
+    recover(case,1310)
+    poked=attempt(case,Executor(fail=False),1320)
     assert poked is None or poked.status=="retrying"
     now,_,engine,_,_=case
     with Session(engine) as db:
         assert db.get(TaskRun, first.id).status=="retrying"
         assert db.get(TaskRun, first.id).error_code!="health_retry_exhausted"
-    recover(case,1070)
-    fourth=attempt(case,Executor(fail=False),1080)
+    recover(case,1610)
+    fourth=attempt(case,Executor(fail=False),1620)
     assert fourth.id==first.id and fourth.status=="success"
 
 
 def test_two_retries_max(case):
     first=attempt(case,Executor())
-    for seconds in (120,420):
+    for seconds in (180,660):
         recover(case,seconds-10)
         result=attempt(case,Executor(),seconds)
     assert result.id==first.id and result.attempt==3 and result.status=="failed"
     assert result.error_code=="health_retry_exhausted"
-    recover(case,150)
-    assert attempt(case,Executor(fail=False),180) is None
+    recover(case,210)
+    assert attempt(case,Executor(fail=False),240) is None
 
 @pytest.mark.parametrize("reason",["expiry","edited","paused","membership","verification","invalid"])
 def test_ineligible_recovery_never_executes(case,reason):
@@ -133,7 +133,7 @@ def test_ineligible_recovery_never_executes(case,reason):
         if reason in ("verification","invalid"): db.get(DouyinAccount,aid).validation_state=reason
         db.commit()
     executor=Executor(fail=False)
-    assert attempt(case,executor,601 if reason=="expiry" else 130) is None
+    assert attempt(case,executor,601 if reason=="expiry" else 190) is None
     assert executor.calls==0
     with Session(engine) as db:
         run=db.get(TaskRun,first.id)
@@ -162,14 +162,14 @@ def test_claim_is_not_duplicated_and_expired_crash_is_bounded(case):
     recover(case)
     now,_,engine,_,_=case
     with Session(engine) as db:
-        run=claim_next_due_task(db,now+timedelta(seconds=130),"a")
+        run=claim_next_due_task(db,now+timedelta(seconds=190),"a")
         assert run.id==first.id
         db.commit()
     with Session(engine) as db:
-        assert claim_next_due_task(db,now+timedelta(seconds=131),"b") is None
+        assert claim_next_due_task(db,now+timedelta(seconds=191),"b") is None
         db.commit()
     with Session(engine) as db:
-        assert claim_next_due_task(db,now+timedelta(minutes=23),"b") is None
+        assert claim_next_due_task(db,now+timedelta(minutes=31),"b") is None
         db.commit()
         assert db.get(TaskRun,first.id).error_code=="health_retry_expired"
 
@@ -214,12 +214,12 @@ def test_submitted_retry_crash_never_reclaims(case):
     recover(case)
     now, _, engine, _, _ = case
     with Session(engine) as db:
-        run = claim_next_due_task(db, now+timedelta(seconds=130), "a")
+        run = claim_next_due_task(db, now+timedelta(seconds=190), "a")
         run.submitted_at = now+timedelta(seconds=65)
         run.stage = "submitted"
         db.commit()
     with Session(engine) as db:
-        assert claim_next_due_task(db, now+timedelta(minutes=23), "b") is None
+        assert claim_next_due_task(db, now+timedelta(minutes=31), "b") is None
         assert db.get(TaskRun, first.id).status == "submitted_unconfirmed"
 
 def add_four_due_tasks(case):
@@ -276,9 +276,9 @@ def test_attempt_history_keeps_original_reasons_and_times(case):
     from spark_console.models import TaskRunAttempt
     first = attempt(case, Executor())
     recover(case)
-    second = attempt(case, Executor(), 130)
-    recover(case, 400)
-    third = attempt(case, Executor(fail=False, submitted=True), 430)
+    second = attempt(case, Executor(), 190)
+    recover(case, 640)
+    third = attempt(case, Executor(fail=False, submitted=True), 670)
     with Session(case[2]) as db:
         history = db.scalars(select(TaskRunAttempt).where(
             TaskRunAttempt.run_id == first.id).order_by(TaskRunAttempt.number)).all()
