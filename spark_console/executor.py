@@ -177,7 +177,7 @@ class DouyinExecutor:
                     delivery_monitor.attach(page)
                 page.on("response", user_info.capture)
                 if reused:
-                    evidence = await wait_for_session(page, context, timeout=20)
+                    evidence = await wait_for_session(page, context, timeout=45)
                     if evidence.state != "valid":
                         await self.close_session()
                         live = await self._open_browser(payload)
