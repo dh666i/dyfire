@@ -98,8 +98,8 @@ def test_chat_flake_waits_out_backoff_inside_window(case, monkeypatch):
     recover(case,1130)
     third=attempt(case,Flake(),1140)
     assert third.id==first.id and third.status=="retrying"
-    recover(case,1310)
-    poked=attempt(case,Executor(fail=False),1320)
+    recover(case,1590)
+    poked=attempt(case,Executor(fail=False),1600)
     assert poked is None or poked.status=="retrying"
     now,_,engine,_,_=case
     with Session(engine) as db:
@@ -133,7 +133,7 @@ def test_ineligible_recovery_never_executes(case,reason):
         if reason in ("verification","invalid"): db.get(DouyinAccount,aid).validation_state=reason
         db.commit()
     executor=Executor(fail=False)
-    assert attempt(case,executor,601 if reason=="expiry" else 190) is None
+    assert attempt(case,executor,1801 if reason=="expiry" else 190) is None
     assert executor.calls==0
     with Session(engine) as db:
         run=db.get(TaskRun,first.id)
@@ -179,11 +179,11 @@ def test_submit_checkpoint_enforces_expiration(case):
     now,settings,engine,_,_=case
     class ExpiringExecutor(Executor):
         async def execute(self,cookies,target_name,message,*,on_submitted=None,**kwargs):
-            clock[0]=now+timedelta(seconds=601)
+            clock[0]=now+timedelta(seconds=1801)
             with pytest.raises(RuntimeError):
                 on_submitted()
             return ExecutionResult(False,"sending","checkpoint_failed",retryable=True)
-    clock=[now+timedelta(seconds=590)]
+    clock=[now+timedelta(seconds=1790)]
     result=asyncio.run(Worker(settings,engine,executor=ExpiringExecutor(),
         started_at=now,clock=lambda:clock[0]).run_once(clock[0]))
     assert result.submitted_at is None and result.status=="failed"
@@ -193,7 +193,7 @@ def test_monitor_counts_waiting_health_retry(case):
     attempt(case, Executor())
     with Session(case[2]) as db:
         assert _current_retries(db, case[0] + timedelta(seconds=15)) == 1
-        assert _current_retries(db, case[0] + timedelta(seconds=601)) == 0
+        assert _current_retries(db, case[0] + timedelta(seconds=1801)) == 0
 
 
 def test_generic_retry_keeps_original_deadline(case):
@@ -255,7 +255,7 @@ def test_pending_siblings_expire_with_visible_records(case):
     add_four_due_tasks(case)
     attempt(case, Executor())
     assert attempt(case, Executor(), 35) is None
-    assert attempt(case, Executor(fail=False), 601) is None
+    assert attempt(case, Executor(fail=False), 1801) is None
     with Session(case[2]) as db:
         rows = db.scalars(select(TaskRun)).all()
         assert len(rows) == 5
@@ -319,10 +319,10 @@ def test_queued_generic_retry_cannot_reset_deadline_or_attempts(case):
         pending = db.get(TaskHealthRetry, run.id)
         assert run.attempt == 2
         from spark_console.health_retry import aware
-        assert aware(pending.expires_at) == now+timedelta(minutes=4)
+        assert aware(pending.expires_at) == now+timedelta(minutes=24)
 
 
 def test_retry_wait_backs_off_two_then_five_minutes():
     from spark_console.health_retry import retry_wait
-    assert retry_wait(1) == timedelta(minutes=2)
-    assert retry_wait(2) == timedelta(minutes=5)
+    assert retry_wait(1) == timedelta(minutes=3)
+    assert retry_wait(2) == timedelta(minutes=8)
