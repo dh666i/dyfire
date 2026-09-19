@@ -7,16 +7,16 @@ from spark_console.models import (
     AccountOperation, DouyinLoginSession,
 )
 
-WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "10"))))
+WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "30"))))
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
-FLAKE_ATTEMPT_CAP = 5  # Chat-page empty-list flakes may keep retrying until the window ends.
+FLAKE_ATTEMPT_CAP = 7  # Chat-page empty-list flakes may keep retrying until the window ends.
 CHAT_FLAKE = "未检测到已登录会话列表"
 
 
 def retry_wait(attempt):
     """Backoff after a failed login check so retries do not hammer Douyin."""
-    first = max(1, int(os.environ.get("SPARK_HEALTH_RETRY_WAIT_1_MINUTES", "2")))
-    second = max(1, int(os.environ.get("SPARK_HEALTH_RETRY_WAIT_2_MINUTES", "5")))
+    first = max(1, int(os.environ.get("SPARK_HEALTH_RETRY_WAIT_1_MINUTES", "3")))
+    second = max(1, int(os.environ.get("SPARK_HEALTH_RETRY_WAIT_2_MINUTES", "8")))
     minutes = first if max(1, int(attempt or 1)) <= 1 else second
     return timedelta(minutes=minutes)
 

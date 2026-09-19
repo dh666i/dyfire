@@ -1,5 +1,10 @@
-/* Final visual normalization: preserve the editorial surface, remove structural noise. */
-:root { --ui-section-space: 38px; --ui-control-gap: 12px; }
+/* Visual normalization: preserve editorial surface, optimize spacing and readability. */
+:root {
+  --ui-section-space: 38px;
+  --ui-control-gap: 12px;
+  --ui-card-padding: 20px;
+  --ui-touch-target: 44px;
+}
 
 /* Keep wide monitors from stretching text and controls into a loose canvas. */
 @media (min-width: 1280px) {
@@ -59,14 +64,15 @@
 .workspace-admin-layout .admin-filterbar { padding: 0; margin-bottom: 16px; }
 
 /* Dense data stays readable without looking padded or card-heavy. */
-.workspace-body td,.workspace-body th { padding-block: 12px; }
-.workspace-body .account-item { padding-block: 18px; }
-.workspace-body .record-summary { padding-block: 13px; }
-.workspace-body .record-detail { margin-block: 4px 12px; }
-.workspace-body .task-overview-row { min-height: 66px; }
-.workspace-body .task-row { min-height: 66px; }
-.workspace-body .action-summary { border-bottom: 0; padding-block: 12px; }
-.workspace-body .action-summary strong { font-size: 16px; font-weight: 600; }
+.workspace-body td,.workspace-body th { padding-block: 13px; }
+.workspace-body .account-item { padding-block: 20px; }
+.workspace-body .record-summary { padding-block: 14px; }
+.workspace-body .record-detail { margin-block: 4px 12px; padding: 18px; }
+.workspace-body .task-overview-row { min-height: 70px; padding-block: 2px; }
+.workspace-body .task-row { min-height: 70px; }
+.workspace-body .action-summary { border-bottom: 0; padding-block: 14px; }
+.workspace-body .action-summary strong { font-size: 16px; font-weight: 600; line-height: 1.4; }
+.workspace-body .action-summary p { line-height: 1.6; margin-top: 6px; }
 
 /* One control rhythm across filters, headings, forms, and action rows. */
 .workspace-options,.admin-filterbar,.filter-form,.run-filters,
@@ -84,20 +90,43 @@
 .ui-create-drawer > .ui-drawer-head,
 .mobile-filter-heading { border-bottom-color: color-mix(in srgb, var(--line) 82%, transparent); }
 
+/* Mobile-first responsive adjustments for better touch and readability. */
 @media (max-width: 820px) {
-  :root { --ui-section-space: 28px; }
+  :root {
+    --ui-section-space: 28px;
+    --ui-card-padding: 18px;
+  }
   .workspace-admin-layout { gap: 0; }
   .workspace-body > .workspace-section,
   .workspace-admin-layout .admin-panel,
   .workspace-admin-layout .workspace-section { margin-bottom: var(--ui-section-space); }
-  .today-send-totals article,.today-send-totals a,.admin-stat-card,.studio-metric { padding-block: 13px !important; }
+  .today-send-totals article,.today-send-totals a,.admin-stat-card,.studio-metric { padding-block: 15px !important; }
+  .workspace-body .task-overview-row { min-height: 76px; }
+  .workspace-body .account-item { padding-block: 18px; }
+  .workspace-body :is(button,.button,.admin-button) { min-height: var(--ui-touch-target); }
 }
 
 @media (max-width: 560px) {
-  :root { --ui-section-space: 24px; }
+  :root {
+    --ui-section-space: 24px;
+    --ui-card-padding: 16px;
+  }
   .page-head,.studio-heading,.admin-page-head,.workspace-heading { margin-bottom: 20px; }
   .section-head,.admin-panel-head { margin-bottom: 14px; }
-  .workspace-body .account-item { padding-block: 16px; }
-  .workspace-body .record-detail { margin-inline: -2px; padding: 16px; }
+  .workspace-body .account-item { padding-block: 18px; }
+  .workspace-body .record-detail { margin-inline: 0; padding: var(--ui-card-padding); }
+  .workspace-body .task-overview-row { min-height: 80px; }
   .workspace-heading h1 { font-size: 30px; }
+  .studio-metric > strong { font-size: 34px; }
+  .workspace-body :is(input,select,textarea) { font-size: 16px; min-height: var(--ui-touch-target); }
+}
+
+/* Improve touch targets and spacing on very small screens. */
+@media (max-width: 400px) {
+  :root { --ui-section-space: 20px; }
+  .workspace-body .record-summary { padding-block: 16px; }
+  .workspace-body .account-controls { flex-wrap: wrap; gap: 10px; }
+  .studio-metrics { gap: 1px; }
+  .studio-metric { padding: 16px 14px; }
+  .studio-metric > strong { font-size: 32px; }
 }
