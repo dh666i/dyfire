@@ -154,8 +154,11 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(404, self.client.get(path).status_code)
         with session_scope(self.engine) as db:
             db.get(User, self.owner).role = 'admin'
-        page = self.client.get('/admin/tasks?q=真实昵称')
-        self.assertIn('data-task-group', page.text)
+        page = self.client.get('/api/admin/bootstrap?q=真实昵称')
+        self.assertEqual(200, page.status_code)
+        groups = page.json()['groups']
+        self.assertEqual(1, len(groups))
+        self.assertEqual('真实昵称', groups[0]['nickname'])
         self.assertNotIn('Friend 0', page.text)
         partial = self.client.get(path)
         self.assertEqual(200, partial.status_code)
