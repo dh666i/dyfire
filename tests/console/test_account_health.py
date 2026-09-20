@@ -272,9 +272,10 @@ class EvidenceTests(unittest.IsolatedAsyncioTestCase):
 
         from tests.console.test_credentials import _FakeLoginPage, _FakeTextMatches
         page = _FakeLoginPage()
-        page.locator = lambda selector: _FakeTextMatches(
-            selector == '.conversationConversationItemwrapper'
-        )
+        # The shell is open but the virtualized conversation list is still
+        # empty. This is the intermediate state that used to poison account
+        # health and block the task queue.
+        page.locator = lambda selector: _FakeTextMatches(False)
         context = AsyncMock()
         response = AsyncMock()
         response.status = 200
