@@ -230,7 +230,17 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     @app.middleware('http')
     async def single_frontend(request: Request, call_next):
         path = request.url.path
-        is_api = path.startswith('/api/') or '/conversations' in path or '/health-' in path or '/directory-jobs' in path or '/scan/' in path
+        # These endpoints return JSON or a server-rendered partial and must
+        # reach their routers instead of being replaced by the React shell.
+        is_api = (
+            path.startswith('/api/')
+            or path == '/admin/diagnostics'
+            or path.startswith('/admin/tasks/groups/')
+            or '/conversations' in path
+            or '/health-' in path
+            or '/directory-jobs' in path
+            or '/scan/' in path
+        )
         if request.method == 'GET' and spa_index.exists() and not is_api and (
             any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
         ):

@@ -80,9 +80,11 @@ class DirectoryTests(unittest.TestCase):
             save_profile(db, account, {'nickname':'新昵称'})
             self.assertEqual('工作号', account.display_name)
             self.assertEqual('新昵称', db.get(DouyinAccountProfile, self.account).nickname)
-        page = self.client.get('/accounts')
-        self.assertIn('新昵称', page.text)
-        self.assertIn('备注：工作号', page.text)
+        bootstrap = self.client.get('/api/app/bootstrap')
+        self.assertEqual(200, bootstrap.status_code)
+        account_row = next(item for item in bootstrap.json()['accounts'] if item['id'] == self.account)
+        self.assertEqual('工作号', account_row['name'])
+        self.assertEqual('新昵称', account_row['profile']['nickname'])
 
     def test_sync_persists_aliases_without_changing_credentials(self):
         job = self.post().json()

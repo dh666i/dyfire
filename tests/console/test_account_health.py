@@ -61,7 +61,11 @@ class AccountHealthTests(unittest.TestCase):
         checker.assert_not_called()
         response=self.client.post(f'/accounts/{self.account}/health-check',data={'csrf_token':self.csrf})
         self.assertEqual(409,response.status_code)
-        self.assertIn('完成验证',self.client.get('/accounts').text)
+        bootstrap = self.client.get('/api/app/bootstrap')
+        self.assertEqual(200, bootstrap.status_code)
+        account_row = next(item for item in bootstrap.json()['accounts'] if item['id'] == self.account)
+        self.assertEqual('verification', account_row['validation_state'])
+        self.assertIn('验证', account_row['health']['label'])
 
     def test_recovery_preserves_recent_and_does_not_enable_manual_pauses(self):
         self.anomaly()
