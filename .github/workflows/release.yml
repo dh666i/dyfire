@@ -54,9 +54,9 @@ jobs:
           RELEASE_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
         run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" "$RELEASE_IMAGE" /app/smoke.py
       - name: Create release draft
-        if: ${{ secrets.RELEASE_TOKEN != '' }}
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
           RELEASE_DIGEST: ${{ steps.image.outputs.digest }}
         shell: python
@@ -68,6 +68,3 @@ jobs:
           body = 'Dyfire ' + version + '\n\n请完成部署验收后再发布此草稿。\n\n<!-- dyfire-manifest ' + json.dumps(manifest) + ' -->\n'
           Path('release-notes.tmp').write_text(body, encoding='utf-8')
           subprocess.run(['gh', 'release', 'create', 'v' + version, '--draft', '--target', os.environ['GITHUB_SHA'], '--title', 'Dyfire ' + version, '--notes-file', 'release-notes.tmp'], check=True)
-      - name: Release permission note
-        if: ${{ secrets.RELEASE_TOKEN == '' }}
-        run: echo "Image published to GHCR; configure RELEASE_TOKEN to create GitHub Release metadata automatically."
