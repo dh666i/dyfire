@@ -19,6 +19,7 @@ STATE = {}
 REPOSITORY = 'dh666i/dyfire'
 IMAGE = 'ghcr.io/dh666i/dyfire'
 SERVICES = ['spark-web', 'spark-auth', 'spark-worker', 'spark-monitor']
+COMPOSE_PROJECT = os.environ.get('DYFIRE_COMPOSE_PROJECT', 'dyfire')
 
 
 def version(value):
@@ -63,8 +64,8 @@ def latest():
 
 
 def compose(image, *args):
-    env = dict(os.environ, SPARK_IMAGE_NAME=image)
-    process = subprocess.Popen(['docker', 'compose', '--project-name', 'dyfire', '--env-file', str(ROOT / '.env.console'),
+    env = dict(os.environ, SPARK_IMAGE_NAME=image, COMPOSE_PROJECT_NAME=COMPOSE_PROJECT)
+    process = subprocess.Popen(['docker', 'compose', '--project-name', COMPOSE_PROJECT, '--env-file', str(ROOT / '.env.console'),
                     '--file', str(ROOT / 'compose.console.yml'), *args], cwd=ROOT, env=env,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     deadline = time.monotonic() + 600
