@@ -243,22 +243,52 @@ async def _wait_for_visible_search_results(page, candidate, timeout_ms):
 
 async def select_web_chat_target(page, target, timeout=30000, aliases=()):
     """Select one exact target, preferring real conversation rows over page text."""
-    normalized_target = target.strip()
+    normalized_target = " ".join(str(target or "").split())
     candidates = tuple(
         dict.fromkeys(
-            value.strip() for value in (*aliases, normalized_target) if value and value.strip()
+            " ".join(str(value).split())
+            for value in (*aliases, normalized_target)
+            if value and " ".join(str(value).split())
         )
     )
 
-    for item in await page.locator(CONVERSATION_ITEM_SELECTOR).all():
-        if hasattr(item, "is_visible") and not await item.is_visible():
-            continue
-        title = (
-            await item.locator(CONVERSATION_TITLE_SELECTOR).inner_text()
-        ).strip()
-        if title in candidates:
-            await item.click()
-            return title
+    # Douyin hydrates the conversation list incrementally. A single DOM read
+    # can therefore miss a conversation that is about to appear, especially
+    # after another task left the page inside a virtualized thread. Keep the
+    # poll bounded and only inspect visible rows so we never click stale DOM.
+    wanted = {value.casefold() for value in candidates}
+    loop = asyncio.get_running_loop()
+    # Keep the hydration grace short because most targets are selected through
+    # the search surface when they are not among the recent rows.
+    deadline = loop.time() + max(0.75, min(3.0, timeout / 1000))
+
+    async def choose_visible_row():
+        saw_items = False
+        while True:
+            items = await page.locator(CONVERSATION_ITEM_SELECTOR).all()
+            saw_items = saw_items or bool(items)
+            for item in items:
+                if hasattr(item, "is_visible") and not await item.is_visible():
+                    continue
+                title = (
+                    await item.locator(CONVERSATION_TITLE_SELECTOR).inner_text()
+                ).strip()
+                if title.casefold() in wanted:
+                    await item.click()
+                    return title
+            # If the list is absent entirely, let the dedicated search surface
+            # handle the target immediately. Only poll when a virtualized list
+            # exists but has not yet exposed the requested row.
+            if not saw_items:
+                return None
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return None
+            await asyncio.sleep(min(0.25, remaining))
+
+    selected = await choose_visible_row()
+    if selected:
+        return selected
 
     for selector in SEARCH_INPUT_SELECTORS:
         try:
@@ -279,16 +309,9 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=()):
             break
 
     await page.wait_for_selector(CONVERSATION_ITEM_SELECTOR, timeout=timeout)
-
-    for item in await page.locator(CONVERSATION_ITEM_SELECTOR).all():
-        if hasattr(item, "is_visible") and not await item.is_visible():
-            continue
-        title = (
-            await item.locator(CONVERSATION_TITLE_SELECTOR).inner_text()
-        ).strip()
-        if title in candidates:
-            await item.click()
-            return title
+    selected = await choose_visible_row()
+    if selected:
+        return selected
 
     raise TargetNotFoundError(f"未在抖音聊天列表中找到好友 {normalized_target}")
 

@@ -1,5 +1,6 @@
 import {studio} from './main.js';
 import './pages.css';
+import '../spark_console/static/studio_experiment.css';
 import '../spark_console/static/ui_select.css';
 import '../spark_console/static/ui_select.js';
 import '../spark_console/static/interaction_polish.css';

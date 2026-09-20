@@ -116,6 +116,22 @@ class DouyinExecutor:
             return False
         return time.monotonic() - used_at < self.SESSION_IDLE_SECONDS
 
+    async def _reset_chat_surface(self, page) -> None:
+        """Return a reused browser session to the conversation list.
+
+        A persistent account session keeps cookies warm, but the previous run
+        leaves the page inside the last friend's thread. The next run must not
+        search that stale DOM: on busy schedules this was the main source of
+        mixed success/failure batches. A fresh navigation is cheap compared
+        with a failed send and does not touch credentials or submit anything.
+        """
+        try:
+            await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=120_000)
+        except Exception as error:
+            # The subsequent session probe has better evidence (login page,
+            # verification prompt, or a still-hydrating chat surface).
+            logger.info("chat surface refresh deferred exception=%s", type(error).__name__)
+
     async def execute(
         self,
         cookie_payload: bytes | bytearray,
@@ -147,6 +163,7 @@ class DouyinExecutor:
         browser = None
         page = None
         reused = False
+        user_info_listener_pages: list[object] = []
         try:
             payload = CredentialPayload.parse(bytes(cookie_payload), credential_version)
             if session_key:
@@ -176,7 +193,9 @@ class DouyinExecutor:
                     delivery_monitor = MessageNetworkAckMonitor(message)
                     delivery_monitor.attach(page)
                 page.on("response", user_info.capture)
+                user_info_listener_pages.append(page)
                 if reused:
+                    await self._reset_chat_surface(page)
                     evidence = await wait_for_session(page, context, timeout=45)
                     if evidence.state != "valid":
                         await self.close_session()
@@ -191,6 +210,7 @@ class DouyinExecutor:
                             delivery_monitor = MessageNetworkAckMonitor(message)
                             delivery_monitor.attach(page)
                         page.on("response", user_info.capture)
+                        user_info_listener_pages.append(page)
                         reused = False
                 if not reused:
                     await require_session(page, context, navigate=True)
@@ -201,13 +221,42 @@ class DouyinExecutor:
                         if target_sec_uid
                         else None
                     )
-                    await select_web_chat_target(
-                        page,
-                        target,
-                        timeout=45000,
-                        aliases=identity.aliases if identity else (),
-                    )
-                    await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
+                    aliases = identity.aliases if identity else ()
+                    try:
+                        await select_web_chat_target(
+                            page, target, timeout=45000, aliases=aliases
+                        )
+                        await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
+                    except Exception as first_error:
+                        # Playwright's TimeoutError is a separate exception
+                        # class from the built-in one. Match it by name too so
+                        # a selector timeout enters the same bounded page
+                        # reset/retry path instead of falling straight through
+                        # to a generic conversation failure.
+                        is_timeout = isinstance(first_error, TimeoutError) or (
+                            type(first_error).__name__ == "TimeoutError"
+                        )
+                        if not isinstance(first_error, TargetNotFoundError) and not is_timeout:
+                            raise
+                        # The web chat list is virtualized and can still be
+                        # settling after navigation. Rebuild the list once and
+                        # retry selection; this is deliberately bounded and is
+                        # never used after the send checkpoint.
+                        logger.warning(
+                            "target surface not ready target=%s retry=1 exception=%s",
+                            target,
+                            type(first_error).__name__,
+                        )
+                        await self._reset_chat_surface(page)
+                        # A plain session probe can still observe the previous
+                        # thread while the navigation is settling. Re-run the
+                        # bounded navigation/session check so the retry starts
+                        # from a hydrated conversation list.
+                        await require_session(page, context, navigate=True)
+                        await select_web_chat_target(
+                            page, target, timeout=45000, aliases=aliases
+                        )
+                        await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
                 except Exception:
                     # Login surfaces can render after domcontentloaded or while
                     # target selection is waiting. Reclassify before the page is
@@ -386,6 +435,18 @@ class DouyinExecutor:
                     contact_avatars=user_info.avatar_urls,
                 )
             finally:
+                # A reused page survives across scheduled tasks. Remove the
+                # per-run user-info listener or every task would keep parsing
+                # future responses, gradually slowing the session and mixing
+                # stale identity data into later runs.
+                for listener_page in reversed(user_info_listener_pages):
+                    remove_listener = getattr(listener_page, "remove_listener", None)
+                    if not callable(remove_listener):
+                        continue
+                    try:
+                        remove_listener("response", user_info.capture)
+                    except Exception:
+                        logger.debug("user-info response listener cleanup unavailable")
                 if delivery_monitor is not None:
                     try:
                         delivery_monitor.detach()
@@ -437,7 +498,16 @@ class DouyinExecutor:
                 health_state='temporary', health_reason='旧版页面检测报告登录异常，等待复核',
             )
         except TargetNotFoundError:
-            return ExecutionResult(False, ExecutionStage.SELECTING_TARGET, "target_not_found", "未找到完全匹配的目标好友")
+            return ExecutionResult(
+                False,
+                ExecutionStage.SELECTING_TARGET,
+                "target_not_found",
+                "聊天列表在本次执行窗口内未完成目标好友同步，已安排有限重试",
+                # A virtualized list can temporarily omit a real conversation.
+                # The scheduler bounds this to two delayed retries, so a real
+                # typo still becomes a terminal failure without spamming Douyin.
+                retryable=True,
+            )
         except CredentialError:
             return ExecutionResult(False, ExecutionStage.AUTHENTICATING, "cookie_invalid", "账号凭据格式无效", health_state='invalid', health_reason='保存的登录资料格式不可用，需要重新登录')
         except Exception as error:
@@ -467,7 +537,7 @@ class DouyinExecutor:
                     False,
                     ExecutionStage.SELECTING_TARGET,
                     "conversation_not_opened",
-                    "已找到好友，但聊天窗口没有打开",
+                    f"已找到好友，但聊天窗口没有打开（{type(error).__name__}）",
                     retryable=True,
                 )
             if stage == ExecutionStage.AUTHENTICATING:
@@ -477,6 +547,6 @@ class DouyinExecutor:
                 False,
                 stage,
                 "automation_failed",
-                "页面操作或发送确认失败",
+                f"页面操作或发送确认失败（{type(error).__name__}）",
                 retryable=True,
             )

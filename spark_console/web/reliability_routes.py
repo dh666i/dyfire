@@ -24,7 +24,19 @@ def build_reliability_router(engine,auth,cipher):
             auth.admin_context(request,db)
             rows=db.execute(select(TaskRun,SparkTask).join(SparkTask).order_by(TaskRun.scheduled_for.desc()).limit(30)).all()
             def seconds(a,b):return round(max(0,(b-a).total_seconds()),1) if a and b else None
-            items=[{'id':r.id,'name':t.target_name,'status':r.status,'stage':r.stage,'queue':seconds(r.scheduled_for,r.started_at),'before_submit':seconds(r.started_at,r.submitted_at),'confirmation':seconds(r.submitted_at,r.finished_at),'total':seconds(r.started_at,r.finished_at)} for r,t in rows]
+            items=[{
+                'id': r.id,
+                'name': t.target_name,
+                'status': r.status,
+                'stage': r.stage,
+                'attempt': r.attempt,
+                'error_code': r.error_code,
+                'error_summary': r.error_summary,
+                'queue': seconds(r.scheduled_for, r.started_at),
+                'before_submit': seconds(r.started_at, r.submitted_at),
+                'confirmation': seconds(r.submitted_at, r.finished_at),
+                'total': seconds(r.started_at, r.finished_at),
+            } for r,t in rows]
             backup={'status':'unconfigured','message':'尚未配置备份任务'}
             try:
                 historical=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-status.json').read_text())

@@ -298,12 +298,23 @@ class Worker:
                 if lease_lost.is_set():
                     return None
                 raise
-            except Exception:
+            except Exception as error:
+                # Keep the worker alive, but retain the concrete exception
+                # class in server logs. Previously this branch collapsed every
+                # browser/network failure into the same generic status, which
+                # made it impossible to distinguish a page timeout from a
+                # session or selector regression.
+                logger.warning(
+                    "task execution raised run_id=%s account_id=%s exception=%s",
+                    run_id,
+                    account_id,
+                    type(error).__name__,
+                )
                 result = ExecutionResult(
                     False,
                     "worker_error",
                     "unexpected_error",
-                    "任务执行发生意外异常，Worker 已继续运行",
+                    f"任务执行发生意外异常（{type(error).__name__}），Worker 已继续运行",
                     retryable=True,
                 )
         finally:
