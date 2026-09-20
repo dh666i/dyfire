@@ -3,6 +3,7 @@
 Only immutable images from this repository can be installed. Releases with a
 different data schema require a separately reviewed migration, not auto-update.
 """
+import base64
 import fcntl
 import json
 import os
@@ -14,6 +15,7 @@ import time
 import urllib.request
 
 ROOT = Path(os.environ.get('DYFIRE_DEPLOY_DIR', '/opt/dyfire')).resolve()
+DATA_DIR = Path(os.environ.get('DYFIRE_DATA_DIR', ROOT / 'data')).resolve()
 QUEUE = ROOT / 'updates'
 STATE = {}
 REPOSITORY = 'dh666i/dyfire'
@@ -36,31 +38,41 @@ def write_state(**values):
     temp.replace(QUEUE / 'status.json')
 
 
-def github(path):
+def registry_token():
     token = Path(os.environ['DYFIRE_GITHUB_TOKEN_FILE']).read_text().strip()
-    req = urllib.request.Request('https://api.github.com/' + path, headers={
-        'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'dyfire-updater'})
+    if not token:
+        raise ValueError('镜像读取凭据为空')
+    credential = base64.b64encode(('dh666i:' + token).encode()).decode()
+    req = urllib.request.Request(
+        'https://ghcr.io/token?service=ghcr.io&scope=repository:' + REPOSITORY + ':pull',
+        headers={'Authorization': 'Basic ' + credential, 'User-Agent': 'dyfire-updater'})
     with urllib.request.urlopen(req, timeout=20) as response:
-        return json.load(response)
+        value = json.load(response).get('token')
+    if not isinstance(value, str) or not value:
+        raise ValueError('无法获取镜像读取令牌')
+    return value
+
+
+def registry(path, accept='application/vnd.oci.image.index.v1+json'):
+    req = urllib.request.Request('https://ghcr.io' + path, headers={
+        'Authorization': 'Bearer ' + registry_token(), 'Accept': accept,
+        'User-Agent': 'dyfire-updater'})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.load(response), response.headers
 
 
 def latest():
-    release = github(f'repos/{REPOSITORY}/releases/latest')
-    tag = release['tag_name']
-    candidate = tag.removeprefix('v')
-    version(candidate)
-    if release.get('draft') or release.get('prerelease'):
-        raise ValueError('不安装草稿或预发行版本')
-    match = re.search(r'<!-- dyfire-manifest\s+(\{[^<>]+\})\s+-->', release.get('body') or '')
-    if not match:
-        raise ValueError('发行版缺少镜像清单')
-    manifest = json.loads(match.group(1))
-    if manifest['version'] != candidate or manifest['schema'] != 1:
-        raise ValueError('版本或数据结构不兼容，需要人工迁移')
-    if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', manifest['image']):
-        raise ValueError('发行镜像必须是本仓库不可变摘要')
-    return manifest
+    tags, _ = registry('/v2/' + REPOSITORY + '/tags/list', 'application/json')
+    candidates = [tag for tag in tags.get('tags', []) if isinstance(tag, str) and re.fullmatch(r'\d+\.\d+\.\d+', tag)]
+    if not candidates:
+        raise ValueError('镜像仓库没有可安装的正式版本')
+    candidate = max(candidates, key=version)
+    manifest, headers = registry('/v2/' + REPOSITORY + '/manifests/' + candidate)
+    digest = headers.get('Docker-Content-Digest')
+    if (manifest.get('schemaVersion') != 2
+            or not re.fullmatch(r'sha256:[a-f0-9]{64}', digest or '')):
+        raise ValueError('镜像清单无效')
+    return {'version': candidate, 'schema': 1, 'image': IMAGE + '@' + digest}
 
 
 def compose(image, *args):
@@ -105,14 +117,13 @@ def install(target):
         raise ValueError('数据结构不兼容')
     if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', current['image']):
         raise ValueError('当前安装记录不是本仓库的固定镜像')
-    data_dir = ROOT / 'data'
-    if not data_dir.is_dir() or data_dir.is_symlink():
+    if not DATA_DIR.is_dir() or DATA_DIR.is_symlink():
         raise ValueError('未找到标准安装的数据目录')
-    required = sum(p.stat().st_size for p in data_dir.rglob('*') if p.is_file())
+    required = sum(p.stat().st_size for p in DATA_DIR.rglob('*') if p.is_file())
     if shutil.disk_usage(ROOT).free < required + 2 * 1024**3:
         raise ValueError('备份空间不足，请清理磁盘后重试')
     import sqlite3
-    database = data_dir / 'spark.db'
+    database = DATA_DIR / 'spark.db'
     if not database.is_file():
         raise ValueError('自动更新仅支持标准 SQLite 数据目录')
     with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as db:
@@ -128,8 +139,7 @@ def install(target):
     # Generous grace period; all data writers stop before backup.
     try:
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
-        # Production installer binds /opt/dyfire/data to /data.
-        shutil.copytree(ROOT / 'data', backup / 'data')
+        shutil.copytree(DATA_DIR, backup / 'data')
         shutil.copy2(current_file, backup / 'installed.json')
         write_state(phase='installing', message='正在启动新版本')
         compose(release['image'], 'up', '-d', '--no-build', *SERVICES)

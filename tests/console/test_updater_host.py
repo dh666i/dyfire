@@ -16,6 +16,7 @@ def host(tmp_path,monkeypatch):
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     module.ROOT=tmp_path;module.QUEUE=tmp_path/'updates';module.QUEUE.mkdir();module.STATE={}
     (tmp_path/'data').mkdir()
+    module.DATA_DIR=tmp_path/'data'
     with sqlite3.connect(tmp_path/'data/spark.db') as db:
         db.execute('CREATE TABLE task_runs (status TEXT)')
         db.execute('CREATE TABLE douyin_login_sessions (status TEXT)')
