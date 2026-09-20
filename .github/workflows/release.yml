@@ -1,5 +1,8 @@
-name: Build private release draft
+name: Build and publish private release image
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
 permissions:
   contents: write
@@ -25,6 +28,9 @@ jobs:
           from pathlib import Path
           version = Path('VERSION').read_text().strip()
           assert re.fullmatch(r'\d+\.\d+\.\d+', version)
+          ref = os.environ.get('GITHUB_REF_NAME', '')
+          if ref.startswith('v'):
+              assert ref[1:] == version, f'tag {ref} does not match VERSION {version}'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'version={version}\n')
       - uses: docker/setup-buildx-action@v3
