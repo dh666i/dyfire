@@ -1,0 +1,329 @@
+/* Scheme 01 production skin.
+ * This is the final visual layer for both the Vite studio and Jinja pages.
+ * It changes presentation only; route contracts, form names and data hooks stay intact.
+ */
+:root {
+  --scheme-bg: #111110;
+  --scheme-panel: #191918;
+  --scheme-field: #232321;
+  --scheme-ink: #efeee9;
+  --scheme-muted: #9a9992;
+  --scheme-line: rgba(239, 238, 233, .14);
+  --scheme-line-soft: rgba(239, 238, 233, .08);
+  --scheme-orange: #ff642d;
+  --scheme-orange-soft: #ff9270;
+  --scheme-green: #a8c79a;
+  --scheme-amber: #d7b47c;
+  --scheme-red: #e68e87;
+  --scheme-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --bg: var(--scheme-bg);
+  --surface: var(--scheme-panel);
+  --panel: var(--scheme-panel);
+  --field: var(--scheme-field);
+  --ink: var(--scheme-ink);
+  --text: var(--scheme-ink);
+  --muted: var(--scheme-muted);
+  --line: var(--scheme-line);
+  --border: var(--scheme-line);
+  --border-strong: rgba(239, 238, 233, .23);
+  --accent: var(--scheme-orange);
+  --primary: var(--scheme-orange);
+  --primary-hover: var(--scheme-orange-soft);
+  --primary-soft: rgba(255, 100, 45, .12);
+  --success: var(--scheme-green);
+  --green: var(--scheme-green);
+  --warning: var(--scheme-amber);
+  --danger: var(--scheme-red);
+  --radius: 2px;
+  --radius-small: 2px;
+  --ui-radius: 2px;
+  --ui-menu-shadow: 0 18px 55px rgba(0, 0, 0, .34);
+  --ui-mono: var(--scheme-mono);
+}
+
+html[data-theme="light"] {
+  --scheme-bg: #e8e6df;
+  --scheme-panel: #f3f1eb;
+  --scheme-field: #e4e2db;
+  --scheme-ink: #282723;
+  --scheme-muted: #6e6b64;
+  --scheme-line: rgba(40, 39, 35, .18);
+  --scheme-line-soft: rgba(40, 39, 35, .1);
+  --scheme-orange: #c64b1f;
+  --scheme-orange-soft: #a83d18;
+  --scheme-green: #476b3e;
+  --scheme-amber: #88642f;
+  --scheme-red: #a54842;
+  --bg: var(--scheme-bg);
+  --surface: var(--scheme-panel);
+  --panel: var(--scheme-panel);
+  --field: var(--scheme-field);
+  --ink: var(--scheme-ink);
+  --text: var(--scheme-ink);
+  --muted: var(--scheme-muted);
+  --line: var(--scheme-line);
+  --border: var(--scheme-line);
+  --border-strong: rgba(40, 39, 35, .28);
+  --accent: var(--scheme-orange);
+  --primary: var(--scheme-orange);
+  --primary-hover: var(--scheme-orange-soft);
+  --primary-soft: rgba(198, 75, 31, .1);
+  --success: var(--scheme-green);
+  --green: var(--scheme-green);
+  --warning: var(--scheme-amber);
+  --danger: var(--scheme-red);
+  --ui-menu-shadow: 0 18px 55px rgba(40, 39, 35, .18);
+}
+
+html, body { background: var(--bg); color: var(--ink); }
+body.studio-site,
+body[data-design="dyfire-studio"] {
+  background:
+    radial-gradient(circle at 86% 2%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 28rem),
+    var(--bg);
+  font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+body.studio-site::selection,
+body[data-design="dyfire-studio"]::selection { background: var(--accent); color: var(--scheme-bg); }
+
+.studio-header,
+header {
+  position: relative;
+  z-index: 20;
+  height: 88px;
+  margin-inline: max(24px, 4vw);
+  border-bottom: 1px solid var(--line);
+}
+.studio-header::after,
+header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 74px;
+  height: 2px;
+  background: var(--accent);
+}
+.studio-brand, .brand {
+  color: var(--ink);
+  letter-spacing: -.08em;
+}
+.studio-brand svg, .brand svg { color: var(--accent); }
+.studio-main-nav, header nav { gap: 28px; }
+.studio-main-nav a, header nav a, header nav button {
+  position: relative;
+  color: var(--muted);
+  transition: color .18s ease;
+}
+.studio-main-nav a[aria-current],
+header nav .active { color: var(--ink); }
+.studio-main-nav a[aria-current]::after,
+header nav .active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7px;
+  height: 2px;
+  background: var(--accent);
+}
+.studio-theme, #theme { color: var(--muted) !important; }
+.studio-profile > summary, .profile-menu > summary, .profile {
+  border-radius: 2px !important;
+  background: var(--field) !important;
+  border-color: var(--line) !important;
+}
+
+.studio-content, .studio-content.workspace-body {
+  width: min(1480px, calc(100% - 8vw));
+  max-width: none;
+  margin-inline: auto;
+  padding-top: 42px;
+}
+.workspace-heading, .page-heading {
+  position: relative;
+  align-items: end;
+  min-height: 124px;
+  margin-bottom: 36px;
+  padding: 0 0 26px;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-heading::before, .page-heading::before {
+  content: "SPARK / WORKSPACE";
+  position: absolute;
+  top: -22px;
+  right: 0;
+  color: var(--muted);
+  font: 9px var(--scheme-mono);
+  letter-spacing: .14em;
+}
+.workspace-heading .eyebrow, .page-heading .eyebrow { color: var(--scheme-orange-soft); }
+.workspace-heading h1, .page-heading h1 {
+  max-width: 15ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(34px, 5vw, 68px);
+  line-height: 1.02;
+  letter-spacing: -.075em;
+}
+.workspace-heading p, .page-heading p { max-width: 58ch; color: var(--muted); }
+.workspace-heading-actions { gap: 10px; }
+
+/* Sections use editorial rules instead of nested generic cards. */
+.workspace-section, .panel, .admin-panel, .security-card, .task-edit-card,
+.subscription-summary, .subscription-redeem, .scan-entry, .quota-panel {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 !important;
+  box-shadow: none;
+  padding: 28px 0;
+}
+.workspace-section + .workspace-section { margin-top: 0; }
+.section-head, .panel-head, .admin-panel-head, .studio-section-title {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.section-head h2, .panel-head h2, .admin-panel-head h2,
+.studio-section-title h2 { letter-spacing: -.045em; }
+.studio-count { color: var(--muted); font: 11px var(--scheme-mono); }
+
+.button:not(.quiet), .primary-action, .admin-button-primary, .submit, .auth-submit,
+.account-relogin-urgent {
+  min-height: 40px;
+  border: 1px solid var(--accent);
+  border-radius: 2px !important;
+  background: var(--accent);
+  color: #211712;
+  font-weight: 500;
+  box-shadow: none;
+  transition: background .18s ease, color .18s ease, border-color .18s ease, transform .18s ease;
+}
+.button:not(.quiet):hover, .primary-action:hover, .admin-button-primary:hover, .submit:hover, .auth-submit:hover,
+.account-relogin-urgent:hover { background: var(--scheme-orange-soft); border-color: var(--scheme-orange-soft); color: #211712; }
+.button:not(.quiet):active, .primary-action:active, .admin-button-primary:active, .submit:active, .auth-submit:active,
+.account-relogin-urgent:active { transform: translateY(1px); }
+.button.quiet, button.quiet, .admin-button-ghost, .admin-button-secondary {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+.button.quiet:hover, button.quiet:hover, .admin-button-ghost:hover, .admin-button-secondary:hover {
+  background: var(--scheme-line-soft); border-color: var(--accent); color: var(--ink);
+}
+
+input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea {
+  border-color: var(--line) !important;
+  border-radius: 2px !important;
+  background: var(--field) !important;
+  color: var(--ink) !important;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent) !important; outline-color: var(--primary-soft) !important; }
+.pill, .badge, .account-health, .state {
+  border-radius: 2px !important;
+  background: transparent !important;
+  padding: 2px 0;
+}
+.pill.good, .badge.green, .account-health-valid, .state.confirmed, .overview-good { color: var(--scheme-green) !important; }
+.pill.warn, .badge.amber, .account-health-verification, .state.waiting, .overview-attention { color: var(--scheme-amber) !important; }
+.pill.bad, .badge.red, .account-health-invalid, .state.failed, .overview-danger { color: var(--scheme-red) !important; }
+
+/* Dashboard / account / run pages. */
+.studio-dashboard { gap: 0; }
+.overview-accounts { border-top: 1px solid var(--line); padding-top: 26px; }
+.overview-account-list { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0 26px; }
+.overview-account, .account-item, .studio-plan-row, .record-summary, .product-row,
+.admin-list-row, .admin-settings-row {
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0 !important;
+  background: transparent;
+  transition: background .18s ease, padding-left .18s ease;
+}
+.overview-account { min-height: 76px; padding: 15px 0; }
+.overview-account:hover, .account-item:hover, .studio-plan-row:hover, .record-summary:hover,
+.product-row:hover, .admin-list-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); padding-left: 10px; }
+.studio-metrics, .today-send-totals { display: grid; grid-template-columns: repeat(4, 1fr); border-block: 1px solid var(--line); }
+.studio-metric, .today-send-totals a { min-height: 132px; padding: 22px 24px !important; border: 0; border-right: 1px solid var(--line); border-radius: 0; background: transparent; }
+.studio-metric:last-child, .today-send-totals a:last-child { border-right: 0; }
+.studio-metric strong, .today-send-totals strong { font: 500 clamp(30px, 4vw, 52px) var(--scheme-mono); letter-spacing: -.06em; }
+.studio-schedule { border-top: 1px solid var(--line); padding-top: 28px; margin-top: 34px; }
+.studio-day-periods { border-block: 1px solid var(--line-soft); }
+.studio-hour { padding: 17px 0; border-right: 1px solid var(--line-soft); }
+.studio-overview-columns { gap: 50px; }
+.studio-account-column { border-left: 1px solid var(--line); padding-left: 26px; }
+.studio-membership { border: 1px solid var(--line); border-radius: 0; padding: 22px; background: color-mix(in srgb, var(--panel) 82%, transparent); }
+
+.records-list, .account-list, .admin-table-wrap { border-top: 1px solid var(--line); }
+.records-columns { padding: 14px 0; color: var(--muted); border-bottom: 1px solid var(--line-soft); font: 10px var(--scheme-mono); }
+.record-summary { min-height: 70px; padding: 17px 0; }
+.record-detail { margin: 0; border-left: 2px solid var(--accent); border-radius: 0; background: color-mix(in srgb, var(--panel) 84%, transparent); }
+.account-item { padding: 24px 0; }
+.account-item .account-avatar, .overview-account .studio-initial, .studio-plan-person .studio-initial { border-radius: 2px !important; background: var(--field); color: var(--scheme-orange-soft); }
+.admin-grid { gap: 38px; }
+.admin-table { border-collapse: collapse; }
+.admin-table th { color: var(--muted); font: 10px var(--scheme-mono); letter-spacing: .04em; }
+.admin-table td, .admin-table th { border-bottom-color: var(--line-soft); }
+
+/* Auth keeps the selected asymmetrical composition visible. */
+.studio-auth-layout { min-height: 620px; border: 1px solid var(--line); border-radius: 0; background: var(--panel); }
+.studio-auth-art { background: var(--accent); color: #211712; border-right: 0; }
+.studio-auth-art .eyebrow { color: rgba(33, 23, 18, .7); }
+.studio-auth-art h1, .studio-auth-title { max-width: 8ch; font-size: clamp(46px, 6vw, 86px); line-height: 1; letter-spacing: -.09em; }
+.studio-auth-symbol { background: #211712; color: var(--accent); }
+.studio-auth-layout > .auth-card { padding: 52px clamp(28px, 6vw, 84px); }
+.auth-card-heading { border-top: 1px solid var(--line); }
+.auth-card-heading h1 { font-size: 34px; letter-spacing: -.06em; }
+.studio-auth-tabs { gap: 24px; }
+.studio-auth-tabs a[aria-current] { border-color: var(--accent); color: var(--ink); }
+
+/* Admin navigation and menus share the same thin editorial rhythm. */
+.workspace-admin-layout { gap: 42px; }
+.workspace-admin-nav { border-right: 1px solid var(--line); padding-right: 24px; }
+.workspace-admin-nav a, .workspace-admin-mobile summary { border-radius: 0 !important; background: transparent; border-color: transparent; }
+.workspace-admin-nav a[aria-current], .workspace-admin-nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: var(--line); }
+.studio-profile-menu, .profile-popover, .row-menu-panel, .ui-select-popup {
+  border-radius: 0 !important; border-color: var(--line) !important; background: var(--panel) !important;
+}
+.studio-profile-menu a, .studio-profile-menu button, .profile-popover a, .profile-popover button { border-radius: 0 !important; }
+
+/* Drawers and dialogs are solid editorial sheets, with no nested card treatment. */
+dialog, .ui-create-drawer, .scan-dialog, .target-picker-dialog, .app-confirm-dialog {
+  border-radius: 0 !important; border-color: var(--line); background: var(--panel); box-shadow: var(--ui-menu-shadow);
+}
+.ui-create-drawer > .ui-drawer-head, .dialog-top, .scan-dialog-head { border-bottom: 1px solid var(--line); }
+.ui-create-drawer #create-form > .submit { background: var(--accent); }
+.friend-option:hover, .target-option:hover, .friend-option:has(input:checked), .target-option.is-selected { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+@media (max-width: 820px) {
+  .studio-content, .studio-content.workspace-body { width: calc(100% - 40px); padding-top: 30px; }
+  .studio-header, header { margin-inline: 20px; }
+  .workspace-heading, .page-heading { min-height: 0; margin-bottom: 28px; }
+  .workspace-heading::before, .page-heading::before { top: -18px; }
+  .studio-metrics, .today-send-totals { grid-template-columns: repeat(2, 1fr); }
+  .studio-metric, .today-send-totals a { min-height: 104px; border-bottom: 1px solid var(--line); }
+  .studio-metric:nth-child(2), .today-send-totals a:nth-child(2) { border-right: 0; }
+  .studio-account-column { border-left: 0; padding-left: 0; }
+  .workspace-admin-nav { border-right: 0; padding-right: 0; }
+  .studio-auth-layout { grid-template-columns: 1fr; }
+  .studio-auth-art { min-height: 290px; }
+  .studio-auth-layout > .auth-card { padding: 38px 26px; }
+}
+@media (max-width: 560px) {
+  .studio-content, .studio-content.workspace-body { width: calc(100% - 32px); padding-top: 26px; }
+  .studio-header, header { margin-inline: 16px; height: 78px; }
+  .workspace-heading h1, .page-heading h1 { font-size: 36px; }
+  .workspace-heading::before, .page-heading::before { display: none; }
+  .overview-account-list { grid-template-columns: 1fr; }
+  .studio-metric, .today-send-totals a { padding-inline: 14px !important; }
+  .studio-metric strong, .today-send-totals strong { font-size: 32px; }
+  .overview-account:hover, .account-item:hover, .studio-plan-row:hover, .record-summary:hover, .product-row:hover, .admin-list-row:hover { padding-left: 0; }
+  .studio-auth-art { min-height: 230px; padding: 26px; }
+  .studio-auth-art h1, .studio-auth-title { font-size: 44px; }
+  .studio-auth-symbol { width: 130px; height: 150px; right: 18px; bottom: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

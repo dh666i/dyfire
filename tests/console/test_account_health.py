@@ -262,3 +262,27 @@ class EvidenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual('valid',(await self.check(chat=True)).state)
         self.assertEqual('valid',(await self.check(api='valid')).state)
         self.assertEqual('logged_out',(await self.check(text='扫码登录')).state)
+
+    async def test_chat_shell_with_malformed_business_probe_is_not_account_failure(self):
+        evidence = await self.check(
+            chat=False,
+            api='unknown',
+        )
+        self.assertEqual('temporary', evidence.state)
+
+        from tests.console.test_credentials import _FakeLoginPage, _FakeTextMatches
+        page = _FakeLoginPage()
+        page.locator = lambda selector: _FakeTextMatches(
+            selector == '.conversationConversationItemwrapper'
+        )
+        context = AsyncMock()
+        response = AsyncMock()
+        response.status = 200
+        response.json.return_value = {
+            'message': 'success',
+            'data': {'error_code': '0'},
+        }
+        context.request.get.return_value = response
+        evidence = await inspect_session(page, context)
+        self.assertEqual('valid', evidence.state)
+        self.assertIn('等待会话列表水合', evidence.reason)

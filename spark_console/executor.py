@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from collections.abc import Callable
@@ -105,11 +106,18 @@ class DouyinExecutor:
             "used_at": time.monotonic(),
         }
 
-    def _live_matches(self, session_key: str, credential_version: int) -> bool:
+    def _live_matches(
+        self,
+        session_key: str,
+        credential_version: int,
+        credential_fingerprint: str | None = None,
+    ) -> bool:
         live = self._live
         if not live:
             return False
         if live.get("key") != session_key or live.get("version") != credential_version:
+            return False
+        if credential_fingerprint is not None and live.get("fingerprint") != credential_fingerprint:
             return False
         used_at = live.get("used_at")
         if not isinstance(used_at, (int, float)):
@@ -165,13 +173,18 @@ class DouyinExecutor:
         reused = False
         user_info_listener_pages: list[object] = []
         try:
-            payload = CredentialPayload.parse(bytes(cookie_payload), credential_version)
+            raw_cookie_payload = bytes(cookie_payload)
+            credential_fingerprint = hashlib.sha256(raw_cookie_payload).hexdigest()
+            payload = CredentialPayload.parse(raw_cookie_payload, credential_version)
             if session_key:
-                if not self._live_matches(session_key, credential_version):
+                if not self._live_matches(
+                    session_key, credential_version, credential_fingerprint
+                ):
                     await self.close_session()
                     live = await self._open_browser(payload)
                     live["key"] = session_key
                     live["version"] = credential_version
+                    live["fingerprint"] = credential_fingerprint
                     self._live = live
                 else:
                     live = self._live
@@ -202,6 +215,7 @@ class DouyinExecutor:
                         live = await self._open_browser(payload)
                         live["key"] = session_key
                         live["version"] = credential_version
+                        live["fingerprint"] = credential_fingerprint
                         self._live = live
                         context = live["context"]
                         page = live["page"]

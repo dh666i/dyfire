@@ -1,4 +1,5 @@
 import asyncio
+import time
 from types import ModuleType
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
@@ -51,6 +52,18 @@ class _TrackingPage(_FakePage):
 
 
 class ExecutorSessionTests(IsolatedAsyncioTestCase):
+    def test_credential_fingerprint_invalidates_reused_session(self):
+        executor = DouyinExecutor()
+        executor._live = {
+            "key": "acct-1",
+            "version": 2,
+            "fingerprint": "old-credential",
+            "used_at": time.monotonic(),
+        }
+
+        self.assertTrue(executor._live_matches("acct-1", 2, "old-credential"))
+        self.assertFalse(executor._live_matches("acct-1", 2, "new-credential"))
+
     async def test_same_account_reuses_browser_after_authentication(self):
         from core.web_chat import TargetNotFoundError
 

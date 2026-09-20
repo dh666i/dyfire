@@ -1,6 +1,5 @@
 import {studio} from './main.js';
 import './pages.css';
-import '../spark_console/static/studio_experiment.css';
 import '../spark_console/static/ui_select.css';
 import '../spark_console/static/ui_select.js';
 import '../spark_console/static/interaction_polish.css';
@@ -12,6 +11,11 @@ import '../spark_console/static/design_system.css';
 import '../spark_console/static/studio_components.css';
 import '../spark_console/static/design_system.js';
 import '../spark_console/static/mobile_workspace.js';
+// Load the experiment base after shared styles; the production skin below is
+// intentionally the final visual layer for the Studio surface.
+import '../spark_console/static/studio_experiment.css';
+// The production skin is the final layer for every Studio surface.
+import '../spark_console/static/scheme01_production.css';
 import {installPages} from './src/connected-pages.js';
 import {installTaskWorkspace} from './src/task-workspace.js';
 const {esc,toast} = studio;

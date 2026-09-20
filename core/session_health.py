@@ -85,6 +85,22 @@ async def inspect_session(page, context, *, api_result=None):
         return SessionEvidence('valid', f'聊天页显示已登录会话列表；{diagnostic}')
     if api == 'logged_out' or (login and api != 'valid'):
         return SessionEvidence('logged_out', f'检测到未登录信号；{diagnostic}；登录界面 {login}；页面 {path}')
+    # The chat shell can be reachable before Douyin hydrates its virtualized
+    # conversation list.  Treating that intermediate state as account health
+    # failure blocks every task for the account, even though a reload a few
+    # seconds later may expose the list normally.  There is no explicit login
+    # or verification signal here, so let target selection own the bounded
+    # list/search retry instead of poisoning account health.
+    if (
+        chat_page
+        and not login
+        and api not in ('logged_out', 'valid')
+        and '业务码缺失或格式异常' in diagnostic
+    ):
+        return SessionEvidence(
+            'valid',
+            f'聊天页已打开，等待会话列表水合；未检测到登录或验证提示；{diagnostic}',
+        )
     return SessionEvidence('temporary', f'未检测到已登录会话列表；{diagnostic}；页面 {path}')
 
 
