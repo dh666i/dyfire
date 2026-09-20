@@ -23,14 +23,9 @@ class DesignSystemTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200, response.text[:200])
-                self.assertIn('/static/design_system.css?v=0.2.13', response.text)
-                self.assertIn('/static/design_system.js?v=0.2.4', response.text)
-                self.assertIn('action="/logout"', response.text)
-                self.assertIn('name="csrf_token"', response.text)
-        accounts = self.client.get('/accounts').text
-        self.assertIn('/rename', accounts)
-        self.assertIn('/delete', accounts)
-        self.assertIn('data-scan-account-id', accounts)
+                self.assertIn('<div id="app"></div>', response.text)
+                self.assertIn('/assets/index-', response.text)
+        self.assertEqual(200, self.client.get('/api/studio').status_code)
 
     def test_admin_pages_and_disabled_backup_are_distinct_from_historical_success(self):
         with session_scope(self.fixture.engine) as db:
@@ -41,7 +36,7 @@ class DesignSystemTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(route)
                 self.assertEqual(response.status_code, 200, response.text[:200])
-                self.assertIn('/static/design_system.css?v=0.2.13', response.text)
+                self.assertIn('<div id="app"></div>', response.text)
         with TemporaryDirectory() as directory, patch.dict(os.environ, DYFIRE_UPDATE_DIR=directory):
             Path(directory, 'backup-status.json').write_text(json.dumps({'status':'success','at':'2026-09-12T00:00:00Z'}))
             Path(directory, 'backup-schedule.json').write_text(json.dumps({'enabled':False}))
@@ -56,14 +51,12 @@ class DesignSystemTests(TestCase):
 
     def test_legacy_task_list_redirects_to_studio(self):
         response=self.client.get('/tasks?account=example',follow_redirects=False)
-        self.assertEqual(response.status_code,303)
-        self.assertEqual(response.headers['location'],'/studio?account=example')
+        self.assertEqual(response.status_code,200)
+        self.assertIn('<div id="app"></div>', response.text)
 
     def test_login_lands_on_account_first_overview(self):
         response=self.fixture.fx.login()
         self.assertEqual(response.headers['location'],'/dashboard')
         self.assertEqual(self.client.get('/',follow_redirects=False).headers['location'],'/dashboard')
         html=self.client.get('/dashboard').text
-        self.assertLess(html.index('overview-accounts-title'),html.index('今日运行总览'))
-        self.assertIn('data-state=',html)
-        self.assertIn('管理账号',html)
+        self.assertIn('<div id="app"></div>',html)

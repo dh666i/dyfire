@@ -29,8 +29,9 @@ class DirectoryTests(unittest.TestCase):
             account = AccountService(db, self.cipher, AuditService(db)).create(user.id, '抖音账号', b'[{"name":"sid","value":"test"}]')
             self.account = account.id
         self.fx.login()
-        html = self.client.get('/accounts').text
-        self.csrf = html.split('name="csrf_token" value="', 1)[1].split('"', 1)[0]
+        # Authenticated product pages are served by the React shell; the
+        # mutation token is exposed by the JSON bootstrap endpoint.
+        self.csrf = self.client.get('/api/studio').json()['csrf']
 
     def post(self, account=None, **values):
         return self.client.post(f'/accounts/{account or self.account}/directory-jobs', data={'csrf_token': self.csrf, **values})
