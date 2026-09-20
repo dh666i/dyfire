@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, select
@@ -211,9 +211,31 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
     from spark_console.web.studio_routes import build_studio_router
     app.include_router(build_studio_router(engine, auth, cipher))
+    from spark_console.web.spa_routes import build_spa_router
+    app.include_router(build_spa_router(engine, auth, settings, cipher))
     frontend_assets = PACKAGE_ROOT.parent / 'frontend' / 'dist' / 'assets'
     if frontend_assets.is_dir():
         app.mount('/assets', StaticFiles(directory=str(frontend_assets)), name='frontend-assets')
+
+    # Every authenticated product surface is served by the same React entry.
+    # API and authentication routes continue through their existing handlers.
+    spa_index = PACKAGE_ROOT.parent / 'frontend' / 'dist' / 'index.html'
+    # Authentication remains on the established server-rendered flow.  The
+    # React entry is reserved for the authenticated product and admin surfaces
+    # so a 401 bootstrap response can never replace the login form.
+    spa_prefixes = (
+        '/dashboard', '/studio', '/accounts', '/tasks', '/runs', '/subscription',
+        '/account-center', '/notifications', '/attention', '/help', '/admin',
+    )
+    @app.middleware('http')
+    async def single_frontend(request: Request, call_next):
+        path = request.url.path
+        is_api = path.startswith('/api/') or '/conversations' in path or '/health-' in path or '/directory-jobs' in path or '/scan/' in path
+        if request.method == 'GET' and spa_index.exists() and not is_api and (
+            any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
+        ):
+            return FileResponse(spa_index, headers={'Cache-Control': 'no-cache'})
+        return await call_next(request)
 
     def page(request: Request, name: str, status_code: int = 200, **context):
         notice = UI_NOTICES.get(request.query_params.get("notice", ""))
