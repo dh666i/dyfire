@@ -274,11 +274,12 @@ function CloudInteraction({scan,data}) {
 }
 
 function CloudFrame({scan,data,onError}) {
-  const [ready,setReady]=useState(false);
-  useEffect(()=>setReady(false),[scan?.id]);
+  const [state,setState]=useState('loading'); const [attempt,setAttempt]=useState(0);
+  useEffect(()=>{setState('loading');setAttempt(0)},[scan?.id]);
   if(scan?.id==='preview-scan') return <div className="scan-stage frame-ready"><div className="preview-qr" aria-label="预览二维码"><span>DYFIRE</span><b>扫码预览</b></div></div>;
   const click=async e=>{if(!scan?.id)return;const rect=e.currentTarget.getBoundingClientRect();const fd=new FormData();fd.append('csrf_token',data?.csrf||'');fd.append('kind','click');fd.append('x',String(Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))));fd.append('y',String(Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height))));try{await api(`/accounts/scan/${scan.id}/interact`,{method:'POST',body:fd})}catch(err){onError?.(err.message)}};
-  return <div className={`scan-stage ${ready?'frame-ready':''}`}><img onLoad={()=>setReady(true)} onError={()=>setReady(false)} onClick={click} src={`/accounts/scan/${scan.id}/qr`} alt="抖音云端登录页面"/><div className="scan-loading-overlay" aria-live="polite"><span className="scan-loading-spinner"/><b>正在连接抖音登录页面</b><small>云端容器启动后会自动显示，首次连接可能需要几秒。</small></div></div>;
+  const retry=()=>{setAttempt(value=>value+1);setState('loading')};
+  return <div className={`scan-stage ${state==='ready'?'frame-ready':''} ${state==='error'?'frame-error':''}`}><img key={`${scan?.id}-${attempt}`} onLoad={()=>setState('ready')} onError={()=>{setState('error');onError?.('云端登录画面暂时未加载，请点击重试')}} onClick={click} src={`/accounts/scan/${scan.id}/qr?attempt=${attempt}`} alt="抖音云端登录页面"/><div className="scan-loading-overlay" aria-live="polite">{state==='error'?<><span className="scan-loading-error">!</span><b>云端登录画面暂时不可用</b><small>登录会话仍在保留，可以重新读取，不会重复发起登录。</small><Button variant="quiet" onClick={retry}>重新读取</Button></>:<><span className="scan-loading-spinner"/><b>正在连接抖音登录页面</b><small>云端容器启动后会自动显示，首次连接可能需要几秒。</small></>}</div></div>;
 }
 
 function Accounts({data,onRefresh}) {
