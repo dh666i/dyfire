@@ -573,3 +573,22 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 }
 /* Account overview keeps a single account visually balanced across the full work area. */
 .account-grid:has(> .account-card:only-child) { grid-template-columns: minmax(0, 1fr); }
+
+/* The account login is a focused modal, while list and picker drawers remain sheets. */
+.drawer-centered-backdrop { justify-content: center; align-items: center; padding: 28px; }
+.drawer.drawer-centered { width: min(860px, 100%); height: min(88vh, 860px); max-height: calc(100vh - 56px); border: 1px solid rgba(231,223,209,.28); box-shadow: 0 28px 90px rgba(0,0,0,.42); }
+.drawer-centered .scan-panel { padding: 28px 34px 30px; }
+.scan-loading-overlay { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; color: var(--paper-strong); background: rgba(10,10,10,.92); text-align: center; transition: opacity .24s ease, visibility .24s ease; }
+.scan-loading-overlay b { font-size: 14px; font-weight: 500; }
+.scan-loading-overlay small { max-width: 280px; color: var(--paper-muted); font-size: 10px; line-height: 1.6; }
+.scan-loading-spinner { width: 30px; height: 30px; border: 2px solid rgba(255,90,31,.22); border-top-color: var(--orange); border-radius: 50%; animation: spin .8s linear infinite; }
+.scan-stage { position: relative; overflow: hidden; }
+.scan-stage.frame-ready .scan-loading-overlay { opacity: 0; visibility: hidden; pointer-events: none; }
+.account-card-meta span, .account-card-meta strong { color: var(--ink-dark); }
+.account-card-meta span { opacity: .72; }
+.account-card-meta strong { opacity: 1; }
+@media (max-width: 700px) {
+  .drawer-centered-backdrop { align-items: flex-end; padding: 0; }
+  .drawer.drawer-centered { width: 100%; height: min(92dvh, 760px); max-height: calc(100dvh - 12px); border: 0; border-top: 1px solid rgba(24,23,23,.18); }
+  .drawer-centered .scan-panel { padding: 14px 16px calc(18px + env(safe-area-inset-bottom)); }
+}
