@@ -253,7 +253,7 @@ function ScanVerification({scan,data,setScan}) {
 
 function CloudInteraction({scan,data}) {
   const [value,setValue]=useState(''); const [busy,setBusy]=useState(false); const [status,setStatus]=useState('');
-  if (scan?.needs_verification) return null;
+  if (data?.user?.role!=='admin' || scan?.needs_verification || document.body.dataset.dyfireFrameReady!=='true') return null;
   const submit=async e=>{
     e.preventDefault(); if(!value.trim()||busy||!scan?.id)return;
     setBusy(true); setStatus('正在发送到云端，请勿重复提交…');
@@ -273,13 +273,17 @@ function CloudInteraction({scan,data}) {
   return <form className="cloud-interaction" onSubmit={submit}><div className="cloud-interaction-copy"><span className="eyebrow">CLOUD INPUT</span><span>点击上方云端画面选中输入框，或直接在这里输入后发送。</span></div><div className="cloud-input-row"><input className="input" value={value} onChange={e=>setValue(e.target.value)} placeholder="验证码、密码或抖音页面提示内容" autoComplete="one-time-code"/><Button type="submit" disabled={busy||!value.trim()}>{busy?'发送中…':'发送到云端'}</Button></div>{status&&<p className="cloud-interaction-status" role="status">{status}</p>}</form>;
 }
 
-function CloudFrame({scan,data,onError}) {
-  const [state,setState]=useState('loading'); const [attempt,setAttempt]=useState(0);
+function CloudFrame({scan,data,onError,onReady}) {
+  const [state,setState]=useState('loading'); const [attempt,setAttempt]=useState(0); const preview=scan?.id==='preview-scan';
   useEffect(()=>{setState('loading');setAttempt(0)},[scan?.id]);
-  if(scan?.id==='preview-scan') return <div className="scan-stage frame-ready"><div className="preview-qr" aria-label="预览二维码"><span>DYFIRE</span><b>扫码预览</b></div></div>;
   const click=async e=>{if(!scan?.id)return;const rect=e.currentTarget.getBoundingClientRect();const fd=new FormData();fd.append('csrf_token',data?.csrf||'');fd.append('kind','click');fd.append('x',String(Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))));fd.append('y',String(Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height))));try{await api(`/accounts/scan/${scan.id}/interact`,{method:'POST',body:fd})}catch(err){onError?.(err.message)}};
-  const retry=()=>{setAttempt(value=>value+1);setState('loading')};
-  return <div className={`scan-stage ${state==='ready'?'frame-ready':''} ${state==='error'?'frame-error':''}`}><img key={`${scan?.id}-${attempt}`} onLoad={()=>setState('ready')} onError={()=>{setState('error');onError?.('云端登录画面暂时未加载，请点击重试')}} onClick={click} src={`/accounts/scan/${scan.id}/qr?attempt=${attempt}`} alt="抖音云端登录页面"/><div className="scan-loading-overlay" aria-live="polite">{state==='error'?<><span className="scan-loading-error">!</span><b>云端登录画面暂时不可用</b><small>登录会话仍在保留，可以重新读取，不会重复发起登录。</small><Button variant="quiet" onClick={retry}>重新读取</Button></>:<><span className="scan-loading-spinner"/><b>正在连接抖音登录页面</b><small>云端容器启动后会自动显示，首次连接可能需要几秒。</small></>}</div></div>;
+  useEffect(()=>{
+    if(preview||state==='ready'||!scan?.id)return;
+    const timer=window.setTimeout(()=>{setAttempt(value=>value+1);setState('loading')},Math.min(5000,1200+attempt*250));
+    return ()=>window.clearTimeout(timer);
+  },[preview,state,attempt,scan?.id]);
+  if(preview) return <div className="scan-stage frame-ready"><div className="preview-qr" aria-label="预览二维码"><span>DYFIRE</span><b>扫码预览</b></div></div>;
+  return <div className={`scan-stage ${state==='ready'?'frame-ready':''}`}><img key={`${scan?.id}-${attempt}`} onLoad={()=>{setState('ready');onReady?.();document.body.dataset.dyfireFrameReady='true';document.dispatchEvent(new CustomEvent('dyfire-frame-ready'))}} onError={()=>setState('loading')} onClick={click} src={`/accounts/scan/${scan.id}/qr?attempt=${attempt}`} alt="抖音云端登录页面"/><div className="scan-loading-overlay" aria-live="polite"><span className="scan-loading-spinner"/><b>{attempt>3?'正在等待登录环境就绪':'正在准备安全登录环境'}</b><small>云端容器启动后会自动显示，请稍候，不需要重复点击。</small></div></div>;
 }
 
 function Accounts({data,onRefresh}) {
@@ -289,7 +293,8 @@ function Accounts({data,onRefresh}) {
   useEffect(()=>{if(!scan?.id)return;let timer;const poll=async()=>{try{const next=await api(`/accounts/scan/${scan.id}`);if(!next||typeof next!=='object'){setError('登录状态暂时没有返回，请重新绑定');setScan(null);return}setScan(next);if(!['succeeded','failed','expired','cancelled'].includes(next.status))timer=setTimeout(poll,1500);else if(next.status==='succeeded')onRefresh()}catch(e){setError(e.message)}};timer=setTimeout(poll,500);return()=>clearTimeout(timer)},[scan?.id,onRefresh]);
   const start=async()=>{setBusy(true);setError('');try{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');const v=await api('/accounts/scan',{method:'POST',body:fd});if(!v||typeof v!=='object')throw new Error('绑定服务没有返回登录状态');setScan(v)}catch(e){setError(e.message)}finally{setBusy(false)}};
   const terminal=scan&&['failed','expired','cancelled'].includes(scan.status);
-  useEffect(()=>{setFrameReady(false)},[scan?.id]);
+  useEffect(()=>{setFrameReady(false);document.body.dataset.dyfireFrameReady='false'},[scan?.id]);
+  useEffect(()=>{const ready=()=>setFrameReady(true);document.addEventListener('dyfire-frame-ready',ready);return()=>document.removeEventListener('dyfire-frame-ready',ready)},[]);
   return <><PageHeader eyebrow="03 / DOUYIN ACCOUNTS" title="抖音账号" text="集中管理登录状态、资料同步与安全复核。" actions={<Button onClick={start} disabled={busy}>{busy?'正在准备…':'绑定抖音账号 ↗'}</Button>}/>{error&&<div className="inline-feedback danger-text">{error}</div>}<div className="account-grid">{accounts.length?accounts.map(a=>{const name=String(a?.name||'抖音账号'); const profile=a?.profile||{}; const health=a?.health||{}; return <Card className="account-card" key={a.id||name}><div className="account-card-head"><span className="avatar avatar-large">{profile.avatar_url?<img src={profile.avatar_url} alt=""/>:initial(name)}</span><div className="grow"><h2>{name}</h2><small>{profile.nickname||'抖音账号'} · 绑定于此工作区</small></div><Badge tone={(health.state==='valid'||a.validation_state==='valid')?'good':'warn'}>{health.label||'等待复核'}</Badge></div><div className="account-card-meta"><span>登录状态<strong>{health.label||'未复核'}</strong></span><span>续火任务<strong>{tasks.filter(t=>t?.accountId===a?.id).length} 条</strong></span></div><div className="account-card-actions"><Button variant="quiet" onClick={()=>navigate('/studio')}>创建任务 ↗</Button><Button variant="quiet" onClick={()=>{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');api(`/accounts/${a?.id}/health-check`,{method:'POST',body:fd}).then(()=>setError('已安排登录复核')).catch(e=>setError(e.message))}}>复核状态</Button></div></Card>}):<Empty title="还没有绑定抖音账号" text="扫码后按抖音 App 提示确认登录。" action={<Button onClick={start}>开始绑定</Button>}/>}</div><Card className="account-guide"><span className="eyebrow">ACCOUNT CARE</span><h2>保持账号稳定</h2><p>系统会在发送前复核账号状态；遇到抖音安全验证时，会暂停相关计划并在这里显示处理入口。</p><div className="guide-steps"><span><b>01</b>扫码确认</span><span><b>02</b>完成验证</span><span><b>03</b>自动复核</span></div></Card><Drawer open={!!scan} onClose={()=>setScan(null)} title="绑定抖音账号" eyebrow="SECURE LOGIN" wide centered><div className="scan-panel">{scan?.status==='succeeded'?<><div className="success-mark">✓</div><h3>绑定成功</h3><p>抖音账号已安全保存，可以创建续火任务。</p><Button onClick={()=>{setScan(null);navigate('/studio')}}>去创建任务 ↗</Button></>:terminal?<><div className="success-mark failure-mark">!</div><h3>本次绑定未完成</h3><p>{scan?.message||'二维码已失效，请重新发起绑定。'}</p><Button onClick={start}>重新绑定</Button></>:<><div className="scan-progress"><span className="scan-progress-dot"/><span>安全登录通道已建立</span><span className="scan-progress-line"/><span className="scan-progress-dot active"/><span>{scan?.needs_verification?'等待验证':'等待扫码确认'}</span></div><CloudFrame scan={scan} data={data} onError={setError}/><h3>{scan?.message||'请使用抖音 App 扫码并在手机确认'}</h3><p>{scan?.needs_verification?'抖音已要求额外验证，请在下方完成一次提交。':'二维码只在当前登录窗口有效，完成确认后页面会自动更新状态。'}</p><CloudInteraction scan={scan} data={data}/><ScanVerification scan={scan} data={data} setScan={setScan}/><Button variant="quiet" onClick={()=>{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');api(`/accounts/scan/${scan?.id}/cancel`,{method:'POST',body:fd});setScan(null)}}>取消绑定</Button></>}</div></Drawer></>;
 }
 
