@@ -422,3 +422,143 @@ html[data-theme="light"] .next-card { background: #2c2926; }
   .route-view, .route-view > *, .loading-spinner { animation: none; }
   .button::after { display: none; }
 }
+
+/* Mobile layout pass. These rules deliberately reflow dense desktop rows
+   instead of shrinking them until labels and actions become unusable. */
+@media (max-width: 700px) {
+  html, body, #app { width: 100%; max-width: 100%; overflow-x: hidden; }
+  body { -webkit-tap-highlight-color: transparent; }
+  button, a, input, select, textarea { touch-action: manipulation; }
+  .app-shell, .main-shell, .main-inner { min-width: 0; width: 100%; }
+  .main-inner { padding: 18px 14px calc(112px + env(safe-area-inset-bottom)); }
+  .mobile-head { min-height: 58px; padding: 12px 14px; padding-top: calc(12px + env(safe-area-inset-top)); }
+  .mobile-head .icon-button { width: 38px; height: 38px; }
+  .mobile-dock { left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); min-height: 62px; padding: 6px 4px; border-radius: 10px; }
+  .mobile-dock a { min-width: 0; min-height: 48px; flex: 1 1 0; padding: 7px 3px; font-size: 16px; }
+  .mobile-dock small { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-header { gap: 14px; padding: 8px 0 22px; margin-bottom: 20px; }
+  .page-header h1 { max-width: 100%; font-size: clamp(30px, 9vw, 38px); line-height: 1.08; margin: 10px 0 12px; letter-spacing: -.025em; overflow-wrap: anywhere; }
+  .page-header p { max-width: 34em; font-size: 12px; line-height: 1.65; }
+  .page-actions { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; gap: 8px; }
+  .page-actions .button { width: 100%; min-height: 42px; }
+  .card { min-width: 0; padding: 16px; }
+  .section-head { align-items: flex-start; gap: 10px; }
+  .section-head > a, .mosaic-inline-link { flex: 0 0 auto; padding-top: 4px; }
+  .form-grid { grid-template-columns: 1fr; gap: 14px; }
+  .form-stack { gap: 15px; margin-top: 18px; }
+  .input, .friend-trigger { min-height: 44px; font-size: 16px; }
+  .textarea { min-height: 104px; }
+  .button { min-height: 42px; }
+
+  /* Tasks: target and actions share the first line; time and status share the second. */
+  .task-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "person actions" "meta meta"; align-items: center; column-gap: 8px; row-gap: 7px; min-height: 0; padding: 13px 0; }
+  .task-row .person-cell { grid-area: person; min-width: 0; }
+  .task-row > .row-actions { grid-area: actions; display: flex; gap: 5px; border: 0; padding: 0; justify-content: flex-end; }
+  .task-row > .row-actions .button { min-height: 34px; padding: 0 9px; }
+  .task-row > time { grid-area: meta; justify-self: start; margin: 0; font-size: 12px; }
+  .task-row > time small { display: inline; margin-left: 5px; }
+  .task-row > .badge { grid-area: meta; justify-self: end; }
+  .person-cell b { font-size: 13px; }
+  .person-cell small { font-size: 10px; }
+  .toolbar { gap: 10px; margin-bottom: 12px; }
+  .segmented { width: 100%; gap: 18px; overflow-x: auto; scrollbar-width: none; }
+  .segmented::-webkit-scrollbar { display: none; }
+  .segmented button { flex: 0 0 auto; min-height: 38px; }
+
+  /* Execution rows become a readable two-line ledger. */
+  .run-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; grid-template-areas: "dot main status" ". error error"; align-items: center; column-gap: 10px; row-gap: 7px; min-height: 0; padding: 14px 12px; }
+  .run-row > .run-dot { grid-area: dot; align-self: start; margin-top: 5px; }
+  .run-row > .grow { grid-area: main; min-width: 0; }
+  .run-row > .badge { grid-area: status; align-self: start; margin: 0; }
+  .run-row > .run-error { grid-area: error; max-width: none; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+  .run-row b, .run-row small { overflow-wrap: anywhere; }
+
+  /* Account cards and scan controls must never squeeze the status label. */
+  .account-card-head { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+  .account-card-head .grow { flex: 1 1 calc(100% - 68px); }
+  .account-card-head > .badge { width: 100%; padding-left: 65px; }
+  .account-card-meta { gap: 12px; margin-top: 18px; padding: 16px 0 14px; }
+  .account-card-meta span { min-width: 0; }
+  .account-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .account-card-actions .button { min-width: 0; padding-inline: 8px; }
+  .guide-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .scan-panel { width: 100%; padding: 10px 0 16px; }
+  .scan-stage { width: min(280px, 76vw); }
+  .scan-progress { width: 100%; gap: 6px; font-size: 9px; }
+  .verification-panel { width: 100%; }
+  .verification-actions { align-items: stretch; flex-wrap: wrap; }
+  .verification-actions .button { flex: 1 1 100%; }
+  .verification-hint { width: 100%; }
+
+  /* Admin tables use compact records on mobile instead of a 560px viewport. */
+  .admin-table { display: grid; gap: 0; margin: 0; overflow: visible; border-top: 0; }
+  .admin-table > * { min-width: 0; }
+  .admin-table .table-head { display: none; }
+  .admin-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "primary status" "secondary actions"; gap: 6px 10px; padding: 13px 0; border-top: 1px solid var(--line); min-width: 0; }
+  .admin-row > :nth-child(1) { grid-area: primary; min-width: 0; }
+  .admin-row > :nth-child(2) { grid-area: secondary; min-width: 0; color: var(--muted); }
+  .admin-row > :nth-child(3) { grid-area: status; justify-self: end; }
+  .admin-row > :nth-child(4) { grid-area: actions; justify-self: end; min-width: 0; }
+  .admin-row time { display: block; font-size: 10px; overflow-wrap: anywhere; }
+  .admin-row .row-actions { flex-wrap: wrap; justify-content: flex-end; }
+  .admin-row .row-actions .button { min-height: 32px; padding-inline: 8px; }
+
+  .simple-grid { gap: 10px; }
+  .simple-grid .card { min-height: 0; }
+  .empty { padding: 34px 12px; }
+  .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .drawer-backdrop { align-items: flex-end; }
+  .drawer, .drawer-wide { width: 100%; height: min(90dvh, 720px); max-height: calc(100dvh - 20px); border: 0; border-top: 1px solid var(--line-strong); }
+  .drawer-head { padding: 22px 16px 16px; }
+  .drawer-content { padding: 14px 16px; }
+  .drawer-tools { flex-wrap: wrap; gap: 10px; }
+  .drawer-tools span { flex: 1 1 100%; }
+  .drawer-tools button { min-height: 32px; padding: 4px 0; }
+  .drawer-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .drawer-foot .button { min-height: 42px; }
+}
+
+@media (max-width: 380px) {
+  .main-inner { padding-inline: 11px; }
+  .mobile-head { padding-inline: 11px; }
+  .mobile-dock { left: 6px; right: 6px; }
+  .mobile-dock a { padding-inline: 1px; }
+  .mobile-dock small { font-size: 8px; }
+  .task-row > .row-actions .button { padding-inline: 7px; font-size: 11px; }
+  .account-card-actions { grid-template-columns: 1fr; }
+  .guide-steps { grid-template-columns: 1fr; gap: 6px; }
+}
+
+/* Tablets and rotated phones can be wider than 700px while still needing
+   the mobile shell. Keep the dashboard from activating its desktop minimum
+   column tracks at those widths. */
+@media (max-width: 900px) {
+  .sidebar { display: none; }
+  .main-shell { margin-left: 0; width: 100%; }
+  .mobile-head { display: flex; align-items: center; justify-content: space-between; min-height: 58px; padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top)); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 8; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(15px); }
+  .mobile-head .brand { padding: 0; margin: 0; }
+  .mobile-head > div { display: flex; gap: 6px; }
+  .global-utility { display: none; }
+  .mobile-dock { display: flex; position: fixed; z-index: 20; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); min-height: 62px; padding: 6px 4px; background: color-mix(in srgb, var(--surface-strong) 94%, transparent); border: 1px solid var(--line-strong); box-shadow: var(--shadow); justify-content: space-around; }
+  .mobile-dock a { min-width: 0; min-height: 48px; flex: 1 1 0; display: grid; justify-items: center; gap: 3px; padding: 7px 3px; color: var(--muted); font-size: 16px; }
+  .mobile-dock a.active { color: var(--accent); }
+  .mobile-dock small { max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+  .main-inner { width: 100%; max-width: none; padding: 18px 16px calc(112px + env(safe-area-inset-bottom)); }
+  .dashboard-mosaic { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "toolbar" "health" "tasks" "hero" "runs" "contacts" "subscription" "create"; gap: 8px; }
+  .mosaic-toolbar { display: grid; gap: 12px; padding-bottom: 14px; }
+  .mosaic-toolbar > div:first-child { justify-content: space-between; }
+  .mosaic-actions { width: 100%; flex-wrap: wrap; }
+  .mosaic-service { margin-right: auto; }
+  .mosaic-actions .button { flex: 1 1 130px; min-width: 0; }
+  .mosaic-hero { min-height: 360px; }
+  .mosaic-hero-glyph { font-size: 132px; left: 28%; }
+  .mosaic-contacts { min-height: 300px; }
+  .mosaic-image-placeholder { height: 74px; }
+  .mosaic-run-row { grid-template-columns: 1.1fr 1.4fr .8fr; padding-left: 18px; padding-right: 18px; }
+  .mosaic-run-row .badge { grid-column: 3; }
+  .studio-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .composer-card { position: static; }
+  .account-grid { grid-template-columns: minmax(0, 1fr); }
+  .metric-grid, .admin-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .simple-grid { grid-template-columns: minmax(0, 1fr); }
+}
