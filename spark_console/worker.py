@@ -47,6 +47,16 @@ class _LeaseOwnershipLost(RuntimeError):
 class Worker:
     STARTUP_GRACE = timedelta(minutes=5)
     RETRY_DELAYS = (timedelta(minutes=1), timedelta(minutes=5))
+    # Target selection is a pre-send browser transition. It is safe to retry
+    # more patiently than a generic failure because no message has crossed the
+    # submission checkpoint yet. Keep the total window bounded at 20 minutes.
+    TARGET_RETRY_DELAYS = (
+        timedelta(minutes=1),
+        timedelta(minutes=2),
+        timedelta(minutes=4),
+        timedelta(minutes=6),
+        timedelta(minutes=7),
+    )
     WORKER_LEASE = timedelta(seconds=30)
     HEARTBEAT_INTERVAL_SECONDS = 10
 
@@ -631,7 +641,12 @@ class Worker:
                         return finish_run(run, "failed", result.stage, finished_at, *invalid)
                 if not result.success and result.retryable and pending is None:
                     retry = self._schedule_retry(
-                        db, task, run, finished_at, result.stage
+                        db,
+                        task,
+                        run,
+                        finished_at,
+                        result.stage,
+                        error_code=result.error_code,
                     )
                     if retry is not None:
                         return retry
@@ -684,20 +699,31 @@ class Worker:
         cookies[:] = b"\0" * len(cookies)
         cookies.clear()
 
-    def _schedule_retry(self, db, task, run, now, stage):
-        if run.attempt > len(self.RETRY_DELAYS):
+    def _schedule_retry(self, db, task, run, now, stage, error_code=None):
+        delays = (
+            self.TARGET_RETRY_DELAYS
+            if error_code in {"target_not_found", "conversation_not_opened"}
+            else self.RETRY_DELAYS
+        )
+        if run.attempt > len(delays):
             return None
-        delay = self.RETRY_DELAYS[run.attempt - 1]
+        delay = delays[run.attempt - 1]
         retry_after = now + delay
         minutes = int(delay.total_seconds() // 60)
         task.next_run_at = retry_after
+        if error_code in {"target_not_found", "conversation_not_opened"}:
+            error_code_value = f"target_retry_scheduled_{minutes}m"
+            summary = f"好友聊天窗口暂时未就绪，已安排 {minutes} 分钟后重试（仍未发送消息）"
+        else:
+            error_code_value = f"retry_scheduled_{minutes}m"
+            summary = f"发送前遇到临时故障，已安排 {minutes} 分钟后重试"
         return finish_run(
             run,
             "retrying",
             stage,
             now,
-            f"retry_scheduled_{minutes}m",
-            f"发送前遇到临时故障，已安排 {minutes} 分钟后重试",
+            error_code_value,
+            summary,
             retry_after=retry_after,
         )
 

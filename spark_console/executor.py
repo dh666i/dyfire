@@ -91,8 +91,23 @@ class DouyinExecutor:
         manager = async_playwright()
         start = getattr(manager, "start", None)
         playwright = await start() if start is not None else await manager.__aenter__()
-        browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context(**payload.context_options())
+        browser = None
+        try:
+            browser = await playwright.chromium.launch(headless=True)
+            context = await browser.new_context(**payload.context_options())
+        except Exception:
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception:
+                    logger.debug("browser cleanup after context creation failure unavailable")
+            stop = getattr(playwright, "stop", None)
+            if stop is not None:
+                try:
+                    await stop()
+                except Exception:
+                    logger.debug("playwright cleanup after context creation failure unavailable")
+            raise
         legacy_cookies = payload.cookies_to_add()
         if legacy_cookies:
             await context.add_cookies(legacy_cookies)
@@ -196,7 +211,20 @@ class DouyinExecutor:
                 playwright_cm = async_playwright()
                 playwright = await playwright_cm.__aenter__()
                 browser = await playwright.chromium.launch(headless=True)
-                context = await browser.new_context(**payload.context_options())
+                try:
+                    context = await browser.new_context(**payload.context_options())
+                except Exception:
+                    try:
+                        await browser.close()
+                    except Exception:
+                        logger.debug("browser cleanup after context creation failure unavailable")
+                    stop = getattr(playwright, "stop", None)
+                    if stop is not None:
+                        try:
+                            await stop()
+                        except Exception:
+                            logger.debug("playwright cleanup after context creation failure unavailable")
+                    raise
                 legacy_cookies = payload.cookies_to_add()
                 if legacy_cookies:
                     await context.add_cookies(legacy_cookies)
@@ -236,11 +264,20 @@ class DouyinExecutor:
                         else None
                     )
                     aliases = identity.aliases if identity else ()
-                    try:
+                    async def select_and_wait_for_editor(editor_timeout=30000):
                         await select_web_chat_target(
-                            page, target, timeout=45000, aliases=aliases
+                            page,
+                            target,
+                            timeout=45000,
+                            aliases=aliases,
+                            target_sec_uid=target_sec_uid,
                         )
-                        await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
+                        await page.wait_for_selector(
+                            CHAT_EDITOR_SELECTOR, timeout=editor_timeout
+                        )
+
+                    try:
+                        await select_and_wait_for_editor()
                     except Exception as first_error:
                         # Playwright's TimeoutError is a separate exception
                         # class from the built-in one. Match it by name too so
@@ -252,25 +289,40 @@ class DouyinExecutor:
                         )
                         if not isinstance(first_error, TargetNotFoundError) and not is_timeout:
                             raise
-                        # The web chat list is virtualized and can still be
-                        # settling after navigation. Rebuild the list once and
-                        # retry selection; this is deliberately bounded and is
-                        # never used after the send checkpoint.
+                        # A result click can be accepted by the page while the
+                        # thread transition is still pending. Re-select the
+                        # same stable target once before reloading the whole
+                        # surface. This is still before the send checkpoint,
+                        # so it cannot duplicate a message.
                         logger.warning(
-                            "target surface not ready target=%s retry=1 exception=%s",
+                            "target editor not ready target=%s retry=select exception=%s",
                             target,
                             type(first_error).__name__,
                         )
-                        await self._reset_chat_surface(page)
-                        # A plain session probe can still observe the previous
-                        # thread while the navigation is settling. Re-run the
-                        # bounded navigation/session check so the retry starts
-                        # from a hydrated conversation list.
-                        await require_session(page, context, navigate=True)
-                        await select_web_chat_target(
-                            page, target, timeout=45000, aliases=aliases
-                        )
-                        await page.wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=30000)
+                        try:
+                            await select_and_wait_for_editor(editor_timeout=15000)
+                            first_error = None
+                        except Exception as second_error:
+                            first_error = second_error
+                        if first_error is None:
+                            pass
+                        else:
+                            # The web chat list is virtualized and can still be
+                            # settling after navigation. Rebuild the list once
+                            # and retry selection; this is deliberately bounded
+                            # and is never used after the send checkpoint.
+                            logger.warning(
+                                "target surface not ready target=%s retry=reload exception=%s",
+                                target,
+                                type(first_error).__name__,
+                            )
+                            await self._reset_chat_surface(page)
+                            # A plain session probe can still observe the previous
+                            # thread while the navigation is settling. Re-run
+                            # the bounded navigation/session check so the retry
+                            # starts from a hydrated conversation list.
+                            await require_session(page, context, navigate=True)
+                            await select_and_wait_for_editor(editor_timeout=30000)
                 except Exception:
                     # Login surfaces can render after domcontentloaded or while
                     # target selection is waiting. Reclassify before the page is
@@ -551,7 +603,7 @@ class DouyinExecutor:
                     False,
                     ExecutionStage.SELECTING_TARGET,
                     "conversation_not_opened",
-                    f"已找到好友，但聊天窗口没有打开（{type(error).__name__}）",
+                    "已找到好友，但聊天窗口没有打开",
                     retryable=True,
                 )
             if stage == ExecutionStage.AUTHENTICATING:

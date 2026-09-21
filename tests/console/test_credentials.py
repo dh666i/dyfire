@@ -989,6 +989,7 @@ class ExecutorCredentialTests(unittest.IsolatedAsyncioTestCase):
         async def select_target(_page, target, **kwargs):
             observed["target"] = target
             observed["aliases"] = kwargs.get("aliases")
+            observed["target_sec_uid"] = kwargs.get("target_sec_uid")
             return "我的备注"
 
         raw = b'[{"name":"sid","value":"identity-marker","domain":".douyin.com","path":"/"}]'
@@ -1010,6 +1011,7 @@ class ExecutorCredentialTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.success)
         self.assertEqual("旧的昵称", observed["target"])
         self.assertEqual(("我的备注", "新的昵称"), observed["aliases"])
+        self.assertEqual("stable-user-id", observed["target_sec_uid"])
         self.assertEqual({"stable-user-id": "https://p3.douyinpic.com/avatar.jpeg"}, result.contact_avatars)
 
 

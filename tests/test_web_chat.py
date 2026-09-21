@@ -147,6 +147,26 @@ class WebChatSelectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(page.items[0].clicked)
         self.assertFalse(page.items[1].clicked)
 
+    async def test_prefers_stable_sec_uid_when_page_exposes_identity(self):
+        class IdentityPage(FakeWebChatPage):
+            def __init__(self):
+                super().__init__([])
+                self.identity_clicked = False
+
+            async def evaluate(self, _script, sec_uid):
+                self.identity_clicked = sec_uid == "stable-user-id"
+                return self.identity_clicked
+
+        page = IdentityPage()
+        selected = await select_web_chat_target(
+            page,
+            "旧昵称",
+            target_sec_uid="stable-user-id",
+        )
+
+        self.assertEqual("旧昵称", selected)
+        self.assertTrue(page.identity_clicked)
+
     async def test_lists_visible_unique_conversations_for_task_picker(self):
         page = FakeWebChatPage(
             [" wzlovegsy ", "gsy", "wzlovegsy", "隐藏"],

@@ -218,13 +218,104 @@ async def _click_search_result(result) -> None:
             return
     except (AttributeError, TypeError):
         pass
+    try:
+        # Search cards are often rendered as a non-clickable nickname span.
+        # Clicking the card itself lets Douyin's delegated handler open the
+        # thread even when no explicit 发消息 button is present.
+        card = result.locator(
+            "xpath=ancestor::*[@data-e2e='search-user-item' or "
+            "contains(@class, 'search')][1]"
+        )
+        if await card.count() > 0 and await card.is_visible():
+            await card.click()
+            return
+    except (AttributeError, TypeError):
+        pass
     await result.click()
 
 
-async def _wait_for_visible_search_results(page, candidate, timeout_ms):
+async def _click_first_visible(locator) -> bool:
+    """Click the first visible identity-matched node, if the page exposes one."""
+    try:
+        matches = await locator.all() if hasattr(locator, "all") else [locator.first]
+    except Exception:
+        return False
+    for match in matches:
+        try:
+            if hasattr(match, "is_visible") and not await match.is_visible():
+                continue
+            await match.click()
+            return True
+        except Exception:
+            continue
+    return False
+
+
+async def _select_web_chat_target_by_identity(page, sec_uid: str) -> bool:
+    """Prefer the stable Douyin identity exposed by conversation/search nodes."""
+    value = str(sec_uid or "").strip()
+    if not value:
+        return False
+    # Current web chat builds expose identity on conversation rows, while
+    # search cards may expose it on a nested data attribute or profile href.
+    # Keep the selectors narrow so an unrelated profile link is never clicked.
+    selectors = (
+        f'{CONVERSATION_ITEM_SELECTOR}[data-sec-uid="{value}"]',
+        f'[data-e2e="search-user-item"][data-sec-uid="{value}"]',
+        f'{CONVERSATION_ITEM_SELECTOR}:has([data-sec-uid="{value}"])',
+        f'{CONVERSATION_ITEM_SELECTOR}:has(a[href*="{value}"])',
+        f'[data-e2e="search-user-item"]:has(a[href*="{value}"])',
+    )
+    locator = getattr(page, "locator", None)
+    if not callable(locator):
+        return False
+    for selector in selectors:
+        try:
+            candidate = locator(selector)
+            if await candidate.count() and await _click_first_visible(candidate):
+                return True
+        except Exception:
+            # CSS :has and escaped sec_uid values are not supported by every
+            # browser/page double; identity text matching remains available.
+            continue
+    evaluate = getattr(page, "evaluate", None)
+    if callable(evaluate):
+        try:
+            return bool(
+                await evaluate(
+                    """(uid) => {
+                      const visible = (node) => Boolean(node && node.getClientRects().length);
+                      const rows = [...document.querySelectorAll(
+                        '.conversationConversationItemwrapper, [data-e2e="search-user-item"]'
+                      )].filter(visible);
+                      const hasIdentity = (row) => {
+                        if (row.getAttribute('data-sec-uid') === uid) return true;
+                        return [...row.querySelectorAll('[data-sec-uid]')]
+                          .some(node => node.getAttribute('data-sec-uid') === uid)
+                          || [...row.querySelectorAll('a[href]')]
+                            .some(link => String(link.getAttribute('href') || '').includes(uid));
+                      };
+                      const row = rows.find(hasIdentity);
+                      if (!row) return false;
+                      row.scrollIntoView({block: 'nearest'});
+                      const target = row.querySelector('button,[role="button"]') || row;
+                      target.click();
+                      return true;
+                    }""",
+                    value,
+                )
+            )
+        except Exception:
+            pass
+    return False
+
+
+async def _wait_for_visible_search_results(page, candidate, timeout_ms, target_sec_uid=None):
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + min(3.0, max(0.2, timeout_ms / 1000))
+    deadline = loop.time() + min(8.0, max(1.0, timeout_ms / 1000))
     while True:
+        if target_sec_uid and await _select_web_chat_target_by_identity(page, target_sec_uid):
+            return [None]
         exact = page.get_by_text(candidate, exact=True)
         if await exact.count() > 0:
             results = await exact.all() if hasattr(exact, "all") else [exact.first]
@@ -241,7 +332,7 @@ async def _wait_for_visible_search_results(page, candidate, timeout_ms):
         await asyncio.sleep(min(0.2, remaining))
 
 
-async def select_web_chat_target(page, target, timeout=30000, aliases=()):
+async def select_web_chat_target(page, target, timeout=30000, aliases=(), target_sec_uid=None):
     """Select one exact target, preferring real conversation rows over page text."""
     normalized_target = " ".join(str(target or "").split())
     candidates = tuple(
@@ -258,9 +349,13 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=()):
     # poll bounded and only inspect visible rows so we never click stale DOM.
     wanted = {value.casefold() for value in candidates}
     loop = asyncio.get_running_loop()
-    # Keep the hydration grace short because most targets are selected through
-    # the search surface when they are not among the recent rows.
-    deadline = loop.time() + max(0.75, min(3.0, timeout / 1000))
+    # Give the virtualized list enough time to hydrate, but keep the whole
+    # selection bounded. Identity matching below avoids waiting on text when
+    # the nickname/remark has changed.
+    deadline = loop.time() + max(2.0, min(8.0, timeout / 1000))
+
+    if target_sec_uid and await _select_web_chat_target_by_identity(page, target_sec_uid):
+        return normalized_target
 
     async def choose_visible_row():
         saw_items = False
@@ -299,9 +394,11 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=()):
             for candidate in candidates:
                 await field.fill(candidate)
                 results = await _wait_for_visible_search_results(
-                    page, candidate, timeout
+                    page, candidate, timeout, target_sec_uid
                 )
                 for result in results:
+                    if result is None:
+                        return candidate
                     await _click_search_result(result)
                     return candidate
         except (AttributeError, TypeError):
