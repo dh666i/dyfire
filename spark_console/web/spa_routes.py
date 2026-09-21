@@ -31,7 +31,7 @@ from spark_console.services.directory import profile_map, task_avatar_map
 from spark_console.web.membership import membership_summary
 from spark_console.web.auth import WebAuth
 from spark_console.web.admin_queries import admin_stats, list_audit_events, list_subscriptions
-from spark_console.web.task_groups import list_task_groups
+from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.ops_monitor import operations_snapshot
 from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
 
@@ -289,6 +289,68 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "page": page,
                 "pageSize": 50,
                 "total": users_total,
+            }
+
+    @router.get("/api/admin/diagnostics")
+    def admin_diagnostics(request: Request):
+        """Read-only diagnostics model for the canonical React operations page."""
+        from pathlib import Path
+        import json
+        import os
+        from spark_console.models import TaskRun, SparkTask
+
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            rows = db.execute(
+                select(TaskRun, SparkTask)
+                .join(SparkTask, TaskRun.task_id == SparkTask.id)
+                .order_by(TaskRun.scheduled_for.desc())
+                .limit(30)
+            ).all()
+
+            def seconds(start, end):
+                if not start or not end:
+                    return None
+                return round(max(0, (end - start).total_seconds()), 1)
+
+            items = [{
+                "id": run.id,
+                "name": task.target_name,
+                "status": run.status,
+                "stage": run.stage,
+                "attempt": run.attempt,
+                "error_code": run.error_code,
+                "error_summary": run.error_summary,
+                "queue": seconds(run.scheduled_for, run.started_at),
+                "before_submit": seconds(run.started_at, run.submitted_at),
+                "confirmation": seconds(run.submitted_at, run.finished_at),
+                "total": seconds(run.started_at, run.finished_at),
+            } for run, task in rows]
+
+            backup = {"status": "unconfigured", "message": "尚未配置备份任务"}
+            try:
+                value = json.loads((Path(os.environ.get("DYFIRE_UPDATE_DIR", "/run/dyfire-updates")) / "backup-status.json").read_text())
+                if isinstance(value, dict):
+                    backup = value
+            except (OSError, ValueError):
+                pass
+            return JSONResponse({"items": items, "backup": backup}, headers={"Cache-Control": "no-store"})
+
+    @router.get("/api/admin/tasks/groups/{owner_id}/{account_id}")
+    def admin_group_tasks(request: Request, owner_id: str, account_id: str, q: str = "", status: str = "", page: int = 1):
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            rows, pagination = list_group_tasks(db, owner_id, account_id, q=q, status=status, page=page)
+            return {
+                "items": [{
+                    "id": row.id,
+                    "username": row.username,
+                    "name": row.target_name,
+                    "time": row.send_time,
+                    "enabled": row.enabled,
+                    "account": row.account_name,
+                } for row in rows],
+                "pagination": pagination,
             }
 
     @router.get("/api/notifications")

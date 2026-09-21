@@ -17,6 +17,23 @@ SEARCH_INPUT_SELECTORS = (
     'input[placeholder="搜索"]',
     'input[placeholder*="搜索"]',
 )
+# The chat list is virtualized: only a small window of rows is present in the
+# DOM at any time. Scroll the owning container instead of assuming the first
+# few visible rows are the complete address book.
+SCROLL_CONVERSATION_LIST_SCRIPT = r"""() => {
+  const row = document.querySelector('.conversationConversationItemwrapper');
+  if (!row) return {moved:false, reason:'no_rows'};
+  for (let node = row.parentElement; node && node !== document.body; node = node.parentElement) {
+    const style = getComputedStyle(node);
+    if (node.scrollHeight > node.clientHeight + 4 && /auto|scroll/.test(style.overflowY)) {
+      const before = node.scrollTop;
+      const step = Math.max(160, Math.floor(node.clientHeight * .82));
+      node.scrollTop = Math.min(node.scrollTop + step, node.scrollHeight);
+      return {moved: node.scrollTop > before, top: node.scrollTop, height: node.scrollHeight, viewport: node.clientHeight};
+    }
+  }
+  return {moved:false, reason:'no_scroll_container'};
+}"""
 LOGIN_REQUIRED_TEXTS = (
     "扫码登录",
     "手机号登录",
@@ -272,7 +289,7 @@ async def _select_web_chat_target_by_identity(page, sec_uid: str) -> bool:
     for selector in selectors:
         try:
             candidate = locator(selector)
-            if await candidate.count() and await _click_first_visible(candidate):
+            if await candidate.count() and await _click_first_visible_and_wait(page, candidate):
                 return True
         except Exception:
             # CSS :has and escaped sec_uid values are not supported by every
@@ -332,6 +349,81 @@ async def _wait_for_visible_search_results(page, candidate, timeout_ms, target_s
         await asyncio.sleep(min(0.2, remaining))
 
 
+async def _scroll_conversation_list(page) -> bool:
+    """Advance one virtual-list window and report whether rows moved."""
+    evaluate = getattr(page, "evaluate", None)
+    if not callable(evaluate):
+        return False
+    try:
+        result = await evaluate(SCROLL_CONVERSATION_LIST_SCRIPT)
+        return bool(result and result.get("moved")) if isinstance(result, dict) else bool(result)
+    except Exception:
+        # A DOM shape change should fall through to the dedicated search path;
+        # it must never turn a target-selection attempt into a worker crash.
+        return False
+
+
+async def _wait_for_chat_editor(page, timeout_ms: int = 18000) -> bool:
+    """Verify a clicked result opened the actual chat, not just a profile card."""
+    wait_for_selector = getattr(page, "wait_for_selector", None)
+    if not callable(wait_for_selector):
+        return True
+    try:
+        await wait_for_selector(CHAT_EDITOR_SELECTOR, timeout=timeout_ms)
+        return True
+    except Exception:
+        return False
+
+
+async def _click_conversation_row(page, item) -> bool:
+    """Click the actionable part of a virtualized row and verify the thread."""
+    candidates = []
+    locator = getattr(item, "locator", None)
+    if callable(locator):
+        for selector in (
+            CONVERSATION_TITLE_SELECTOR,
+            '[role="button"]',
+            'button',
+        ):
+            try:
+                candidate = locator(selector)
+                count = getattr(candidate, "count", None)
+                if not callable(count) or await count() > 0:
+                    candidates.append(candidate.first if hasattr(candidate, "first") else candidate)
+            except Exception:
+                continue
+    candidates.append(item)
+    for index, candidate in enumerate(candidates):
+        try:
+            visible = getattr(candidate, "is_visible", None)
+            if callable(visible) and not await visible():
+                continue
+            await candidate.click()
+            if await _wait_for_chat_editor(page, timeout_ms=10000 if index == 0 else 3000):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+async def _click_first_visible_and_wait(page, locator) -> bool:
+    """Apply the row click contract to the first visible identity match."""
+    try:
+        matches = await locator.all() if hasattr(locator, "all") else [locator.first]
+    except Exception:
+        return False
+    for match in matches:
+        try:
+            visible = getattr(match, "is_visible", None)
+            if callable(visible) and not await visible():
+                continue
+            if await _click_conversation_row(page, match):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 async def select_web_chat_target(page, target, timeout=30000, aliases=(), target_sec_uid=None):
     """Select one exact target, preferring real conversation rows over page text."""
     normalized_target = " ".join(str(target or "").split())
@@ -352,13 +444,15 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=(), target
     # Give the virtualized list enough time to hydrate, but keep the whole
     # selection bounded. Identity matching below avoids waiting on text when
     # the nickname/remark has changed.
-    deadline = loop.time() + max(2.0, min(8.0, timeout / 1000))
+    deadline = loop.time() + max(3.0, min(14.0, timeout / 1000))
 
     if target_sec_uid and await _select_web_chat_target_by_identity(page, target_sec_uid):
         return normalized_target
 
     async def choose_visible_row():
         saw_items = False
+        scroll_attempts = 0
+        stalled = 0
         while True:
             items = await page.locator(CONVERSATION_ITEM_SELECTOR).all()
             saw_items = saw_items or bool(items)
@@ -369,8 +463,13 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=(), target
                     await item.locator(CONVERSATION_TITLE_SELECTOR).inner_text()
                 ).strip()
                 if title.casefold() in wanted:
-                    await item.click()
-                    return title
+                    if await _click_conversation_row(page, item):
+                        return title
+                    logger.warning(
+                        "conversation row clicked but chat editor did not open target=%s",
+                        title,
+                    )
+                    return None
             # If the list is absent entirely, let the dedicated search surface
             # handle the target immediately. Only poll when a virtualized list
             # exists but has not yet exposed the requested row.
@@ -378,6 +477,19 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=(), target
                 return None
             remaining = deadline - loop.time()
             if remaining <= 0:
+                return None
+            if scroll_attempts < 24:
+                moved = await _scroll_conversation_list(page)
+                if moved:
+                    scroll_attempts += 1
+                    stalled = 0
+                    await asyncio.sleep(min(0.35, remaining))
+                    continue
+            stalled += 1
+            # Give a hydrating list a few short chances before falling back to
+            # global search. This avoids turning a delayed first render into a
+            # false target-not-found result while keeping the retry bounded.
+            if stalled >= 4 or scroll_attempts >= 24:
                 return None
             await asyncio.sleep(min(0.25, remaining))
 
@@ -400,7 +512,13 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=(), target
                     if result is None:
                         return candidate
                     await _click_search_result(result)
-                    return candidate
+                    if await _wait_for_chat_editor(page):
+                        return candidate
+                    logger.warning(
+                        "search result clicked but chat editor did not open target=%s",
+                        candidate,
+                    )
+                    break
         except (AttributeError, TypeError):
             # Older page doubles and older layouts have no global search surface.
             break

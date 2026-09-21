@@ -224,7 +224,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     # React entry is reserved for the authenticated product and admin surfaces
     # so a 401 bootstrap response can never replace the login form.
     spa_prefixes = (
-        '/dashboard', '/studio', '/accounts', '/tasks', '/runs', '/subscription',
+        '/', '/dashboard', '/studio', '/accounts', '/tasks', '/runs', '/subscription',
         '/account-center', '/notifications', '/attention', '/help', '/admin',
     )
     @app.middleware('http')
@@ -234,14 +234,16 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         # reach their routers instead of being replaced by the React shell.
         is_api = (
             path.startswith('/api/')
-            or path == '/admin/diagnostics'
-            or path.startswith('/admin/tasks/groups/')
             or '/conversations' in path
             or '/health-' in path
             or '/directory-jobs' in path
             or '/scan/' in path
         )
-        if request.method == 'GET' and spa_index.exists() and not is_api and (
+        # The shell is only a presentation layer. Anonymous requests must
+        # continue through the established auth-aware handlers so protected
+        # routes keep their status codes and never expose an authenticated UI.
+        has_session = bool(request.cookies.get("spark_session"))
+        if request.method == 'GET' and has_session and spa_index.exists() and not is_api and (
             any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
         ):
             return FileResponse(spa_index, headers={'Cache-Control': 'no-cache'})

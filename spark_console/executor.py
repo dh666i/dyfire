@@ -568,7 +568,7 @@ class DouyinExecutor:
                 False,
                 ExecutionStage.SELECTING_TARGET,
                 "target_not_found",
-                "聊天列表在本次执行窗口内未完成目标好友同步，已安排有限重试",
+                "已滚动完整聊天列表并尝试搜索，仍未打开目标好友聊天窗口；已安排有限重试",
                 # A virtualized list can temporarily omit a real conversation.
                 # The scheduler bounds this to two delayed retries, so a real
                 # typo still becomes a terminal failure without spamming Douyin.
