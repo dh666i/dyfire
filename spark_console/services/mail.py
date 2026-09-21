@@ -14,9 +14,10 @@ from email.utils import formataddr
 from sqlalchemy import select, update
 from spark_console.db import session_scope
 from spark_console.models import (MailSettings, MailPreference, MailDelivery, MailAccountState,
-                                  DouyinAccount, User, UserSubscription, uuid_string, NotificationPolicy, PasswordReset)
+                                  DouyinAccount, User, UserSubscription, SparkTask, TaskRun,
+                                  uuid_string, NotificationPolicy, PasswordReset)
 
-EVENTS = {'account_alert':'账号需要验证', 'account_recovered':'账号已恢复', 'expiry':'会员即将到期'}
+EVENTS = {'account_alert':'账号需要验证', 'account_recovered':'账号已恢复', 'task_failed':'任务执行异常', 'expiry':'会员即将到期'}
 DEFAULTS = {
     'enabled':False, 'host':'', 'port':465, 'mode':'ssl', 'username':'', 'password':'',
     'sender':'', 'sender_name':'火花守护', 'events':list(EVENTS),
@@ -31,7 +32,16 @@ def aware(value):
 
 def load_config(db, cipher):
     row = db.get(MailSettings, 1)
-    return json.loads(cipher.decrypt(row.ciphertext, row.nonce)) if row else json.loads(json.dumps(DEFAULTS))
+    if not row:
+        return json.loads(json.dumps(DEFAULTS))
+    saved = json.loads(cipher.decrypt(row.ciphertext, row.nonce))
+    defaults = json.loads(json.dumps(DEFAULTS))
+    if not isinstance(saved, dict):
+        return defaults
+    merged = {**defaults, **saved}
+    merged['events'] = [event for event in saved.get('events', defaults['events']) if event in EVENTS]
+    merged['templates'] = {**defaults['templates'], **(saved.get('templates') or {})}
+    return merged
 
 
 def email_address(value):
@@ -140,6 +150,25 @@ def collect(db,config,now):
                 digest=hashlib.sha256('|'.join(sorted(keys[event])).encode()).hexdigest()
                 summary=('以下账号已恢复，已启用的任务将执行后续计划；错过的消息不补发：' if event=='account_recovered' else '以下账号需要你完成安全验证，相关任务暂缓发送：')+'、'.join(names)
                 enqueue(db,config,event,f'{event}:{user.id}:{digest}',user,pref.email,summary)
+        if 'task_failed' in config['events']:
+            failure_since = now - timedelta(hours=24)
+            failed = db.execute(
+                select(TaskRun, SparkTask)
+                .join(SparkTask, TaskRun.task_id == SparkTask.id)
+                .where(
+                    SparkTask.owner_user_id == user.id,
+                    TaskRun.scheduled_for >= failure_since,
+                    TaskRun.status.in_(('failed', 'submitted_unconfirmed')),
+                )
+                .order_by(TaskRun.scheduled_for.desc(), TaskRun.id.desc())
+                .limit(20)
+            ).all()
+            if failed:
+                bucket = now.astimezone(timezone.utc).strftime('%Y%m%d%H')
+                digest = hashlib.sha256('|'.join(sorted(run.id for run, _task in failed)).encode()).hexdigest()[:16]
+                names = '、'.join(dict.fromkeys(task.target_name for _run, task in failed))
+                summary = f'近 24 小时有 {len(failed)} 条任务需要关注：{names[:180]}。请打开执行记录查看诊断信息。'
+                enqueue(db, config, 'task_failed', f'task_failed:{user.id}:{bucket}:{digest}', user, pref.email, summary)
         subscription=db.get(UserSubscription,user.id)
         if subscription and 'expiry' in config['events']:
             days=(aware(subscription.valid_until)-now).total_seconds()/86400
