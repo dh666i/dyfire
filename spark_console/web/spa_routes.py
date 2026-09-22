@@ -29,6 +29,12 @@ from spark_console.models import (
 )
 from spark_console.services.account_health import views as account_health_views
 from spark_console.services.directory import profile_map, task_avatar_map
+from spark_console.services.accounts import AccountService
+from spark_console.services.tasks import TaskService
+from spark_console.services.audits import AuditService
+from spark_console.services import Conflict, NotFound, ValidationError
+from spark_console.services.users import UserService
+from spark_console.security import PasswordService
 from spark_console.web.membership import membership_summary
 from spark_console.web.auth import WebAuth
 from spark_console.web.admin_queries import admin_stats, list_audit_events, list_subscriptions
@@ -228,13 +234,18 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         ).all()
                     ],
                 }
+            subscription_map = {item.id: item for item in subscriptions}
             return {
                 "user": {"id": admin.id, "name": admin.username, "role": admin.role},
                 "csrf": record.csrf_token,
                 "stats": jsonable_encoder(stats),
                 "counts": {"users": users_total, "accounts": account_total, "tasks": task_total, "runs": run_total},
                 "users": [
-                    {"id": u.id, "username": u.username, "role": u.role, "status": u.status, "created": shanghai_time(u.created_at)}
+                    {"id": u.id, "username": u.username, "role": u.role, "status": u.status, "created": shanghai_time(u.created_at),
+                     "account_count": int(db.scalar(select(func.count(DouyinAccount.id)).where(DouyinAccount.owner_user_id == u.id)) or 0),
+                     "task_count": int(db.scalar(select(func.count(SparkTask.id)).where(SparkTask.owner_user_id == u.id)) or 0),
+                     "membership_status": getattr(subscription_map.get(u.id), "membership_status", "inactive"),
+                     "membership_label": getattr(subscription_map.get(u.id), "membership_label", "未开通")}
                     for u in users
                 ],
                 "groups": [
@@ -318,6 +329,124 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "total": users_total,
             }
 
+    @router.get("/api/admin/users/{user_id}/workspace")
+    def admin_user_workspace(request: Request, user_id: str):
+        """One customer workbench: identity, subscription, accounts, tasks and runs."""
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            user = db.get(User, user_id)
+            if user is None:
+                return JSONResponse({"detail": "用户不存在"}, status_code=404)
+            accounts = db.scalars(
+                select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id).order_by(DouyinAccount.created_at.desc())
+            ).all()
+            tasks = db.scalars(
+                select(SparkTask).where(SparkTask.owner_user_id == user.id).order_by(SparkTask.send_time, SparkTask.target_name)
+            ).all()
+            identities = {t.id: db.get(SparkTaskTargetIdentity, t.id) for t in tasks}
+            profiles = profile_map(db, [a.id for a in accounts])
+            avatars = task_avatar_map(db, tasks)
+            runs = db.execute(
+                select(TaskRun, SparkTask).join(SparkTask, TaskRun.task_id == SparkTask.id)
+                .where(SparkTask.owner_user_id == user.id)
+                .order_by(TaskRun.scheduled_for.desc()).limit(30)
+            ).all()
+            membership = membership_summary(db, user)
+            return {
+                "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at)},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "account_count", "task_count", "is_admin")},
+                "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health_views(db, [a]).get(a.id, {})} for a in accounts],
+                "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": identities[t.id].sec_uid if identities[t.id] else "", "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
+                "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
+            }
+
+    @router.post("/api/admin/users/{user_id}/toggle")
+    async def admin_toggle_user(request: Request, user_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            user = db.get(User, user_id)
+            if user is None:
+                return JSONResponse({"detail": "用户不存在"}, status_code=404)
+            if user.id == admin.id:
+                return JSONResponse({"detail": "不能停用当前管理员账号"}, status_code=400)
+            try:
+                updated = UserService(db, PasswordService(), AuditService(db)).set_disabled(admin.id, user.id, user.status == "active")
+            except NotFound as error:
+                return JSONResponse({"detail": str(error)}, status_code=404)
+            return {"ok": True, "status": updated.status}
+
+    @router.post("/api/admin/users/{user_id}/reset-password")
+    async def admin_reset_user_password(request: Request, user_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            try:
+                temporary = UserService(db, PasswordService(), AuditService(db)).reset_password(admin.id, user_id)
+            except NotFound as error:
+                return JSONResponse({"detail": str(error)}, status_code=404)
+            return {"ok": True, "temporary_password": temporary}
+
+    @router.patch("/api/admin/tasks/{task_id}")
+    async def admin_update_task(request: Request, task_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            task = db.get(SparkTask, task_id)
+            if task is None:
+                return JSONResponse({"detail": "任务不存在"}, status_code=404)
+            old_owner = task.owner_user_id
+            account_id = str(values.get("account_id") or task.douyin_account_id or "")
+            target_name = str(values.get("target_name") or task.target_name)
+            binding = db.get(SparkTaskTargetIdentity, task.id)
+            target_uid = str(values.get("target_sec_uid") or (binding.sec_uid if binding else ""))
+            try:
+                updated = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).update_owned(
+                    old_owner, task.id, account_id, target_name, str(values.get("send_time") or task.send_time),
+                    str(values.get("message_template") or ""), target_sec_uid=target_uid,
+                    message_kind=str(values.get("message_kind") or task.message_kind or "text"),
+                )
+            except (NotFound, ValidationError, Conflict) as error:
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            AuditService(db).write(admin.id, "admin.task.updated", "spark_task", updated.id)
+            return {"ok": True, "task": {"id": updated.id, "time": updated.send_time, "enabled": updated.enabled}}
+
+    @router.post("/api/admin/tasks/{task_id}/enabled")
+    async def admin_toggle_task(request: Request, task_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            task = db.get(SparkTask, task_id)
+            if task is None:
+                return JSONResponse({"detail": "任务不存在"}, status_code=404)
+            try:
+                updated = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).set_enabled_owned(task.owner_user_id, task.id, bool(values.get("enabled")))
+            except (NotFound, ValidationError, Conflict) as error:
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            AuditService(db).write(admin.id, "admin.task.enabled" if updated.enabled else "admin.task.disabled", "spark_task", updated.id)
+            return {"ok": True, "enabled": updated.enabled}
+
+    @router.delete("/api/admin/tasks/{task_id}")
+    async def admin_delete_task(request: Request, task_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            task = db.get(SparkTask, task_id)
+            if task is None:
+                return JSONResponse({"detail": "任务不存在"}, status_code=404)
+            owner_id = task.owner_user_id
+            try:
+                TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).delete_owned(owner_id, task.id)
+            except (NotFound, ValidationError, Conflict) as error:
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            AuditService(db).write(admin.id, "admin.task.deleted", "spark_task", task_id)
+            return {"ok": True}
+
     @router.get("/api/admin/diagnostics")
     def admin_diagnostics(request: Request):
         """Read-only diagnostics model for the canonical React operations page."""
@@ -376,6 +505,11 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     "time": row.send_time,
                     "enabled": row.enabled,
                     "account": row.account_name,
+                    "account_id": row.account.id if row.account else None,
+                    "owner_id": row.user.id,
+                    "message_kind": row.task.message_kind,
+                    "message": row.task.message_template,
+                    "target_sec_uid": (db.get(SparkTaskTargetIdentity, row.id).sec_uid if db.get(SparkTaskTargetIdentity, row.id) else ""),
                 } for row in rows],
                 "pagination": pagination,
             }

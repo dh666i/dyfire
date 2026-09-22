@@ -684,6 +684,23 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 @keyframes modal-out { to { opacity: 0; transform: translateY(10px) scale(.985); } }
 @keyframes empty-breathe { 0%,100% { opacity: .72; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
 @keyframes skeleton-shimmer { 0% { background-position: 150% 0; } 100% { background-position: -50% 0; } }
+.admin-user-row, .admin-row.compact { min-height: 58px; }
+.admin-cell-button { display: block; width: 100%; padding: 0; text-align: left; color: inherit; background: transparent; border: 0; cursor: pointer; }
+.admin-cell-button b, .admin-cell-button small, .admin-row > b small, .admin-row > span small { display: block; }
+.admin-cell-button:hover b { color: var(--orange); }
+.workspace-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 4px 0 18px; border-bottom: 1px solid var(--line); }
+.workspace-summary h3 { margin: 3px 0 4px; font-size: 24px; }
+.workspace-summary p { margin: 0; color: var(--muted); font-size: 12px; }
+.workspace-metrics { margin: 18px 0; }
+.workspace-section-card { margin-top: 12px; }
+.workspace-section-card .empty { min-height: 120px; }
+.workspace-actions { justify-content: flex-end; margin-top: 18px; }
+.admin-editor-form { padding-bottom: 4px; }
+.admin-editor-form .edit-target { display: flex; align-items: center; gap: 12px; padding: 4px 0 16px; border-bottom: 1px solid var(--line); }
+.admin-editor-form .edit-target > div { flex: 1; }
+.workspace-subscription-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.workspace-subscription-line b { color: var(--ink); }
+.workspace-subscription-line span { flex: 1; color: var(--muted); font-size: 12px; }
 @media (max-width: 700px) {
   .drawer-centered-backdrop { align-items: flex-end; padding: 0; }
   .drawer.drawer-centered { width: 100%; height: min(92dvh, 760px); max-height: calc(100dvh - 12px); border: 0; border-top: 1px solid rgba(24,23,23,.18); }
@@ -693,4 +710,8 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .drawer-centered .scan-stage { width: min(100%, 520px); aspect-ratio: 16 / 9; }
   .cloud-input-row { flex-direction: column; }
   .cloud-input-row .button { width: 100%; }
+  .workspace-summary { align-items: flex-start; }
+  .workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workspace-actions { flex-wrap: wrap; }
+  .workspace-actions .button { flex: 1 1 120px; }
 }
