@@ -701,6 +701,26 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .workspace-subscription-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .workspace-subscription-line b { color: var(--ink); }
 .workspace-subscription-line span { flex: 1; color: var(--muted); font-size: 12px; }
+.drawer-content { min-height: 0; }
+.drawer .workspace-summary { padding: 0 0 16px; }
+.drawer .workspace-summary h3 { font-family: Georgia, "Noto Serif SC", serif; font-size: 25px; font-weight: 500; letter-spacing: -.02em; }
+.drawer .workspace-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 16px 0 6px; }
+.drawer .workspace-metrics .metric { min-height: 100px; padding: 14px; box-shadow: none; }
+.drawer .workspace-metrics .metric:before, .drawer .workspace-metrics .metric:after { display: none; }
+.drawer .workspace-metrics .metric strong { font-size: 25px; }
+.workspace-section-card { padding: 18px 0; border-top: 1px solid var(--line); }
+.workspace-section-card .section-head { margin-bottom: 8px; }
+.workspace-section-card .section-head h3 { margin: 0; font-size: 16px; font-weight: 500; }
+.workspace-section-card .admin-row { margin: 0; padding: 12px 0; }
+.workspace-section-card .empty { min-height: 90px; padding: 24px 12px; }
+.admin-form-section { display: grid; gap: 15px; padding: 14px 0 4px; }
+.admin-form-section > label { gap: 7px; }
+.admin-locked-target { display: grid; gap: 5px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.admin-locked-target b { color: var(--ink); font-size: 14px; font-weight: 500; }
+.admin-locked-target small { font-size: 10px; }
+.admin-editor-form { gap: 14px; }
+.admin-editor-form .edit-target { padding: 2px 0 15px; }
+.admin-editor-form .setting-actions { position: sticky; bottom: -1px; z-index: 2; margin: 4px -2px -2px; padding: 12px 2px 2px; background: var(--surface-strong); border-top: 1px solid var(--line); }
 @media (max-width: 700px) {
   .drawer-centered-backdrop { align-items: flex-end; padding: 0; }
   .drawer.drawer-centered { width: 100%; height: min(92dvh, 760px); max-height: calc(100dvh - 12px); border: 0; border-top: 1px solid rgba(24,23,23,.18); }
@@ -714,4 +734,6 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-actions { flex-wrap: wrap; }
   .workspace-actions .button { flex: 1 1 120px; }
+  .drawer .workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .drawer .workspace-metrics .metric { min-height: 92px; }
 }
