@@ -110,6 +110,57 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(now + timedelta(days=1), task.next_run_at.replace(tzinfo=timezone.utc))
         session.close(); engine.dispose()
 
+    def test_superseded_retry_rows_leave_the_active_queue(self):
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        session = Session(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        user = User(username="retry-history-owner", password_hash="hash")
+        session.add(user); session.flush()
+        _activate(session, user, now)
+        account = DouyinAccount(
+            owner_user_id=user.id,
+            display_name="main",
+            encrypted_cookies=b"x",
+            cookie_nonce=b"n",
+        )
+        session.add(account); session.flush()
+        task = SparkTask(
+            owner_user_id=user.id,
+            douyin_account_id=account.id,
+            target_name="好友",
+            send_time="09:00",
+            message_template="今日火花",
+            enabled=True,
+            next_run_at=now + timedelta(days=1),
+        )
+        session.add(task); session.flush()
+        old_retry = TaskRun(
+            task_id=task.id,
+            scheduled_for=now - timedelta(minutes=5),
+            status="retrying",
+            stage="selecting_target",
+            attempt=1,
+            retry_after=now - timedelta(minutes=4),
+            error_code="target_retry_scheduled_1m",
+        )
+        later = TaskRun(
+            task_id=task.id,
+            scheduled_for=now,
+            status="success",
+            stage="complete",
+            attempt=1,
+            finished_at=now,
+        )
+        session.add_all([old_retry, later]); session.commit()
+
+        self.assertIsNone(claim_next_due_task(session, now, "cleanup-worker"))
+        session.commit(); session.refresh(old_retry)
+        self.assertEqual("failed", old_retry.status)
+        self.assertEqual("retry_superseded", old_retry.error_code)
+        self.assertIsNone(old_retry.retry_after)
+        session.close(); engine.dispose()
+
     def test_expired_unsubmitted_run_is_reclaimed_without_creating_duplicate(self):
         engine = create_engine("sqlite:///:memory:")
         create_schema(engine)

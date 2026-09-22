@@ -118,10 +118,47 @@ def _reclaim_expired_run(
     return session.get(TaskRun, candidate_id)
 
 
+def _close_superseded_retries(session: Session, now_utc: datetime) -> None:
+    """Close retry rows that already have a later execution for the task.
+
+    Generic retries create one ``TaskRun`` per attempt, while health retries
+    reuse the same row.  When a later daily run succeeds (or reaches a final
+    state), the older generic rows must stop appearing as active queue work.
+    They are still retained as failed attempts and are never replayed.
+    """
+    retrying = session.scalars(
+        select(TaskRun)
+        .where(TaskRun.status == "retrying", TaskRun.submitted_at.is_(None))
+        .order_by(TaskRun.scheduled_for, TaskRun.id)
+    ).all()
+    for run in retrying:
+        later = session.scalar(
+            select(TaskRun.id)
+            .where(
+                TaskRun.task_id == run.task_id,
+                TaskRun.id != run.id,
+                TaskRun.scheduled_for > run.scheduled_for,
+                TaskRun.status != "retrying",
+            )
+            .limit(1)
+        )
+        if later is None:
+            continue
+        finish_run(
+            run,
+            "failed",
+            run.stage or "selecting_target",
+            now_utc,
+            "retry_superseded",
+            "该次重试已由后续执行记录接替，未进入发送步骤",
+        )
+
+
 def claim_next_due_task(
     session: Session, now: datetime, worker_id: str
 ) -> TaskRun | None:
     now_utc = _utc(now)
+    _close_superseded_retries(session, now_utc)
     from spark_console.health_retry import queue_blocked_tasks
     queue_blocked_tasks(session, now_utc)
     _protect_expired_submissions(session, now_utc)

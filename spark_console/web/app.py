@@ -253,7 +253,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         if request.method == 'GET' and has_session and spa_index.exists() and not is_api and not server_owned and (
             any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
         ):
-            return FileResponse(spa_index, headers={'Cache-Control': 'no-cache'})
+            cache_control = 'no-store' if path.startswith('/admin') else 'no-cache'
+            return FileResponse(spa_index, headers={'Cache-Control': cache_control})
         return await call_next(request)
 
     def page(request: Request, name: str, status_code: int = 200, **context):
