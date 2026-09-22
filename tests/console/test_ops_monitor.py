@@ -484,10 +484,10 @@ class OperationsWebTests(unittest.TestCase):
             page = self.client.get("/admin/operations")
         self.assertEqual(200, page.status_code)
         self.assertEqual("no-store", page.headers["cache-control"])
-        self.assertIn('data-operations-monitor', page.text)
-        self.assertIn('href="/admin/operations"', page.text)
-        self.assertRegex(page.text, r'admin_operations\.css\?v=\d{8}-ops\d+')
-        self.assertRegex(page.text, r'admin_operations\.js\?v=\d{8}-(?:ops)?\d+')
+        self.assertIn('<div id="app"></div>', page.text)
+        self.assertIn('/assets/index-', page.text)
+        self.assertNotIn('admin_operations.css', page.text)
+        self.assertNotIn('admin_operations.js', page.text)
 
         with patch(
             "spark_console.web.auth.membership_summary",

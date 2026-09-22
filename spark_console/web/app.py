@@ -261,7 +261,17 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         server_owned = (
             path == '/admin/diagnostics'
             or path.startswith('/admin/tasks/groups/')
+            or path in ('/admin/operations/snapshot', '/admin/operations/history')
         )
+        admin_surface = path.startswith('/admin') and not is_api and not server_owned
+        if request.method == 'GET' and has_session and admin_surface:
+            try:
+                with session_scope(engine) as db:
+                    current_user, _record = auth.current(request, db)
+                if current_user.role != 'admin':
+                    return await call_next(request)
+            except HTTPException:
+                return await call_next(request)
         auth_shell = (
             request.method == 'GET'
             and spa_index.exists()

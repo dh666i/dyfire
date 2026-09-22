@@ -4,7 +4,8 @@ The existing command and automation endpoints remain the source of truth.  These
 small read models keep the browser shell independent from the legacy templates
 without duplicating any task or account mutation logic.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, Query
 from fastapi.encoders import jsonable_encoder
@@ -77,15 +78,28 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             health = account_health_views(db, accounts)
             profiles = profile_map(db, [a.id for a in accounts])
             now = datetime.now(timezone.utc)
+            shanghai = ZoneInfo("Asia/Shanghai")
+            local_now = now.astimezone(shanghai)
+            today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
             runs = db.scalars(
                 select(TaskRun)
                 .join(SparkTask)
                 .where(
                     SparkTask.owner_user_id == user.id,
-                    TaskRun.scheduled_for >= now.replace(hour=0, minute=0, second=0, microsecond=0),
+                    TaskRun.scheduled_for >= today_start,
                 )
                 .order_by(TaskRun.scheduled_for.desc())
                 .limit(80)
+            ).all()
+            recent_run_rows = db.execute(
+                select(TaskRun, SparkTask)
+                .join(SparkTask)
+                .where(
+                    SparkTask.owner_user_id == user.id,
+                    TaskRun.scheduled_for >= now - timedelta(days=7),
+                )
+                .order_by(TaskRun.scheduled_for.desc())
+                .limit(30)
             ).all()
             latest = {}
             for run in runs:
@@ -130,6 +144,19 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "guidance": run_guidance(r),
                     }
                     for r in runs
+                ],
+                "recentRuns": [
+                    {
+                        "id": r.id,
+                        "name": task.target_name,
+                        "status": r.status,
+                        "label": run_view_status(r)["label"],
+                        "stage": RUN_STAGE_LABELS.get(r.stage, r.stage),
+                        "time": shanghai_time(r.scheduled_for),
+                        "error": r.error_summary,
+                        "guidance": run_guidance(r),
+                    }
+                    for r, task in recent_run_rows
                 ],
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "can_add_task")},
             }

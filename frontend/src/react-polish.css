@@ -254,6 +254,7 @@ html[data-theme="light"] .next-card { background: #2c2926; }
   min-width: 0;
 }
 .mosaic-toolbar { grid-area: toolbar; display:flex; justify-content:space-between; align-items:center; gap:18px; padding:0 0 19px; border-bottom:1px solid var(--hairline); }
+.dashboard-mosaic .mosaic-toolbar { padding-right: 238px; }
 .mosaic-toolbar > div:first-child { display:flex; align-items:baseline; gap:14px; }
 .mosaic-date { color:#8e867d; font-size:11px; }
 .mosaic-actions { display:flex; align-items:center; gap:8px; }
@@ -287,6 +288,7 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .health-metrics b { color:var(--ink-dark); font:500 17px var(--mono); }
 .health-metrics small { color:var(--ink-soft); font-size:9px; }
 .mosaic-task-list { margin:17px -24px 0; }
+.mosaic-task-list { max-height: 330px; overflow: auto; }
 .mosaic-task-row { display:flex; align-items:center; gap:10px; min-height:55px; padding:10px 24px; border-top:1px solid rgba(24,23,23,.14); color:var(--ink-dark); }
 .mosaic-task-row:hover { background:rgba(255,255,255,.22); }
 .mosaic-task-row .grow { display:grid; gap:4px; }
@@ -300,6 +302,7 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .mosaic-contact-head h2 { color:var(--paper-strong); font:500 22px Georgia,"Noto Serif SC",serif; margin:0; }
 .mosaic-contact-head strong { color:var(--paper-strong); font:500 18px var(--mono); }
 .mosaic-contact-list { display:grid; }
+.mosaic-contact-list { max-height: 430px; overflow-y: auto; }
 .mosaic-contact-list a { display:flex; align-items:center; gap:9px; min-height:51px; border-bottom:1px solid rgba(237,227,214,.15); color:var(--paper-strong); }
 .mosaic-contact-list b { font-size:11px; font-weight:500; }
 .mosaic-contacts p { color:#928a80; font-size:10px; line-height:1.6; }
@@ -322,10 +325,12 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .mosaic-create h2 { font:500 22px Georgia,"Noto Serif SC",serif; margin:22px 0 10px; }
 .mosaic-create p { font-size:10px; line-height:1.7; margin:0 0 auto; }
 .mosaic-create .button { width:100%; min-height:39px; background:#1c0f09; color:var(--paper-strong); border-color:#1c0f09; }
+.bell-icon { width: 20px; height: 20px; display:block; }
 
 @media (max-width: 1180px) {
   .dashboard-mosaic { grid-template-columns:minmax(210px,.8fr) minmax(300px,1.2fr) minmax(260px,1fr); grid-template-areas:"toolbar toolbar toolbar" "hero health tasks" "hero runs contacts" "subscription subscription create"; }
   .mosaic-contacts { min-height:282px; }
+  .dashboard-mosaic .mosaic-toolbar { padding-right: 0; }
 }
 @media (max-width: 760px) {
   .dashboard-mosaic { display:grid; grid-template-columns:1fr; grid-template-areas:"toolbar" "health" "tasks" "hero" "runs" "contacts" "subscription" "create"; gap:8px; }
