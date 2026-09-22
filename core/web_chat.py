@@ -416,7 +416,18 @@ async def _click_first_visible_and_wait(page, locator) -> bool:
         try:
             visible = getattr(match, "is_visible", None)
             if callable(visible) and not await visible():
-                continue
+                # Virtualized conversation lists can keep the stable identity
+                # node mounted outside the viewport. Bring that exact node
+                # into view before deciding it is unavailable; otherwise a
+                # valid friend can be incorrectly classified as missing.
+                reveal = getattr(match, "scroll_into_view_if_needed", None)
+                if callable(reveal):
+                    try:
+                        await reveal(timeout=2000)
+                    except Exception:
+                        pass
+                if not await visible():
+                    continue
             if await _click_conversation_row(page, match):
                 return True
         except Exception:
@@ -444,7 +455,10 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=(), target
     # Give the virtualized list enough time to hydrate, but keep the whole
     # selection bounded. Identity matching below avoids waiting on text when
     # the nickname/remark has changed.
-    deadline = loop.time() + max(3.0, min(14.0, timeout / 1000))
+    # A cold/virtualized Douyin chat list may need several render/scroll
+    # turns before a stable target is mounted. Keep selection bounded, but do
+    # not cap a 45-second caller timeout at the old 14-second window.
+    deadline = loop.time() + max(5.0, min(36.0, timeout / 1000))
 
     if target_sec_uid and await _select_web_chat_target_by_identity(page, target_sec_uid):
         return normalized_target
@@ -505,6 +519,13 @@ async def select_web_chat_target(page, target, timeout=30000, aliases=(), target
             field = search.first
             for candidate in candidates:
                 await field.fill(candidate)
+                # Some Douyin builds debounce only after an explicit submit;
+                # pressing Enter is harmless here and makes the search path
+                # deterministic across desktop and headless layouts.
+                try:
+                    await field.press("Enter")
+                except Exception:
+                    pass
                 results = await _wait_for_visible_search_results(
                     page, candidate, timeout, target_sec_uid
                 )
