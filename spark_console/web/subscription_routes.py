@@ -149,7 +149,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
         csrf_token: str = Form(default=""),
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
-        max_tasks: int = Form(default=20),
+        max_tasks: int = Form(default=10),
         quantity: int = Form(default=1),
     ):
         with session_scope(engine) as db:
@@ -200,7 +200,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
         csrf_token: str = Form(default=""),
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
-        max_tasks: int = Form(default=20),
+        max_tasks: int = Form(default=10),
     ):
         with session_scope(engine) as db:
             admin, record, _context = auth.admin_context(request, db)

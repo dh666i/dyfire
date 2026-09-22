@@ -261,7 +261,7 @@ class UserSubscription(Base):
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     max_accounts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    max_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    max_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )

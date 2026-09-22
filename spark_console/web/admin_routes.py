@@ -870,7 +870,7 @@ def build_admin_router(
         csrf_token: str = Form(default=""),
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
-        max_tasks: int = Form(default=20),
+        max_tasks: int = Form(default=10),
     ):
         with session_scope(engine) as db:
             admin, record, _context = auth.admin_context(request, db)
@@ -895,7 +895,7 @@ def build_admin_router(
         user_id: str,
         csrf_token: str = Form(default=""),
         max_accounts: int = Form(default=1),
-        max_tasks: int = Form(default=20),
+        max_tasks: int = Form(default=10),
     ):
         with session_scope(engine) as db:
             admin, record, _context = auth.admin_context(request, db)
@@ -982,7 +982,7 @@ def build_admin_router(
         csrf_token: str = Form(default=""),
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
-        max_tasks: int = Form(default=20),
+        max_tasks: int = Form(default=10),
         quantity: int = Form(default=1),
     ):
         with session_scope(engine) as db:

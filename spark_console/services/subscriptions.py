@@ -21,7 +21,7 @@ from spark_console.services.audits import AuditService
 
 
 DEFAULT_MAX_ACCOUNTS = 1
-DEFAULT_MAX_TASKS = 20
+DEFAULT_MAX_TASKS = 10
 MAX_SUBSCRIPTION_DAYS = 36_500
 INVALID_CODE = "兑换码无效或已使用"
 INACTIVE_SUBSCRIPTION = "会员未开通或已过期"

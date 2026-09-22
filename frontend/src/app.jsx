@@ -39,8 +39,9 @@ const routes = [
   ['/runs','执行记录','↻'], ['/subscription','订阅管理','◇'], ['/account-center','账户中心','◎'],
 ];
 const adminRoutes = [
-  ['/admin/overview','业务概览','▦'], ['/admin/today','今日发送','◷'], ['/admin/users','用户管理','♙'], ['/admin/subscriptions','订阅管理','◇'],
-  ['/admin/codes','兑换码','⌁'], ['/admin/tasks','任务管理','≡'], ['/admin/runs','执行记录','↻'],
+  ['/admin/overview','业务概览','▦'], ['/admin/today','今日发送','◷'],
+  ['/admin/users','用户管理','♙'], ['/admin/subscriptions','订阅管理','◇'], ['/admin/codes','兑换码','⌁'],
+  ['/admin/tasks','任务管理','≡'], ['/admin/runs','执行记录','↻'],
   ['/admin/operations','运维监控','▥'], ['/admin/diagnostics','执行诊断','⌁'], ['/admin/audit','审计日志','≋'], ['/admin/settings','系统设置','⚙'],
 ];
 
@@ -62,11 +63,11 @@ function previewData() {
   return {
     user:{name:'演示用户', role:new URLSearchParams(window.location.search).has('admin')?'admin':'user'}, csrf:'preview-csrf',
     accounts:[account], tasks, runs, recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':'danger'})),
-    membership:{active:true, can_add_task:true, max_tasks:20, days_remaining:27, status_label:'专业版 · 有效中'},
+    membership:{active:true, can_add_task:true, max_tasks:10, days_remaining:27, status_label:'专业版 · 有效中'},
     counts:{users:18, accounts:26, tasks:74, runs:1260},
     users:[{id:'preview-user-1',username:'演示用户',role:'user',status:'active',created:'2026-09-01'},{id:'preview-user-2',username:'管理员',role:'admin',status:'active',created:'2026-08-21'}],
-    subscriptions:[{id:'preview-user-1',username:'演示用户',account_count:1,task_count:3,membership_status:'active',membership_label:'有效',valid_until:'2026-10-18',max_accounts:2,max_tasks:20}],
-    redemptionCodes:[{id:'DYFIRE-DEMO-30',status:'待兑换',expires_at:'2026-10-20',max_accounts:1,max_tasks:20}],
+    subscriptions:[{id:'preview-user-1',username:'演示用户',account_count:1,task_count:3,membership_status:'active',membership_label:'有效',valid_until:'2026-10-18',max_accounts:2,max_tasks:10}],
+    redemptionCodes:[{id:'DYFIRE-DEMO-30',status:'待兑换',expires_at:'2026-10-20',max_accounts:1,max_tasks:10}],
     groups:[{owner_id:'preview-user-1',account_id:account.id,username:'演示用户',remark:'我的抖音账号',nickname:'火花用户',total:3,enabled:2,validation_state:'valid'}],
     operations:{refresh_interval_seconds:30,system:{scope_label:'本地预览服务器',cpu:{percent:18},memory:{percent:42},disk:{percent:37}},services:{worker:{status:'运行中',label:'运行中'}}},
     audit:[{id:'preview-audit-1',event:'任务发送',subject_type:'task_run',created_at:'2026-09-21T09:30:00+08:00',detail:'小琪 · 已发出'}],
@@ -120,7 +121,7 @@ function Icon({children}) { return <span className="icon" aria-hidden="true">{ch
 function BellIcon() { return <svg className="bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
 function Logo() {
   const [missing, setMissing] = useState(false);
-  return <Link className="brand" to="/dashboard" aria-label="火花首页"><span className="brand-mark">{missing?'✦':<img src="/static/spark-flame.png" alt="" onError={()=>setMissing(true)} />}</span><span className="brand-copy"><b>火花</b><small>抖音 Spark 自动续费服务</small></span></Link>;
+  return <Link className="brand" to="/dashboard" aria-label="火花首页"><span className="brand-mark">{missing?'✦':<img src="/static/spark-flame.png" alt="" onError={()=>setMissing(true)} />}</span><span className="brand-copy"><b>火花</b><small>抖音自动续火花服务</small></span></Link>;
 }
 function Button({children, variant='', type='button', ...props}) { return <button type={type} className={`button ${variant}`} {...props}>{children}</button>; }
 function Badge({children, tone='neutral'}) { return <span className={`badge ${tone}`}><i />{children}</span>; }
@@ -349,6 +350,12 @@ function Admin({data,onRefresh}) {
     }
     if(isTaskGroup && groupParts.length===2) api(`/api/admin/tasks/groups/${groupParts[0]}/${groupParts[1]}`).then(setGroupDetail).catch(e=>setFeedback(e.message));
   },[query,section,isMail,isTaskGroup,path]);
+  useEffect(()=>{
+    if(section==='codes'){
+      const field=document.getElementById('code-tasks');
+      if(field && field.value==='20'){field.defaultValue='10';field.value='10';}
+    }
+  },[section]);
   const title={overview:'业务概览',today:'今日发送',users:'用户管理',customers:'客户详情',subscriptions:'订阅管理',codes:'兑换码',tasks:'任务管理','task-group':'任务明细',runs:'执行记录',operations:'运维监控',diagnostics:'执行诊断',audit:'审计日志',settings:'系统设置'}[section]||'管理后台';
   const counts=data.counts||{};
   const submit=async (path, fields)=>{
