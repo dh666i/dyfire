@@ -35,11 +35,8 @@ def site():
 def test_routes_use_new_design_and_valid_assets(site,path):
     response=site.real_client.get(path)
     assert response.status_code==200,path
-    if path not in ('/login','/register','/forgot-password','/change-password'):
-        assert '<div id="app"></div>' in response.text,path
-        assert '/assets/index-' in response.text,path
-    else:
-        assert '<form' in response.text,path
+    assert '<div id="app"></div>' in response.text,path
+    assert '/assets/index-' in response.text,path
     inventory=Inventory(response.text)
     assert len(inventory.ids)==len(set(inventory.ids)),(path,'duplicate ids')
     assert len(inventory.scripts)==len(set(inventory.scripts)),(path,'duplicate script initialization')

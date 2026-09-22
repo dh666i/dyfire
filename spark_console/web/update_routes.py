@@ -29,6 +29,11 @@ def build_update_router(engine, auth):
             try:
                 state = json.loads((directory() / 'status.json').read_text())
                 result.update(state)
+                try:
+                    web = json.loads((directory().parent / 'web-installed.json').read_text())
+                    result['web_current'] = web.get('version')
+                except (OSError, ValueError):
+                    result['web_current'] = result['current']
                 result['online'] = time.time() - state.get('heartbeat', 0) < 90
             except (OSError, ValueError):
                 result['online'] = False
@@ -36,14 +41,14 @@ def build_update_router(engine, auth):
 
     @router.post('/api/admin/updates/{action}')
     async def queue(action: str, request: Request):
-        if action not in ('check', 'install'):
+        if action not in ('check', 'install', 'install-web'):
             raise HTTPException(404)
         body = await request.json()
         with session_scope(engine) as db:
             user, record, _ = auth.admin_context(request, db)
             auth.csrf(record, request.headers.get('X-CSRF-Token', ''))
             target = body.get('version', '')
-            if action == 'install':
+            if action in ('install', 'install-web'):
                 import re
                 if not isinstance(target, str) or not re.fullmatch(r'\d+\.\d+\.\d+', target):
                     raise HTTPException(400, '请选择有效的发行版本')

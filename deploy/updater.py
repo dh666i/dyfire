@@ -21,6 +21,7 @@ STATE = {}
 REPOSITORY = 'dh666i/dyfire'
 IMAGE = 'ghcr.io/dh666i/dyfire'
 SERVICES = ['spark-web', 'spark-auth', 'spark-worker', 'spark-monitor']
+WEB_SERVICES = ['spark-web']
 COMPOSE_PROJECT = os.environ.get('DYFIRE_COMPOSE_PROJECT', 'dyfire')
 
 
@@ -158,6 +159,35 @@ def install(target):
         raise
 
 
+def install_web(target):
+    """Update only the React/API web container.
+
+    Auth, worker and monitor keep their current image and process state. This
+    is suitable for presentation/API-only releases; schema or worker changes
+    must still use the full ``install`` path.
+    """
+    release = latest()
+    current_file = ROOT / 'installed.json'
+    current = json.loads(current_file.read_text())
+    if release['version'] != target or version(target) <= version(current['version']):
+        raise ValueError('版本已变化或不高于当前版本，请重新检查更新')
+    if current.get('schema') != release['schema']:
+        raise ValueError('数据结构不兼容')
+    write_state(phase='web_pulling', message='正在下载 Web 版本')
+    compose(release['image'], 'pull', *WEB_SERVICES)
+    try:
+        write_state(phase='web_installing', message='正在切换 Web 服务，发送服务保持运行')
+        compose(release['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
+        ready(target)
+        temp = ROOT / 'web-installed.tmp'
+        temp.write_text(json.dumps(release))
+        temp.replace(ROOT / 'web-installed.json')
+        write_state(phase='web_complete', message='Web 更新完成，发送服务未重启', web_installed=target)
+    except Exception:
+        write_state(phase='web_failed', message='Web 更新未通过健康检查')
+        raise
+
+
 def main():
     QUEUE.mkdir(exist_ok=True)
     with (ROOT / 'updater.lock').open('w') as lock:
@@ -176,6 +206,8 @@ def main():
                         write_state(phase='checked', latest=item['version'], message='版本检查完成')
                     elif data['action'] == 'install':
                         install(data['version'])
+                    elif data['action'] == 'install-web':
+                        install_web(data['version'])
                     else:
                         raise ValueError('不支持的操作')
                 except Exception:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urlencode
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -206,6 +207,16 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     def version_info():
         from spark_console.version import VERSION
         return {'version': VERSION}
+
+    @app.get('/api/auth/bootstrap')
+    def auth_bootstrap(request: Request):
+        with session_scope(engine) as db:
+            user, record = auth.current(request, db, allow_change=True)
+            return {
+                'csrf': record.csrf_token,
+                'username': user.username,
+                'must_change_password': bool(user.must_change_password),
+            }
     registration_limiter = FailedAttemptLimiter()
     login_limiter = FailedAttemptLimiter()
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
@@ -227,6 +238,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         '/dashboard', '/studio', '/accounts', '/tasks', '/runs', '/subscription',
         '/account-center', '/notifications', '/attention', '/help', '/admin',
     )
+    public_auth_prefixes = ('/login', '/register', '/forgot-password')
     @app.middleware('http')
     async def single_frontend(request: Request, call_next):
         path = request.url.path
@@ -250,6 +262,14 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             path == '/admin/diagnostics'
             or path.startswith('/admin/tasks/groups/')
         )
+        auth_shell = (
+            request.method == 'GET'
+            and spa_index.exists()
+            and not is_api
+            and (path in public_auth_prefixes or (path == '/change-password' and has_session))
+        )
+        if auth_shell:
+            return FileResponse(spa_index, headers={'Cache-Control': 'no-store'})
         if request.method == 'GET' and has_session and spa_index.exists() and not is_api and not server_owned and (
             any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
         ):
@@ -258,6 +278,26 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         return await call_next(request)
 
     def page(request: Request, name: str, status_code: int = 200, **context):
+        if request.method == 'POST' and name in {
+            'login.html', 'register.html', 'forgot_password.html', 'change_password.html'
+        }:
+            params = {}
+            if context.get('error'):
+                params['error'] = str(context['error'])[:240]
+            form = context.get('form') or {}
+            username = context.get('username_value') or context.get('username') or form.get('username')
+            if username:
+                params['username'] = str(username)[:64]
+            if form.get('invite_code'):
+                params['invite_code'] = str(form['invite_code'])[:128]
+            if context.get('sent'):
+                params['sent'] = '1'
+            if context.get('registered'):
+                params['registered'] = '1'
+            location = str(request.url.path)
+            if params:
+                location += '?' + urlencode(params)
+            return RedirectResponse(location, status_code=303)
         notice = UI_NOTICES.get(request.query_params.get("notice", ""))
         if notice and "ui_notice" not in context:
             context["ui_notice"] = {"tone": notice[0], "message": notice[1]}

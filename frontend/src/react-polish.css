@@ -14,6 +14,40 @@
   --dark-panel-strong: #151515;
 }
 
+.auth-shell { min-height: 100vh; display:grid; grid-template-columns:minmax(0,1.05fr) minmax(380px,.95fr); background:var(--canvas); color:var(--paper-strong); }
+.auth-art { min-height:100vh; padding:clamp(32px,6vw,78px); display:flex; flex-direction:column; justify-content:space-between; background:#090a0a; border-right:1px solid var(--hairline); position:relative; overflow:hidden; }
+.auth-art::after { content:""; position:absolute; width:70%; aspect-ratio:1; right:-18%; bottom:-24%; background:radial-gradient(circle,rgba(255,90,31,.78),rgba(255,90,31,.08) 37%,transparent 70%); opacity:.72; pointer-events:none; }
+.auth-art>* { position:relative; z-index:1; }
+.auth-art-title { max-width:8ch; font:500 clamp(52px,7vw,108px)/.86 Georgia,"Noto Serif SC",serif; letter-spacing:-.1em; }
+.auth-art-title span { color:var(--orange); }
+.auth-art-mark { width:128px; height:158px; display:grid; place-items:center; align-content:center; gap:9px; background:var(--orange); color:#211712; font-size:52px; }
+.auth-art-mark small { font:500 10px/1.35 var(--mono); letter-spacing:.16em; }
+.auth-art p { color:#aaa197; font:13px/1.8 Georgia,"Noto Serif SC",serif; }
+.auth-panel { width:min(560px,100%); align-self:center; padding:clamp(30px,6vw,86px); }
+.auth-tabs { display:flex; gap:26px; border-bottom:1px solid var(--hairline); margin-bottom:42px; }
+.auth-tabs a { color:#968b80; padding:0 0 12px; font-size:13px; border-bottom:2px solid transparent; }
+.auth-tabs a.active { color:var(--paper-strong); border-color:var(--orange); }
+.auth-heading { display:grid; gap:13px; margin-bottom:27px; }
+.auth-heading h1 { margin:0; font:500 clamp(31px,4vw,48px)/1.05 Georgia,"Noto Serif SC",serif; letter-spacing:-.06em; }
+.auth-heading p { margin:0; color:#aaa197; font-size:12px; line-height:1.7; }
+.auth-form { display:grid; gap:17px; }
+.auth-field { display:grid; gap:8px; color:#aaa197; font-size:11px; }
+.auth-field small { color:#81786f; font-size:10px; line-height:1.5; }
+.auth-field input { width:100%; height:44px; border:1px solid var(--hairline); background:var(--dark-panel); color:var(--paper-strong); padding:0 12px; outline:none; border-radius:0; }
+.auth-field input:focus { border-color:var(--orange); box-shadow:0 0 0 3px rgba(255,90,31,.14); }
+.auth-password { position:relative; display:block; }
+.auth-password input { padding-right:56px; }
+.auth-password-toggle { position:absolute; right:8px; top:7px; min-width:40px; height:30px; border:0; background:transparent; color:#aaa197; font-size:10px; cursor:pointer; }
+.auth-submit { min-height:44px; margin-top:5px; border:0; background:var(--orange); color:#190e08; font-size:12px; font-weight:600; display:flex; justify-content:center; align-items:center; gap:9px; cursor:pointer; }
+.auth-submit:hover { filter:brightness(1.08); transform:translateY(-1px); }
+.auth-notice { border-left:2px solid var(--orange); padding:10px 12px; margin-bottom:18px; color:#c8bdae; background:rgba(255,90,31,.08); font-size:11px; line-height:1.6; }
+.auth-notice.good { border-color:var(--green-bright); background:rgba(95,197,138,.08); }
+.auth-notice.danger { border-color:#e4776e; background:rgba(228,119,110,.08); }
+.auth-footer { display:grid; gap:12px; margin-top:25px; color:#aaa197; font-size:11px; }
+.auth-footer a { color:var(--orange-soft); }
+.auth-footer small { color:#81786f; font-size:10px; }
+@media(max-width:760px){.auth-shell{grid-template-columns:1fr}.auth-art{min-height:245px;padding:25px 22px}.auth-art-title{font-size:47px}.auth-art-mark{position:absolute;right:20px;bottom:22px;width:100px;height:116px;font-size:38px}.auth-art p{font-size:11px;margin:0}.auth-panel{width:100%;padding:30px 22px 44px}.auth-tabs{margin-bottom:30px}}
+
 html, body { background: var(--canvas); }
 body { color: var(--paper-strong); background: var(--canvas); overflow-x: hidden; }
 body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .08; z-index: 0; background-image: linear-gradient(rgba(255,255,255,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px); background-size: 64px 64px; mask-image: linear-gradient(to bottom, #000, transparent 86%); }

@@ -47,6 +47,14 @@ def test_queue_is_exclusive_and_validates_version(setup):
     assert json.loads((root/'requests/request.json').read_text())['version']=='0.2.0'
 
 
+def test_web_only_action_is_available(setup):
+    client, root = setup
+    headers={'Role':'admin','X-CSRF-Token':'csrf'}
+    response = client.post('/api/admin/updates/install-web', json={'version':'0.2.0'}, headers=headers)
+    assert response.status_code == 200
+    assert json.loads((root/'requests/request.json').read_text())['action'] == 'install-web'
+
+
 def test_unconfigured_is_explicit(setup, monkeypatch):
     client, _ = setup
     monkeypatch.delenv('DYFIRE_UPDATE_DIR')

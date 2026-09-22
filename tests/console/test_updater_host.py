@@ -69,3 +69,14 @@ def test_arbitrary_image_rejected(host):
     (module.ROOT/'installed.json').write_text(json.dumps(previous))
     with pytest.raises(ValueError,match='固定镜像'):module.install('0.2.0')
     assert calls==[]
+
+
+def test_web_install_keeps_other_services_running(host,monkeypatch):
+    module,previous,target,calls=host
+    monkeypatch.setattr(module,'ready',lambda _:None)
+    module.install_web('0.2.0')
+    assert calls == [(target['image'], 'pull', 'spark-web'),
+                     (target['image'], 'up', '-d', '--no-build', 'spark-web')]
+    assert json.loads((module.ROOT/'installed.json').read_text()) == previous
+    assert json.loads((module.ROOT/'web-installed.json').read_text()) == target
+    assert module.STATE['phase'] == 'web_complete'
