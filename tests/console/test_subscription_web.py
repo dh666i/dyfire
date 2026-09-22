@@ -172,6 +172,19 @@ class SubscriptionWebTests(unittest.TestCase):
         with Session(self.engine) as db:
             self.assertIsNone(db.get(UserSubscription, self.customer.id))
 
+    def test_redeem_api_returns_json_and_updates_membership(self):
+        self.login("customer", "CustomerPass123")
+        with Session(self.engine) as db:
+            _record, plaintext = SubscriptionService(db, AuditService(db)).create_redemption_code(
+                self.admin.id, duration_days=30, max_accounts=2, max_tasks=8
+            )
+            db.commit()
+        csrf = self.client.get('/api/app/bootstrap').json()['csrf']
+        response = self.client.post('/api/subscription/redeem', json={'csrf_token': csrf, 'code': plaintext})
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(response.json()['ok'])
+        self.assertEqual(8, response.json()['membership']['max_tasks'])
+
 
 if __name__ == "__main__":
     unittest.main()

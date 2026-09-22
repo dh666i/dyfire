@@ -104,6 +104,30 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
                 )
         return RedirectResponse("/subscription?redeemed=1", status_code=303)
 
+    @router.post("/api/subscription/redeem")
+    async def redeem_subscription_api(request: Request):
+        payload = await request.json()
+        code = str(payload.get("code") or "").strip()
+        with session_scope(engine) as db:
+            user, record = auth.current(request, db)
+            auth.csrf(record, payload.get("csrf_token", ""))
+            try:
+                subscription = SubscriptionService(db, AuditService(db)).redeem(user.id, code)
+            except (ValidationError, Conflict) as error:
+                return JSONResponse({"ok": False, "message": str(error)}, status_code=400)
+            summary = membership_summary(db, user)
+            return JSONResponse({
+                "ok": True,
+                "message": "兑换成功",
+                "membership": {
+                    "active": summary.get("active"),
+                    "status_label": summary.get("status_label"),
+                    "days_remaining": summary.get("days_remaining"),
+                    "max_accounts": summary.get("max_accounts"),
+                    "max_tasks": summary.get("max_tasks"),
+                },
+            })
+
     @router.post('/subscription/preview')
     def preview_redemption(request:Request,csrf_token:str=Form(''),code:str=Form('')):
         from datetime import timedelta

@@ -326,6 +326,8 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .mosaic-create p { font-size:10px; line-height:1.7; margin:0 0 auto; }
 .mosaic-create .button { width:100%; min-height:39px; background:#1c0f09; color:var(--paper-strong); border-color:#1c0f09; }
 .bell-icon { width: 20px; height: 20px; display:block; }
+.single-simple-grid { grid-template-columns: minmax(0,1fr); max-width: 860px; }
+.redeem-form { display:grid; gap:12px; max-width:520px; margin-top:20px; }
 .utility-account > b { display:inline-block; width:7px; height:7px; margin-left:4px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg) translateY(-2px); font-size:0; }
 .mosaic-card-head h2 em { font:500 12px var(--mono); color:var(--ink-soft); font-style:normal; margin-left:6px; }
 .mosaic-task-list, .mosaic-contact-list { scrollbar-width:none; }
