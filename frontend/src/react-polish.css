@@ -326,6 +326,33 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .mosaic-create p { font-size:10px; line-height:1.7; margin:0 0 auto; }
 .mosaic-create .button { width:100%; min-height:39px; background:#1c0f09; color:var(--paper-strong); border-color:#1c0f09; }
 .bell-icon { width: 20px; height: 20px; display:block; }
+.utility-account > b { display:inline-block; width:7px; height:7px; margin-left:4px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg) translateY(-2px); font-size:0; }
+.mosaic-card-head h2 em { font:500 12px var(--mono); color:var(--ink-soft); font-style:normal; margin-left:6px; }
+.mosaic-task-list, .mosaic-contact-list { scrollbar-width:none; }
+.mosaic-task-list::-webkit-scrollbar, .mosaic-contact-list::-webkit-scrollbar { width:0; height:0; }
+
+html[data-theme="light"] body { background:#eef0f2; color:#1a1c1f; }
+html[data-theme="light"] body::before { opacity:.025; }
+html[data-theme="light"] .sidebar { background:#f5f6f7; border-color:rgba(30,32,35,.14); }
+html[data-theme="light"] .sidebar nav a, html[data-theme="light"] .theme-toggle, html[data-theme="light"] .logout-link { color:#555b63; }
+html[data-theme="light"] .sidebar nav a:hover, html[data-theme="light"] .sidebar nav a.active { color:#16191c; background:rgba(30,32,35,.07); }
+html[data-theme="light"] .brand, html[data-theme="light"] .utility-account { color:#1a1c1f; }
+html[data-theme="light"] .utility-button { color:#3f464e; }
+html[data-theme="light"] .page-header p, html[data-theme="light"] .muted, html[data-theme="light"] .muted-copy { color:#555b63; }
+html[data-theme="light"] .eyebrow { color:#5b626b; }
+html[data-theme="light"] .card { background:#fbfbfa; color:#1a1c1f; border-color:rgba(30,32,35,.16); box-shadow:0 14px 30px rgba(36,39,43,.1); }
+html[data-theme="light"] .card h2, html[data-theme="light"] .section-head h2 { color:#1a1c1f; }
+html[data-theme="light"] .card .eyebrow { color:#5b626b; }
+html[data-theme="light"] .card .muted, html[data-theme="light"] .card .muted-copy, html[data-theme="light"] .card small, html[data-theme="light"] .card p { color:#555b63; }
+html[data-theme="light"] .card a, html[data-theme="light"] .card .section-head > a { color:#4b535b; }
+html[data-theme="light"] .input, html[data-theme="light"] .friend-trigger { background:#fff; color:#1a1c1f; border-color:rgba(30,32,35,.24); }
+html[data-theme="light"] .input::placeholder { color:#737a82; }
+html[data-theme="light"] .mosaic-toolbar { border-color:rgba(30,32,35,.2); }
+html[data-theme="light"] .mosaic-date { color:#555b63; }
+html[data-theme="light"] .mosaic-task-row, html[data-theme="light"] .mosaic-run-row { border-color:rgba(30,32,35,.18); }
+html[data-theme="light"] .mosaic-task-row small, html[data-theme="light"] .mosaic-task-row time, html[data-theme="light"] .mosaic-run-row time, html[data-theme="light"] .mosaic-run-row span { color:#555b63; }
+html[data-theme="light"] .mosaic-contact-list a { border-color:rgba(237,227,214,.28); }
+html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:rgba(30,32,35,.2); }
 
 @media (max-width: 1180px) {
   .dashboard-mosaic { grid-template-columns:minmax(210px,.8fr) minmax(300px,1.2fr) minmax(260px,1fr); grid-template-areas:"toolbar toolbar toolbar" "hero health tasks" "hero runs contacts" "subscription subscription create"; }
