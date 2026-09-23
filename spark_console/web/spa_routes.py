@@ -38,9 +38,11 @@ from spark_console.security import PasswordService
 from spark_console.services.subscriptions import SubscriptionService
 from spark_console.web.membership import membership_summary
 from spark_console.web.auth import WebAuth
-from spark_console.web.admin_queries import admin_stats, list_audit_events, list_subscriptions, list_users
+from spark_console.web.admin_queries import admin_stats, list_audit_events, list_runs, list_subscriptions, list_users
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.ops_monitor import operations_snapshot
+from spark_console.today_sends import board as today_send_board
+from spark_console.run_attempts import for_runs as attempts_for_runs
 from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
 
 
@@ -352,6 +354,45 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "validation_state": row.get("validation_state"), "total": int(row.get("total") or 0),
                 "enabled": int(row.get("enabled") or 0)} for row in groups], "pagination": pagination}
 
+    @router.get("/api/admin/runs")
+    def admin_runs(request: Request, q: str = Query("", max_length=120), status: str = Query("", max_length=40),
+                   start: str = Query("", max_length=10), end: str = Query("", max_length=10), day: str = Query("", max_length=16),
+                   page: int = Query(1, ge=1)):
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            if day == "today":
+                local_day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+                start = end = local_day
+                board_data = today_send_board(db)
+            else:
+                board_data = None
+            try:
+                rows, pagination = list_runs(db, q=q, status=status, page=page, start=start, end=end)
+            except ValueError:
+                return JSONResponse({"detail": "日期范围不正确"}, status_code=400)
+            attempts = attempts_for_runs(db, [row.id for row in rows])
+            items = []
+            for row in rows:
+                run = row.run
+                view = run_view_status(run)
+                guidance = run_guidance(run)
+                account = db.get(DouyinAccount, row.task.douyin_account_id) if row.task.douyin_account_id else None
+                items.append({"id": run.id, "task_id": row.task.id, "owner_id": row.user.id, "target": row.target_name,
+                    "owner": row.username, "account": account.display_name if account else "账号不可用",
+                    "scheduled_for": shanghai_time(run.scheduled_for), "status": run.status,
+                    "label": view["label"], "tone": view["tone"], "stage": RUN_STAGE_LABELS.get(run.stage, run.stage),
+                    "stage_code": run.stage, "error_code": run.error_code, "error": run.error_summary,
+                    "guidance": guidance, "can_retry": bool(guidance and guidance.get("action") == "retry"),
+                    "attempt": run.attempt, "submitted_at": shanghai_time(run.submitted_at) if run.submitted_at else None,
+                    "attempts": [{"number": attempt.number, "status": attempt.status,
+                        "stage": RUN_STAGE_LABELS.get(attempt.stage, attempt.stage), "reason": attempt.reason,
+                        "started_at": shanghai_time(attempt.started_at),
+                        "finished_at": shanghai_time(attempt.finished_at) if attempt.finished_at else None,
+                        "submitted_at": shanghai_time(attempt.submitted_at) if attempt.submitted_at else None}
+                        for attempt in attempts.get(run.id, [])]})
+            return {"items": items, "pagination": pagination,
+                "today_board": jsonable_encoder(board_data) if board_data else None}
+
     @router.get("/api/admin/audit")
     def admin_audit(request: Request, q: str = Query("", max_length=120), status: str = Query("", max_length=64), page: int = Query(1, ge=1)):
         with session_scope(engine) as db:
@@ -540,6 +581,26 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": identities[t.id].sec_uid if identities[t.id] else "", "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
                 "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
             }
+
+    @router.post("/api/admin/runs/{run_id}/retry")
+    async def admin_retry_run(request: Request, run_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            run = db.get(TaskRun, run_id)
+            if run is None:
+                return JSONResponse({"detail": "执行记录不存在"}, status_code=404)
+            task = db.get(SparkTask, run.task_id)
+            if task is None:
+                return JSONResponse({"detail": "任务不存在"}, status_code=404)
+            try:
+                TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).request_unsubmitted_retry(
+                    task.owner_user_id, run_id, datetime.now(timezone.utc))
+            except (NotFound, ValidationError, Conflict) as error:
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            AuditService(db).write(admin.id, "admin.run.retry_requested", "task_run", run.id)
+            return {"ok": True}
 
     @router.post("/api/admin/users/{user_id}/toggle")
     async def admin_toggle_user(request: Request, user_id: str):

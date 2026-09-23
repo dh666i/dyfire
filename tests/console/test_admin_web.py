@@ -270,10 +270,10 @@ class AdminWebTests(unittest.TestCase):
         self.engine.dispose()
         self.temp.cleanup()
 
-    def test_real_admin_templates_render_for_every_section(self):
+    def test_real_admin_routes_use_the_canonical_spa_shell(self):
         root = self.real_client.get("/admin", follow_redirects=False)
-        self.assertEqual(303, root.status_code)
-        self.assertEqual("/admin/overview", root.headers["location"])
+        self.assertEqual(200, root.status_code)
+        self.assertIn('<div id="app"></div>', root.text)
         for path in (
             "/admin/overview",
             "/admin/users",
@@ -283,23 +283,28 @@ class AdminWebTests(unittest.TestCase):
             "/admin/runs",
             "/admin/today",
             "/admin/audit",
+            "/admin/diagnostics",
             "/admin/settings",
         ):
             with self.subTest(path=path):
                 response = self.real_client.get(path)
                 self.assertEqual(200, response.status_code)
-                self.assertIn('data-design="dyfire-studio"', response.text)
-                self.assertIn('class="workspace-admin-nav"', response.text)
+                self.assertIn('<div id="app"></div>', response.text)
+                self.assertIn("/assets/index-", response.text)
                 self.assertNotIn('/static/mineradio_admin.css', response.text)
 
-    def test_today_send_page_is_linked_from_overview(self):
+    def test_today_send_is_a_view_of_the_canonical_run_workbench(self):
+        from zoneinfo import ZoneInfo
+
         overview = self.real_client.get("/admin/overview")
         today = self.real_client.get("/admin/today")
         self.assertEqual(200, overview.status_code)
         self.assertEqual(200, today.status_code)
-        self.assertIn("/admin/today", overview.text)
-        self.assertIn("今日发送", today.text)
-        self.assertIn("绿=已发出或账号正常", today.text)
+        self.assertIn('<div id="app"></div>', overview.text)
+        self.assertIn('<div id="app"></div>', today.text)
+        board = self.real_client.get("/api/admin/runs", params={"day": "today"})
+        self.assertEqual(200, board.status_code, board.text)
+        self.assertEqual(datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(), board.json()["today_board"]["day"])
 
     def test_admin_sections_require_an_active_admin_session(self):
         anonymous = TestClient(
@@ -636,6 +641,57 @@ class AdminWebTests(unittest.TestCase):
         })
         self.assertEqual(404, denied_bulk.status_code)
         self.real_client.cookies.set("spark_session", self.admin_token)
+
+    def test_react_admin_run_workbench_read_model_and_retry_security(self):
+        from zoneinfo import ZoneInfo
+
+        today = self.real_client.get("/api/admin/runs", params={"day": "today"})
+        self.assertEqual(200, today.status_code, today.text)
+        payload = today.json()
+        self.assertEqual(datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(), payload["today_board"]["day"])
+        enabled_run = next(item for item in payload["items"] if item["target"] == "启用好友")
+        self.assertEqual("主账号", enabled_run["account"])
+        self.assertEqual(self.customer.id, enabled_run["owner_id"])
+        self.assertIn("attempts", enabled_run)
+        self.assertTrue(any(group["counts"]["planned"] for group in payload["today_board"]["groups"]))
+
+        missing_csrf = self.real_client.post(
+            f"/api/admin/runs/{enabled_run['id']}/retry", json={}
+        )
+        self.assertEqual(403, missing_csrf.status_code)
+        completed_retry = self.real_client.post(
+            f"/api/admin/runs/{enabled_run['id']}/retry",
+            json={"csrf_token": self.admin_csrf},
+        )
+        self.assertEqual(409, completed_retry.status_code)
+
+        self.real_client.cookies.set("spark_session", self.customer_token)
+        denied = self.real_client.get("/api/admin/runs")
+        self.assertEqual(404, denied.status_code)
+        denied_retry = self.real_client.post(
+            f"/api/admin/runs/{enabled_run['id']}/retry",
+            json={"csrf_token": self.admin_csrf},
+        )
+        self.assertEqual(404, denied_retry.status_code)
+        self.real_client.cookies.set("spark_session", self.admin_token)
+
+        with session_scope(self.engine) as db:
+            retryable = TaskRun(
+                task_id=self.enabled_task_id,
+                scheduled_for=datetime.now(timezone.utc),
+                status="failed",
+                stage="worker_error",
+                error_code="health_retry_exhausted",
+            )
+            db.add(retryable)
+            db.flush()
+            retryable_id = retryable.id
+        accepted = self.real_client.post(
+            f"/api/admin/runs/{retryable_id}/retry",
+            json={"csrf_token": self.admin_csrf},
+        )
+        self.assertEqual(200, accepted.status_code, accepted.text)
+        self.assertTrue(accepted.json()["ok"])
 
 
 if __name__ == "__main__":

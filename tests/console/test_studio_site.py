@@ -30,7 +30,8 @@ def site():
  '/login','/register','/forgot-password','/dashboard','/accounts','/runs',
  '/subscription','/account-center','/change-password','/notifications','/attention','/help',
  '/admin/overview','/admin/today','/admin/users','/admin/subscriptions','/admin/codes','/admin/tasks',
- '/admin/runs','/admin/operations','/admin/settings/mail','/admin/audit','/admin/settings',
+ '/admin/tasks/groups/sample-owner/sample-account','/admin/customers/sample-owner',
+ '/admin/runs','/admin/operations','/admin/diagnostics','/admin/settings/mail','/admin/audit','/admin/settings',
 ])
 def test_routes_use_new_design_and_valid_assets(site,path):
     response=site.real_client.get(path)

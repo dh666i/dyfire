@@ -810,3 +810,42 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .user-workbench-row > :nth-child(5), .subscription-workbench-row > :nth-child(5), .task-group-row > :nth-child(5), .task-detail-row > :nth-child(5), .audit-row > :nth-child(4) { grid-area:actions; justify-self:end; }
   .audit-row > :nth-child(3) { grid-area:secondary; }
 }
+/* Canonical admin workbench controls and run ledger. */
+.admin-subview-tabs{display:flex;align-items:center;gap:5px;width:max-content;max-width:100%;margin:-8px 0 24px;padding:4px;border:1px solid var(--line);background:var(--surface);}
+.admin-subview-tabs button{min-height:34px;padding:0 14px;border:0;background:transparent;color:var(--muted);font-size:11px;cursor:pointer;transition:background .16s ease,color .16s ease;}
+.admin-subview-tabs button:hover{color:var(--ink);}
+.admin-subview-tabs button.active{background:var(--surface-strong);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line);}
+.admin-run-toolbar{margin:0 0 18px;align-items:center;}
+.admin-run-toolbar .compact-search{flex:1 1 170px;max-width:none;}
+.admin-runs-ledger{border-top:1px solid var(--line);}
+.admin-run-record{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:start;gap:14px;padding:17px 2px;border-bottom:1px solid var(--line);}
+.admin-run-main{min-width:0;}
+.admin-run-title{display:flex;align-items:center;gap:10px;min-width:0;}
+.admin-run-title>b{font-size:13px;font-weight:500;overflow-wrap:anywhere;}
+.admin-run-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;margin-top:8px;color:var(--muted);font-size:10px;}
+.admin-run-meta button{padding:0;border:0;background:none;color:var(--muted);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:3px;}
+.admin-run-meta time{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+.admin-run-main .run-error{max-width:none;margin:8px 0 0;text-align:left;}
+.run-guidance-copy{margin:7px 0 0;color:var(--muted);font-size:10px;line-height:1.6;}
+.admin-run-attempts{margin-top:9px;color:var(--muted);font-size:10px;}
+.admin-run-attempts summary{width:max-content;cursor:pointer;}
+.admin-run-attempts>div{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:12px;padding:7px 0;border-bottom:1px solid var(--line);}
+.today-send-metrics{margin-bottom:14px;}
+.today-board-date{margin:0 0 16px;color:var(--muted);font-size:10px;}
+.today-board-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 24px;}
+.today-board-account{display:flex;justify-content:space-between;align-items:center;gap:14px;min-width:0;padding:14px 15px;border:1px solid var(--line);background:var(--surface);}
+.today-board-account>div,.today-board-account>span{display:grid;gap:6px;min-width:0;}
+.today-board-account>div>b{font-size:12px;font-weight:500;overflow-wrap:anywhere;}
+.today-board-account small{color:var(--muted);font-size:10px;line-height:1.5;}
+.today-board-account>span{justify-items:end;text-align:right;}
+.admin-pagination{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-top:16px;color:var(--muted);font-size:10px;}
+@media(max-width:700px){
+  .admin-subview-tabs{width:100%;margin:-4px 0 18px;}
+  .admin-subview-tabs button{flex:1;padding:0 8px;}
+  .today-board-groups{grid-template-columns:minmax(0,1fr);}
+  .admin-run-record{grid-template-columns:7px minmax(0,1fr);gap:10px;padding:14px 0;}
+  .admin-run-record>.button{grid-column:2;justify-self:start;}
+  .admin-run-meta{gap:7px 12px;}
+  .admin-run-attempts>div{grid-template-columns:1fr;gap:4px;}
+  .admin-pagination{align-items:flex-start;flex-direction:column;}
+}

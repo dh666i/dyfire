@@ -255,13 +255,9 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         # continue through the established auth-aware handlers so protected
         # routes keep their status codes and never expose an authenticated UI.
         has_session = bool(request.cookies.get("spark_session"))
-        # A few server-owned endpoints intentionally remain outside the SPA:
-        # they enforce their own admin/partial-page contracts and must not be
-        # replaced by the presentation shell before authorization runs.
+        # These operations endpoints return live JSON data rather than pages.
         server_owned = (
-            path == '/admin/diagnostics'
-            or path.startswith('/admin/tasks/groups/')
-            or path in ('/admin/operations/snapshot', '/admin/operations/history')
+            path in ('/admin/operations/snapshot', '/admin/operations/history')
         )
         admin_surface = path.startswith('/admin') and not is_api and not server_owned
         if request.method == 'GET' and has_session and admin_surface:
