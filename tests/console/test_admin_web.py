@@ -566,6 +566,77 @@ class AdminWebTests(unittest.TestCase):
             self.assertIsNotNone(db.get(User, self.active_user_id))
             self.assertIsNotNone(db.get(SparkTask, self.enabled_task_id))
 
+    def test_react_admin_workbench_filters_insights_audit_and_bulk_operations(self):
+        users = self.real_client.get("/api/admin/bootstrap", params={"status": "disabled", "page": 1})
+        self.assertEqual(200, users.status_code, users.text)
+        self.assertEqual("user00", users.json()["users"][0]["username"])
+        self.assertGreater(users.json()["usersPagination"]["total"], 0)
+
+        subscriptions = self.real_client.get("/api/admin/subscriptions", params={"status": "expired"})
+        self.assertEqual(200, subscriptions.status_code, subscriptions.text)
+        self.assertTrue(any(row["membership_status"] == "expired" for row in subscriptions.json()["items"]))
+
+        groups = self.real_client.get("/api/admin/task-groups", params={"q": "customer"})
+        self.assertEqual(200, groups.status_code, groups.text)
+        self.assertEqual(1, len(groups.json()["items"]))
+        self.assertEqual(2, groups.json()["items"][0]["total"])
+
+        insights = self.real_client.get("/api/admin/insights", params={"days": 7})
+        self.assertEqual(200, insights.status_code, insights.text)
+        self.assertEqual(7, len(insights.json()["trend"]))
+        self.assertTrue(any(row["name"] == "暂停好友" for row in insights.json()["alerts"]["failed_runs"]))
+
+        audit = self.real_client.get("/api/admin/audit", params={"q": "task.disabled"})
+        self.assertEqual(200, audit.status_code, audit.text)
+        event = audit.json()["items"][0]
+        detail = self.real_client.get(f"/api/admin/audit/{event['id']}")
+        self.assertEqual(200, detail.status_code, detail.text)
+        self.assertEqual("admin", detail.json()["actor"])
+
+        headers = {"Content-Type": "application/json"}
+        paused = self.real_client.post("/api/admin/tasks/bulk", json={
+            "csrf_token": self.admin_csrf,
+            "task_ids": [self.enabled_task_id, self.disabled_task_id],
+            "action": "pause",
+        }, headers=headers)
+        self.assertEqual(200, paused.status_code, paused.text)
+        self.assertEqual(2, paused.json()["updated"])
+        resumed = self.real_client.post("/api/admin/tasks/bulk", json={
+            "csrf_token": self.admin_csrf,
+            "task_ids": [self.enabled_task_id, self.disabled_task_id],
+            "action": "resume",
+        }, headers=headers)
+        self.assertEqual(200, resumed.status_code, resumed.text)
+
+        limits = self.real_client.post(f"/api/admin/subscriptions/{self.customer.id}/limits", json={
+            "csrf_token": self.admin_csrf, "max_accounts": 3, "max_tasks": 12,
+        })
+        self.assertEqual(200, limits.status_code, limits.text)
+        self.assertEqual(12, limits.json()["max_tasks"])
+
+        bulk_extend = self.real_client.post("/api/admin/subscriptions/bulk", json={
+            "csrf_token": self.admin_csrf,
+            "user_ids": [self.customer.id, self.active_user_id],
+            "action": "extend", "duration_days": 30, "max_accounts": 1, "max_tasks": 10,
+        })
+        self.assertEqual(200, bulk_extend.status_code, bulk_extend.text)
+        self.assertEqual(2, bulk_extend.json()["updated"])
+        bulk_revoke = self.real_client.post("/api/admin/subscriptions/bulk", json={
+            "csrf_token": self.admin_csrf,
+            "user_ids": [self.customer.id, self.active_user_id],
+            "action": "revoke",
+        })
+        self.assertEqual(200, bulk_revoke.status_code, bulk_revoke.text)
+
+        self.real_client.cookies.set("spark_session", self.customer_token)
+        denied = self.real_client.get("/api/admin/insights")
+        self.assertEqual(404, denied.status_code)
+        denied_bulk = self.real_client.post("/api/admin/tasks/bulk", json={
+            "csrf_token": self.admin_csrf, "task_ids": [self.enabled_task_id], "action": "pause",
+        })
+        self.assertEqual(404, denied_bulk.status_code)
+        self.real_client.cookies.set("spark_session", self.admin_token)
+
 
 if __name__ == "__main__":
     unittest.main()

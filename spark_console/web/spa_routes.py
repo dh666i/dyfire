@@ -35,9 +35,10 @@ from spark_console.services.audits import AuditService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.users import UserService
 from spark_console.security import PasswordService
+from spark_console.services.subscriptions import SubscriptionService
 from spark_console.web.membership import membership_summary
 from spark_console.web.auth import WebAuth
-from spark_console.web.admin_queries import admin_stats, list_audit_events, list_subscriptions
+from spark_console.web.admin_queries import admin_stats, list_audit_events, list_subscriptions, list_users
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.ops_monitor import operations_snapshot
 from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
@@ -64,6 +65,12 @@ def _task_payload(db, tasks):
 
 def _date_value(value):
     return value.isoformat() if value is not None else None
+
+
+def _aware(value):
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
@@ -172,6 +179,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
         request: Request,
         q: str = Query("", max_length=100),
         page: int = Query(1, ge=1),
+        status: str = Query("", max_length=24),
     ):
         with session_scope(engine) as db:
             admin, record, _ = auth.admin_context(request, db)
@@ -180,13 +188,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             account_total = db.scalar(select(func.count(DouyinAccount.id))) or 0
             task_total = db.scalar(select(func.count(SparkTask.id))) or 0
             run_total = db.scalar(select(func.count(TaskRun.id))) or 0
-            users = db.scalars(
-                select(User)
-                .where(User.username.ilike(f"%{q.strip()}%") if q.strip() else True)
-                .order_by(User.created_at.desc())
-                .limit(50)
-                .offset((page - 1) * 50)
-            ).all()
+            user_rows, user_pagination = list_users(db, q=q, status=status, page=page)
             recent_runs = db.execute(
                 select(TaskRun, SparkTask, User)
                 .join(SparkTask, SparkTask.id == TaskRun.task_id)
@@ -241,12 +243,10 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "stats": jsonable_encoder(stats),
                 "counts": {"users": users_total, "accounts": account_total, "tasks": task_total, "runs": run_total},
                 "users": [
-                    {"id": u.id, "username": u.username, "role": u.role, "status": u.status, "created": shanghai_time(u.created_at),
-                     "account_count": int(db.scalar(select(func.count(DouyinAccount.id)).where(DouyinAccount.owner_user_id == u.id)) or 0),
-                     "task_count": int(db.scalar(select(func.count(SparkTask.id)).where(SparkTask.owner_user_id == u.id)) or 0),
-                     "membership_status": getattr(subscription_map.get(u.id), "membership_status", "inactive"),
-                     "membership_label": getattr(subscription_map.get(u.id), "membership_label", "未开通")}
-                    for u in users
+                    {"id": row.id, "username": row.username, "role": row.role, "status": row.status, "created": shanghai_time(row.created_at),
+                     "account_count": row.account_count, "task_count": row.task_count,
+                     "membership_status": row.membership_status, "membership_label": row.membership_label}
+                    for row in user_rows
                 ],
                 "groups": [
                     {
@@ -325,9 +325,190 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 ],
                 "mail": mail,
                 "page": page,
-                "pageSize": 50,
-                "total": users_total,
+                "pageSize": user_pagination["page_size"],
+                "total": user_pagination["total"],
+                "usersPagination": user_pagination,
             }
+
+    @router.get("/api/admin/subscriptions")
+    def admin_subscriptions(request: Request, q: str = Query("", max_length=100), status: str = Query("", max_length=24), page: int = Query(1, ge=1)):
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            rows, pagination = list_subscriptions(db, q=q, status=status, page=page)
+            return {"items": [{"id": row.id, "username": row.username, "role": row.role, "status": row.status,
+                "membership_status": row.membership_status, "membership_label": row.membership_label,
+                "valid_until": _date_value(row.valid_until), "days_remaining": row.days_remaining,
+                "max_accounts": row.max_accounts, "max_tasks": row.max_tasks,
+                "account_count": row.account_count, "task_count": row.task_count} for row in rows], "pagination": pagination}
+
+    @router.get("/api/admin/task-groups")
+    def admin_task_groups(request: Request, q: str = Query("", max_length=100), status: str = Query("", max_length=24), page: int = Query(1, ge=1)):
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            groups, pagination = list_task_groups(db, q=q, status=status, page=page)
+            return {"items": [{"owner_id": row.get("owner_id"), "account_id": row.get("account_id"),
+                "username": row.get("username"), "remark": row.get("remark") or row.get("nickname") or "抖音账号",
+                "nickname": row.get("nickname"), "avatar_url": row.get("avatar_url"),
+                "validation_state": row.get("validation_state"), "total": int(row.get("total") or 0),
+                "enabled": int(row.get("enabled") or 0)} for row in groups], "pagination": pagination}
+
+    @router.get("/api/admin/audit")
+    def admin_audit(request: Request, q: str = Query("", max_length=120), status: str = Query("", max_length=64), page: int = Query(1, ge=1)):
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            rows, pagination = list_audit_events(db, q=q, status=status, page=page)
+            return {"items": [{"id": row.id, "event": row.action, "subject_type": row.resource_type,
+                "subject_id": row.resource_id, "actor": row.actor_username or "系统", "detail": row.detail,
+                "created_at": _date_value(row.created_at)} for row in rows], "pagination": pagination}
+
+    @router.get("/api/admin/insights")
+    def admin_insights(request: Request, days: int = Query(7, ge=7, le=30)):
+        from collections import Counter
+        from spark_console.web.admin_queries import overview_expiring_users
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            now = datetime.now(timezone.utc)
+            local_today = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
+            start = datetime.combine(local_today - timedelta(days=days - 1), datetime.min.time(), ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
+            run_rows = db.execute(select(TaskRun.status, TaskRun.scheduled_for).where(TaskRun.scheduled_for >= start)
+                .order_by(TaskRun.scheduled_for.desc()).limit(20000)).all()
+            counts = Counter()
+            totals = Counter()
+            failures = Counter()
+            for run_status, scheduled in run_rows:
+                day = _aware(scheduled).astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
+                if _aware(scheduled) > now:
+                    continue
+                totals[day] += 1
+                if run_status == "success": counts[day] += 1
+                elif run_status in {"failed", "submitted_unconfirmed"}: failures[day] += 1
+            trend = [{"date": (local_today - timedelta(days=offset)).isoformat(),
+                "total": totals[(local_today - timedelta(days=offset)).isoformat()],
+                "success": counts[(local_today - timedelta(days=offset)).isoformat()],
+                "failed": failures[(local_today - timedelta(days=offset)).isoformat()]} for offset in range(days - 1, -1, -1)]
+            accounts = db.scalars(select(DouyinAccount).where(DouyinAccount.validation_state.in_(["invalid", "verification", "temporary"])).order_by(DouyinAccount.updated_at.desc()).limit(50)).all()
+            account_owners = {row.id: db.get(User, row.owner_user_id) for row in accounts}
+            account_alerts = [{"id": account.id, "name": account.display_name, "owner_id": account.owner_user_id, "owner": account_owners[account.id].username if account_owners.get(account.id) else "—",
+                "state": account.validation_state, "label": account_health_views(db, [account]).get(account.id, {}).get("label", "需要复核")} for account in accounts]
+            failures = db.execute(select(TaskRun, SparkTask, User).join(SparkTask, SparkTask.id == TaskRun.task_id)
+                .join(User, User.id == SparkTask.owner_user_id).where(TaskRun.status.in_(["failed", "submitted_unconfirmed"]), TaskRun.scheduled_for >= now - timedelta(days=7))
+                .order_by(TaskRun.scheduled_for.desc()).limit(20)).all()
+            expiring = overview_expiring_users(db, limit=20)
+            return {"days": days, "trend": trend, "alerts": {"accounts": account_alerts,
+                "expiring": [{"id": row.id, "username": row.username, "valid_until": _date_value(row.valid_until), "days_remaining": row.days_remaining} for row in expiring],
+                "failed_runs": [{"id": run.id, "task_id": task.id, "name": task.target_name, "username": user.username,
+                    "status": run.status, "error": run.error_summary, "time": shanghai_time(run.scheduled_for)} for run, task, user in failures]}}
+
+    @router.post("/api/admin/users/bulk")
+    async def admin_bulk_users(request: Request):
+        values = await request.json()
+        selected = list(dict.fromkeys(str(item) for item in values.get("user_ids", []) if item))
+        action = str(values.get("action", ""))
+        if action not in {"enable", "disable"} or not selected:
+            return JSONResponse({"detail": "请选择用户和有效操作"}, status_code=400)
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            users = db.scalars(select(User).where(User.id.in_(selected))).all()
+            if len(users) != len(selected):
+                return JSONResponse({"detail": "部分用户不存在"}, status_code=404)
+            if any(user.role == "admin" or user.id == admin.id for user in users):
+                return JSONResponse({"detail": "批量操作仅支持普通用户"}, status_code=400)
+            service = UserService(db, PasswordService(), AuditService(db))
+            for user in users:
+                service.set_disabled(admin.id, user.id, action == "disable")
+            return {"ok": True, "updated": len(users)}
+
+    @router.post("/api/admin/tasks/bulk")
+    async def admin_bulk_tasks(request: Request):
+        values = await request.json()
+        selected = list(dict.fromkeys(str(item) for item in values.get("task_ids", []) if item))
+        action = str(values.get("action", ""))
+        if action not in {"pause", "resume"} or not selected:
+            return JSONResponse({"detail": "请选择任务和有效操作"}, status_code=400)
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            tasks = db.scalars(select(SparkTask).where(SparkTask.id.in_(selected))).all()
+            if len(tasks) != len(selected):
+                return JSONResponse({"detail": "部分任务不存在"}, status_code=404)
+            service = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db))
+            try:
+                for task in tasks:
+                    service.set_enabled_owned(task.owner_user_id, task.id, action == "resume")
+            except (NotFound, ValidationError, Conflict) as error:
+                db.rollback()
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            AuditService(db).write(admin.id, "admin.tasks.bulk." + action, "spark_task", None, f"count={len(tasks)}")
+            return {"ok": True, "updated": len(tasks)}
+
+    @router.post("/api/admin/subscriptions/{user_id}/limits")
+    async def admin_update_subscription_limits(request: Request, user_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            try:
+                item = SubscriptionService(db, AuditService(db)).set_limits(admin.id, user_id,
+                    max_accounts=int(values.get("max_accounts", 1)), max_tasks=int(values.get("max_tasks", 10)))
+            except NotFound as error:
+                return JSONResponse({"detail": str(error)}, status_code=404)
+            except (ValidationError, ValueError) as error:
+                return JSONResponse({"detail": str(error)}, status_code=400)
+            return {"ok": True, "max_accounts": item.max_accounts, "max_tasks": item.max_tasks}
+
+    @router.post("/api/admin/subscriptions/{user_id}/revoke")
+    async def admin_revoke_subscription(request: Request, user_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            try:
+                SubscriptionService(db, AuditService(db)).revoke_subscription(admin.id, user_id)
+            except NotFound as error:
+                return JSONResponse({"detail": str(error)}, status_code=404)
+            except (Conflict, ValidationError) as error:
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            return {"ok": True}
+
+    @router.post("/api/admin/subscriptions/bulk")
+    async def admin_bulk_subscriptions(request: Request):
+        values = await request.json()
+        selected = list(dict.fromkeys(str(item) for item in values.get("user_ids", []) if item))
+        action = str(values.get("action", ""))
+        if action not in {"extend", "revoke"} or not selected:
+            return JSONResponse({"detail": "请选择订阅用户和有效操作"}, status_code=400)
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            targets = db.scalars(select(User).where(User.id.in_(selected), User.role != "admin")).all()
+            if len(targets) != len(selected):
+                return JSONResponse({"detail": "部分普通用户不存在或不能管理"}, status_code=404)
+            service = SubscriptionService(db, AuditService(db))
+            try:
+                for user in targets:
+                    if action == "extend":
+                        service.extend(admin.id, user.id, duration_days=int(values.get("duration_days", 30)),
+                            max_accounts=int(values.get("max_accounts", 1)), max_tasks=int(values.get("max_tasks", 10)))
+                    else:
+                        service.revoke_subscription(admin.id, user.id)
+            except (NotFound, Conflict, ValidationError, ValueError) as error:
+                db.rollback()
+                return JSONResponse({"detail": str(error)}, status_code=409)
+            AuditService(db).write(admin.id, "admin.subscriptions.bulk." + action, "user_subscription", None, f"count={len(targets)}")
+            return {"ok": True, "updated": len(targets)}
+
+    @router.get("/api/admin/audit/{event_id}")
+    def admin_audit_detail(request: Request, event_id: str):
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            event = db.get(AuditEvent, event_id)
+            if event is None:
+                return JSONResponse({"detail": "审计记录不存在"}, status_code=404)
+            actor = db.get(User, event.actor_user_id) if event.actor_user_id else None
+            return {"id": event.id, "event": event.action, "subject_type": event.resource_type,
+                "subject_id": event.resource_id, "actor": actor.username if actor else "系统",
+                "detail": event.detail, "created_at": _date_value(event.created_at)}
 
     @router.get("/api/admin/users/{user_id}/workspace")
     def admin_user_workspace(request: Request, user_id: str):
@@ -493,7 +674,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             return JSONResponse({"items": items, "backup": backup}, headers={"Cache-Control": "no-store"})
 
     @router.get("/api/admin/tasks/groups/{owner_id}/{account_id}")
-    def admin_group_tasks(request: Request, owner_id: str, account_id: str, q: str = "", status: str = "", page: int = 1):
+    def admin_group_tasks(request: Request, owner_id: str, account_id: str, q: str = Query("", max_length=100), status: str = Query("", max_length=24), page: int = Query(1, ge=1)):
         with session_scope(engine) as db:
             auth.admin_context(request, db)
             rows, pagination = list_group_tasks(db, owner_id, account_id, q=q, status=status, page=page)

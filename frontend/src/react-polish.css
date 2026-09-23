@@ -721,6 +721,61 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .admin-editor-form { gap: 14px; }
 .admin-editor-form .edit-target { padding: 2px 0 15px; }
 .admin-editor-form .setting-actions { position: sticky; bottom: -1px; z-index: 2; margin: 4px -2px -2px; padding: 12px 2px 2px; background: var(--surface-strong); border-top: 1px solid var(--line); }
+.admin-insights-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr); gap:12px; margin-bottom:16px; }
+.admin-trend-card, .admin-alert-card { min-width:0; }
+.admin-trend-card .section-head h2, .admin-alert-card .section-head h2 { margin-top:5px; }
+.admin-trend-bars { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:end; gap:10px; min-height:150px; padding:12px 4px 0; border-bottom:1px solid var(--line); }
+.admin-trend-day { display:grid; align-items:end; justify-items:center; gap:8px; height:100%; min-width:0; }
+.admin-trend-track { width:min(28px,70%); height:108px; display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden; background:color-mix(in srgb,var(--line) 55%,transparent); }
+.admin-trend-track i { display:block; min-height:0; background:#438b65; }
+.admin-trend-track b { display:block; min-height:0; background:#c75f4e; }
+.admin-trend-day small { color:var(--muted); font:500 9px var(--mono); white-space:nowrap; }
+.admin-trend-legend { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding-top:12px; color:var(--muted); font-size:10px; }
+.admin-trend-legend span { display:inline-flex; align-items:center; gap:5px; }
+.admin-trend-legend i { width:7px; height:7px; background:#438b65; }
+.admin-trend-legend .trend-failed { background:#c75f4e; }
+.admin-trend-legend small { margin-left:auto; font-size:9px; }
+.admin-alert-list { display:grid; }
+.admin-alert-row { width:100%; display:grid; grid-template-columns:8px minmax(0,1fr) auto; align-items:center; gap:10px; padding:12px 0; border:0; border-top:1px solid var(--line); background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.admin-alert-row > span:nth-child(2) { display:grid; gap:4px; min-width:0; }
+.admin-alert-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:500; }
+.admin-alert-row small { color:var(--muted); font-size:10px; line-height:1.45; }
+.admin-alert-row > span:last-child, .admin-alert-row > a { color:var(--muted); font-size:11px; }
+.alert-marker { width:7px; height:7px; border-radius:50%; background:var(--yellow); }
+.alert-marker.danger { background:var(--red); }
+.admin-alert-clear { display:flex; align-items:center; gap:10px; padding:22px 4px; color:var(--muted); font-size:11px; }
+.admin-pagination { display:flex; justify-content:space-between; align-items:center; gap:14px; padding-top:14px; color:var(--muted); font-size:10px; }
+.admin-pagination > div { display:flex; gap:6px; }
+.admin-pagination .button { min-height:32px; font-size:10px; }
+.admin-pagination .button:disabled { opacity:.36; }
+.admin-bulk-bar .button.danger { color:var(--red); }
+.admin-alert-row:hover { background:color-mix(in srgb,var(--surface) 65%,transparent); }
+.admin-alert-row:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.audit-row { font-family:inherit; }
+.audit-row:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.audit-detail-list { padding-bottom:18px; }
+.workspace-limit-controls { display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:end; margin-top:14px; }
+.workspace-limit-controls label { display:grid; gap:6px; color:var(--muted); font-size:10px; }
+.workspace-limit-controls .input { height:36px; }
+.workspace-limit-controls .button { min-height:36px; }
+.audit-row { width:100%; border-right:0; border-bottom:0; border-left:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
+.audit-row:hover { background:var(--surface); }
+.audit-row span small { display:block; max-width:180px; margin-top:3px; overflow:hidden; text-overflow:ellipsis; color:var(--muted); font:10px var(--mono); }
+.audit-detail-list { display:grid; grid-template-columns:105px minmax(0,1fr); gap:0 16px; margin:0; }
+.audit-detail-list dt, .audit-detail-list dd { padding:13px 0; border-bottom:1px solid var(--line); font-size:11px; }
+.audit-detail-list dt { color:var(--muted); }
+.audit-detail-list dd { margin:0; color:var(--ink); overflow-wrap:anywhere; }
+.admin-bulk-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; padding:10px 12px; border:1px solid var(--line-strong); background:var(--surface-strong); }
+.admin-bulk-bar > span { margin-right:auto; color:var(--muted); font-size:11px; }
+.admin-bulk-bar .button { min-height:32px; padding:0 10px; font-size:10px; }
+.admin-toolbar { justify-content:flex-start; flex-wrap:wrap; }
+.admin-toolbar .muted-copy { margin-left:auto; }
+.user-workbench-head, .user-workbench-row { grid-template-columns:36px minmax(160px,1.3fr) minmax(145px,1fr) 90px auto; }
+.subscription-workbench-head, .subscription-workbench-row { grid-template-columns:36px minmax(150px,1.2fr) minmax(90px,.8fr) minmax(180px,1.1fr) auto; }
+.task-group-head, .task-group-row { grid-template-columns:minmax(180px,1.5fr) 70px 70px 100px auto; }
+.task-detail-head, .task-detail-row { grid-template-columns:30px minmax(150px,1.3fr) 90px 90px auto; }
+.user-workbench-row > input, .subscription-workbench-row > input, .task-detail-row > input { justify-self:center; accent-color:var(--accent); }
+.audit-table-head, .audit-row { grid-template-columns:minmax(140px,1.2fr) minmax(100px,.8fr) minmax(140px,1fr) minmax(155px,1fr); }
 @media (max-width: 700px) {
   .drawer-centered-backdrop { align-items: flex-end; padding: 0; }
   .drawer.drawer-centered { width: 100%; height: min(92dvh, 760px); max-height: calc(100dvh - 12px); border: 0; border-top: 1px solid rgba(24,23,23,.18); }
@@ -736,4 +791,22 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .workspace-actions .button { flex: 1 1 120px; }
   .drawer .workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drawer .workspace-metrics .metric { min-height: 92px; }
+  .admin-insights-grid { grid-template-columns:minmax(0,1fr); }
+  .admin-trend-bars { gap:5px; min-height:128px; }
+  .admin-trend-track { height:86px; width:min(24px,80%); }
+  .admin-trend-legend small { flex-basis:100%; margin-left:0; }
+  .admin-toolbar { display:flex; }
+  .admin-toolbar .input { flex:1 1 140px; max-width:none; }
+  .admin-bulk-bar > span { flex-basis:100%; }
+  .workspace-limit-controls { grid-template-columns:1fr 1fr; }
+  .workspace-limit-controls .button { width:100%; }
+  .admin-pagination { align-items:flex-start; flex-direction:column; }
+  .user-workbench-head, .subscription-workbench-head, .task-group-head, .task-detail-head, .audit-table-head { display:none; }
+  .user-workbench-row, .subscription-workbench-row, .task-group-row, .task-detail-row, .audit-row { grid-template-columns:24px minmax(0,1fr) auto; grid-template-areas:"check primary status" ". secondary actions"; gap:6px 8px; padding:12px 0; }
+  .user-workbench-row > input, .subscription-workbench-row > input, .task-detail-row > input { grid-area:check; align-self:start; margin-top:5px; }
+  .user-workbench-row > :nth-child(2), .subscription-workbench-row > :nth-child(2), .task-group-row > :nth-child(1), .task-detail-row > :nth-child(2), .audit-row > :nth-child(1) { grid-area:primary; }
+  .user-workbench-row > :nth-child(3), .subscription-workbench-row > :nth-child(4), .task-group-row > :nth-child(2), .task-detail-row > :nth-child(3), .audit-row > :nth-child(2) { grid-area:secondary; justify-self:start; }
+  .user-workbench-row > :nth-child(4), .subscription-workbench-row > :nth-child(3), .task-group-row > :nth-child(4), .task-detail-row > :nth-child(4) { grid-area:status; justify-self:end; }
+  .user-workbench-row > :nth-child(5), .subscription-workbench-row > :nth-child(5), .task-group-row > :nth-child(5), .task-detail-row > :nth-child(5), .audit-row > :nth-child(4) { grid-area:actions; justify-self:end; }
+  .audit-row > :nth-child(3) { grid-area:secondary; }
 }
