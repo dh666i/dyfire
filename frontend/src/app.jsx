@@ -1,6 +1,8 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
+import {createPortal} from 'react-dom';
 import {BrowserRouter, Link, useLocation, useNavigate} from 'react-router-dom';
+import {AnimatePresence, motion} from 'motion/react';
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-500.css';
 import '@fontsource/inter/latin-700.css';
@@ -8,6 +10,8 @@ import '@fontsource/noto-sans-sc/400.css';
 import '@fontsource/noto-sans-sc/500.css';
 import './react.css';
 import './react-polish.css';
+import './react-fire.css';
+import RubberSegment from './components/RubberSegment';
 
 const asList = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const displayText = (value, fallback='') => typeof value === 'string' && value.trim() ? value : fallback;
@@ -34,34 +38,61 @@ function normalizeBootstrap(value) {
   };
 }
 
+const _si = (d, extra={}) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    aria-hidden="true" {...extra}>
+    {d}
+  </svg>
+);
+const NavIconHome       = () => _si(<><path d="M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21V12h6v9"/></>);
+const NavIconFlame      = () => _si(<path d="M12 4c0 0-5 4.5-5 10a5 5 0 0 0 10 0c0-2-.7-3.8-2.5-5.5 0 0 .5 3.5-2 5-1.2-3.5-1-7 .5-9.5z"/>);
+const NavIconPerson     = () => _si(<><circle cx="12" cy="7" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></>);
+const NavIconHistory    = () => _si(<><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></>);
+const NavIconCard       = () => _si(<><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></>);
+const NavIconUserCircle = () => _si(<><circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="3"/><path d="M6.2 19.4a6 6 0 0 1 11.6 0"/></>);
+const NavIconBarChart   = () => _si(<><rect x="3" y="12" width="4" height="9"/><rect x="10" y="7" width="4" height="14"/><rect x="17" y="3" width="4" height="18"/></>);
+const NavIconUsers      = () => _si(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>);
+const NavIconTag        = () => _si(<path d="M20.6 11.4 12.4 3.2A1 1 0 0 0 11.7 3H4a1 1 0 0 0-1 1v7.7a1 1 0 0 0 .3.7l8.2 8.2a1 1 0 0 0 1.4 0l7.7-7.7a1 1 0 0 0 0-1.5zM7 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>);
+const NavIconPulse      = () => _si(<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>);
+const NavIconSliders    = () => _si(<><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="12" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></>);
+
 const routes = [
-  ['/dashboard','首页','⌂'], ['/studio','续火任务','✦'], ['/accounts','抖音账号','◉'],
-  ['/runs','执行记录','↻'], ['/subscription','订阅管理','◇'], ['/account-center','账户中心','◎'],
+  ['/dashboard','首页',NavIconHome], ['/studio','续火任务',NavIconFlame], ['/accounts','抖音账号',NavIconPerson],
+  ['/runs','执行记录',NavIconHistory], ['/subscription','订阅管理',NavIconCard], ['/account-center','账户中心',NavIconUserCircle],
 ];
 const adminRoutes = [
-  ['/admin/overview','业务概览','▦'], ['/admin/users','用户管理','♙'],
-  ['/admin/codes','兑换码','⌁'], ['/admin/runs','执行记录','↻'],
-  ['/admin/operations','运维监控','▥'], ['/admin/settings','系统设置','⚙'],
+  ['/admin/overview','业务概览',NavIconBarChart], ['/admin/users','用户管理',NavIconUsers],
+  ['/admin/codes','兑换码',NavIconTag], ['/admin/runs','执行记录',NavIconHistory],
+  ['/admin/operations','运维监控',NavIconPulse], ['/admin/settings','系统设置',NavIconSliders],
 ];
 
 const previewRequested = import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview');
 let previewScan = null;
 
 function previewData() {
-  const account = {id:'preview-account', name:'我的抖音账号', profile:{nickname:'火花用户'}, health:{state:'valid', label:'登录有效'}, validation_state:'valid'};
+  const account = {id:'preview-account', name:'主账号', profile:{nickname:'火花用户'}, health:{state:'valid', label:'登录有效'}, validation_state:'valid'};
+  const secondAccount = {id:'preview-account-2', name:'副账号', profile:{nickname:'备用火花'}, health:{state:'verification', label:'需要重新验证'}, validation_state:'verification'};
+  const thirdAccount = {id:'preview-account-3', name:'测试账号', profile:{nickname:'小号'}, health:{state:'valid', label:'登录有效'}, validation_state:'valid'};
   const tasks = [
     {id:'preview-task-1', accountId:account.id, name:'小琪', sec_uid:'preview-friend-1', avatar:'', kind:'续火花表情', time:'09:30', enabled:true},
     {id:'preview-task-2', accountId:account.id, name:'阿杰', sec_uid:'preview-friend-2', avatar:'', kind:'续火花表情', time:'12:20', enabled:true},
     {id:'preview-task-3', accountId:account.id, name:'郭琪', sec_uid:'preview-friend-3', avatar:'', kind:'文字消息', time:'18:00', enabled:false, message:'今天也要记得续上火花。'},
+    {id:'preview-task-4', accountId:secondAccount.id, name:'小林', sec_uid:'preview-friend-4', avatar:'', kind:'续火花表情', time:'09:45', enabled:true},
+    {id:'preview-task-5', accountId:thirdAccount.id, name:'小雨', sec_uid:'preview-friend-5', avatar:'', kind:'续火花表情', time:'14:20', enabled:true},
+    {id:'preview-task-6', accountId:thirdAccount.id, name:'阿南', sec_uid:'preview-friend-6', avatar:'', kind:'文字消息', time:'19:00', enabled:true, message:'今天也要记得续上火花。'},
   ];
   const runs = [
     {id:'preview-run-1', name:'小琪', time:'今天 09:30', kind:'续火花表情', stage:'消息确认', status:'success', label:'已发出'},
     {id:'preview-run-2', name:'阿杰', time:'今天 12:20', kind:'续火花表情', stage:'消息确认', status:'success', label:'已发出'},
-    {id:'preview-run-3', name:'郭琪', time:'昨天 18:00', kind:'文字消息', stage:'账号复核', status:'failed', label:'未发出', error:'账号需要重新确认登录'},
+    {id:'preview-run-3', name:'郭琪', time:'今天 08:50', kind:'文字消息', stage:'账号复核', status:'failed', label:'未发出', error:'账号需要重新确认登录', guidance:{text:'请到抖音账号页完成验证。'}},
+    {id:'preview-run-4', name:'小林', time:'今天 09:45', kind:'续火花表情', stage:'账号复核', status:'submitted_unconfirmed', label:'待核实', error:'消息已进入发送步骤，暂未取得页面确认', attempts:[{number:1,stage:'消息确认',reason:'页面未返回确认信号'}]},
+    {id:'preview-run-5', name:'小雨', time:'今天 14:20', kind:'续火花表情', stage:'执行中', status:'running', label:'执行中'},
+    {id:'preview-run-6', name:'阿南', time:'昨天 19:00', kind:'文字消息', stage:'消息确认', status:'success', label:'已发出'},
   ];
   return {
     user:{name:'演示用户', role:new URLSearchParams(window.location.search).has('admin')?'admin':'user'}, csrf:'preview-csrf',
-    accounts:[account], tasks, runs, recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':'danger'})),
+    accounts:[account,secondAccount,thirdAccount], tasks, runs, recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':run.status==='running'?'warn':'danger'})),
     membership:{active:true, can_add_task:true, max_tasks:10, days_remaining:27, status_label:'专业版 · 有效中'},
     counts:{users:18, accounts:26, tasks:74, runs:1260},
     users:[{id:'preview-user-1',username:'演示用户',role:'user',status:'active',created:'2026-09-01'},{id:'preview-user-2',username:'管理员',role:'admin',status:'active',created:'2026-08-21'}],
@@ -86,6 +117,8 @@ function mockApi(path, options={}) {
     {name:'阿杰',nickname:'阿杰',remark_name:'',sec_uid:'preview-friend-2'},
     {name:'郭琪',nickname:'郭琪',remark_name:'郭琪',sec_uid:'preview-friend-3'},
     {name:'小林',nickname:'林林',remark_name:'',sec_uid:'preview-friend-4'},
+    {name:'小雨',nickname:'小雨',remark_name:'同事',sec_uid:'preview-friend-5'},
+    {name:'阿南',nickname:'阿南',remark_name:'',sec_uid:'preview-friend-6'},
   ]});
   if (path === '/api/studio/runs') return Promise.resolve({items:data.runs});
   if (path === '/accounts/scan') { previewScan={id:'preview-scan',status:'waiting',message:'请使用抖音 App 扫码并在手机确认'}; return Promise.resolve(previewScan); }
@@ -116,8 +149,82 @@ async function api(path, options={}) {
   return value;
 }
 
+// ── Utility hooks ────────────────────────────────────────────────────────────
+
+// CountUp: animates a number from 0 to `to` on mount, respects reduced-motion
+function useCountUp(to, {duration=900, enabled=true}={}) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (!enabled || typeof to !== 'number' || isNaN(to)) { setValue(to); return; }
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) { setValue(to); return; }
+    const start = performance.now();
+    let raf;
+    const tick = now => {
+      const p = Math.min((now - start) / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - p, 3);
+      setValue(Math.round(eased * to));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [to, duration, enabled]);
+  return value;
+}
+
+// SplitText: renders text with each character staggered in on mount
+function SplitText({children, className='', stagger=18, delay=0}) {
+  const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return <span className={className}>{children}</span>;
+  return (
+    <span className={className} aria-label={children}>
+      {String(children).split('').map((ch, i) => (
+        <motion.span
+          key={i}
+          aria-hidden="true"
+          style={{display: ch === ' ' ? 'inline' : 'inline-block'}}
+          initial={{opacity: 0, filter: 'blur(6px)'}}
+          animate={{opacity: 1, filter: 'blur(0px)'}}
+          transition={{duration: 0.32, delay: delay + i * stagger / 1000, ease: 'easeOut'}}
+        >{ch}</motion.span>
+      ))}
+    </span>
+  );
+}
+
+// MagneticButton: wraps a button so it gently follows the cursor (desktop only)
+function MagneticButton({children, className='', strength=10, ...props}) {
+  const ref = useRef(null);
+  const x = useRef(0);
+  const y = useRef(0);
+  const onMove = e => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    x.current = ((e.clientX - rect.left) / rect.width - 0.5) * strength * 2;
+    y.current = ((e.clientY - rect.top) / rect.height - 0.5) * strength * 2;
+    ref.current.style.transform = `translate(${x.current}px,${y.current}px)`;
+  };
+  const onLeave = () => {
+    if (!ref.current) return;
+    ref.current.style.transition = 'transform 0.4s cubic-bezier(0.23,1,0.32,1)';
+    ref.current.style.transform = 'translate(0px,0px)';
+    setTimeout(() => { if (ref.current) ref.current.style.transition = ''; }, 400);
+  };
+  return (
+    <button
+      ref={ref}
+      className={`button ${className}`}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      {...props}
+    >{children}</button>
+  );
+}
+
 function Icon({children}) { return <span className="icon" aria-hidden="true">{children}</span>; }
 function BellIcon() { return <svg className="bell-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>; }
+function ThemeIcon({light=false}) { return light ? <svg className="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg> : <svg className="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 15.2A8.5 8.5 0 0 1 8.8 3.6 8.6 8.6 0 1 0 20.4 15.2Z" fill="currentColor"/></svg>; }
 function Logo() {
   const [missing, setMissing] = useState(false);
   return <Link className="brand" to="/dashboard" aria-label="火花首页"><span className="brand-mark">{missing?'✦':<img src="/static/spark-flame.png" alt="" onError={()=>setMissing(true)} />}</span><span className="brand-copy"><b>火花</b><small>抖音自动续火花服务</small></span></Link>;
@@ -134,7 +241,7 @@ function Card({children, className='', interactive=false}) {
   };
   return <section ref={ref} className={`card ${interactive?'card-interactive':''} ${className}`} onPointerMove={trackPointer}>{children}</section>;
 }
-function Empty({title, text, action}) { return <div className="empty"><div className="empty-mark">✦</div><h3>{title}</h3>{text && <p>{text}</p>}{action}</div>; }
+function Empty({title, text, action, icon='✦'}) { return <div className="empty"><div className="empty-mark">{icon}</div><h3>{title}</h3>{text && <p>{text}</p>}{action}</div>; }
 function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=false}) {
   const closeRef=useRef(null);
   const restoreRef=useRef(null);
@@ -166,7 +273,8 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
   },[open]);
   const requestClose=()=>{setClosing(true);if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false);onCloseRef.current?.()},220)};
   if (!mounted) return null;
-  return <div className={`drawer-backdrop ${centered?'drawer-centered-backdrop':''} ${closing?'is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&requestClose()}><aside className={`drawer ${wide?'drawer-wide':''} ${centered?'drawer-centered':''} ${closing?'is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="drawer-title"><header className="drawer-head"><div><span className="eyebrow">{eyebrow}</span><h2 id="drawer-title">{title}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={requestClose} aria-label="关闭">×</button></header>{children}</aside></div>;
+  const drawer = <div className={`drawer-backdrop ${centered?'drawer-centered-backdrop':''} ${closing?'is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&requestClose()}><aside className={`drawer ${wide?'drawer-wide':''} ${centered?'drawer-centered':''} ${closing?'is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="drawer-title"><header className="drawer-head"><div><span className="eyebrow">{eyebrow}</span><h2 id="drawer-title">{title}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={requestClose} aria-label="关闭">×</button></header>{children}</aside></div>;
+  return createPortal(drawer, document.body);
 }
 function Toast({message, onClose}) { useEffect(()=>{if(!message)return;const timer=window.setTimeout(onClose,4200);return()=>window.clearTimeout(timer)},[message,onClose]); if (!message) return null; return <div className="toast" role="status" aria-live="polite"><span>{message}</span><button type="button" onClick={onClose} aria-label="关闭提示">×</button></div>; }
 function LoadingState({label='正在准备你的工作区…'}) { return <div className="loading-state" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><span>{label}</span></div>; }
@@ -191,14 +299,16 @@ function AppShell({data, children, refresh}) {
   const admin = user.role === 'admin';
   const isActive = href => location.pathname === href || (href === '/studio' && location.pathname.startsWith('/tasks')) || (href === '/admin/users' && (['/admin/subscriptions','/admin/tasks'].includes(location.pathname)||location.pathname.startsWith('/admin/tasks/groups/')||location.pathname.startsWith('/admin/customers/'))) || (href === '/admin/runs' && location.pathname==='/admin/today') || (href === '/admin/operations' && ['/admin/diagnostics','/admin/audit'].includes(location.pathname));
   const dockRoutes=admin?adminRoutes.slice(0,4):routes.slice(0,4);
+  const topRoutes=admin?adminRoutes:routes.slice(0,4);
+  const activeTopRoute=topRoutes.find(([href])=>isActive(href))?.[0] || topRoutes[0]?.[0];
+  const topNavItems=topRoutes.map(([href,label,IconComp])=>({value:href,label,icon:<span className="fire-nav-segment-icon" aria-hidden="true"><IconComp/></span>}));
   useEffect(()=>{document.documentElement.dataset.theme=theme; localStorage.setItem('dyfire-theme',theme)},[theme]);
   useEffect(()=>{if (location.state?.toast) { setToast(location.state.toast); navigate(location.pathname,{replace:true,state:{}}); }},[location,navigate]);
   const logout = () => { const form=document.createElement('form'); form.method='POST'; form.action='/logout'; const input=document.createElement('input'); input.name='csrf_token'; input.value=data?.csrf||''; form.append(input); document.body.append(form); form.submit(); };
-  const navLink=([href,label,icon])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><Icon>{icon}</Icon>{label}</Link>;
-  const dockLink=([href,label,icon])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><Icon>{icon}</Icon><small>{label}</small></Link>;
-  return <div className="app-shell">
-    <aside className="sidebar"><Logo/><div className="sidebar-label">工作区</div><nav>{routes.map(navLink)}</nav>{admin&&<><div className="sidebar-label admin-label">管理</div><nav>{adminRoutes.map(navLink)}</nav></>}<div className="sidebar-bottom"><button type="button" className="theme-toggle" onClick={()=>setTheme(theme==='dark'?'light':'dark')}><span>{theme==='dark'?'☼':'◐'}</span>{theme==='dark'?'浅色模式':'深色模式'}</button><button type="button" className="user-chip" onClick={()=>navigate('/account-center')}><span className="avatar avatar-small">{initial(userName).toUpperCase()}</span><span><b>{userName}</b><small>{admin?'管理员':'个人账户'}</small></span><span aria-hidden="true">···</span></button><button type="button" className="logout-link" onClick={logout}>退出登录</button></div></aside>
-    <main className="main-shell" id="workspace"><header className="mobile-head"><Logo/><div><button type="button" className="icon-button" onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label="切换主题">{theme==='dark'?'☼':'◐'}</button><button type="button" className="icon-button" onClick={()=>navigate('/account-center')} aria-label="账户中心">◎</button></div></header><div className="global-utility"><button type="button" className="utility-button" onClick={()=>navigate('/attention')} aria-label="查看待处理事项"><BellIcon/><i/></button><button type="button" className="utility-account" onClick={()=>navigate('/account-center')}><span className="avatar avatar-small">{initial(userName).toUpperCase()}</span><span>{userName}</span><b className="account-chevron" aria-hidden="true"/></button></div><div className="main-inner"><div className="route-view" key={location.pathname}>{children}</div></div></main>
+  const navLink=([href,label,IconComp])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><IconComp/>{label}</Link>;
+  const dockLink=([href,label,IconComp])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><IconComp/><small>{label}</small></Link>;
+  return <div className="app-shell fire-shell">
+    <main className="main-shell fire-main" id="workspace"><header className="fire-nav"><div className="fire-nav-brand"><Logo/></div><RubberSegment className="fire-nav-segment" items={topNavItems} value={activeTopRoute} onChange={href=>navigate(href)} trackColor={theme==='light'?'rgba(255,255,255,.62)':'rgba(255,255,255,.035)'} thumbColor={theme==='light'?'#e55b20':'#ff6b25'} textColor={theme==='light'?'#74645b':'#a88f83'} activeTextColor={theme==='light'?'#fff8f2':'#20100a'} size="md" radius={999} inset={5} equalSlots stretch={100} squash={3} speed={1} glide={75} draggable aria-label={admin?'管理导航':'工作区导航'}/><div className="fire-nav-right"><span className="fire-service"><i/>服务正常</span><button type="button" className="fire-theme" onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label="切换主题"><ThemeIcon light={theme==='light'}/></button><button type="button" className="fire-account" onClick={()=>navigate(admin?'/admin/settings':'/account-center')}><span className="avatar avatar-small">{initial(userName).toUpperCase()}</span><span>{admin?'管理员':userName}</span></button></div></header><div className="main-inner"><AnimatePresence mode="popLayout" initial={false}><motion.div className="route-view" key={location.pathname} initial={{opacity:0,y:5}} animate={{opacity:1,y:0}} transition={{duration:.15,ease:'easeOut'}}>{children}</motion.div></AnimatePresence></div></main>
     <nav className="mobile-dock" aria-label="移动端主导航">{dockRoutes.map(dockLink)}</nav><Toast message={toast} onClose={()=>setToast('')}/>
   </div>;
 }
@@ -208,28 +318,55 @@ function Metric({label,value,detail,tone=''}) { return <Card className="metric">
 function AccountStatus({account={}, onAction}) { const health=account.health||{}; const name=displayName(account.name); const good=health.state==='valid'||account.validation_state==='valid'; const tone=good?'good':(health.state==='verification'||health.blocked?'danger':'warn'); return <div className="account-status-row"><span className="avatar">{account.profile?.avatar_url?<img src={account.profile.avatar_url} alt=""/>:initial(name)}</span><div className="grow"><b>{name}</b><small>{account.profile?.nickname && account.profile.nickname!==name?account.profile.nickname+' · ':''}{health.label||'等待复核'}</small></div><Badge tone={tone}>{health.label||'等待复核'}</Badge><Button variant="quiet" onClick={()=>onAction?.(account)}>{good?'查看':'处理'}</Button></div>; }
 
 function Dashboard({data}) {
-  const navigate=useNavigate();
-  const runs=asList(data?.recentRuns?.length ? data.recentRuns : data?.runs);
-  const todayRuns=asList(data?.runs);
-  const tasks=asList(data?.tasks);
-  const accounts=asList(data?.accounts);
-  const success=todayRuns.filter(r=>r.status==='success').length;
-  const failed=todayRuns.filter(r=>r.status==='failed').length;
-  const valid=accounts.filter(a=>a.health?.state==='valid'||a.validation_state==='valid').length;
-  const healthScore=accounts.length?Math.round(valid/accounts.length*100):0;
-  const contacts=[...new Map(tasks.map(t=>[t?.sec_uid||`${t?.accountId||''}:${displayName(t?.name,'未命名好友')}`,t])).values()];
-  const next=tasks.find(t=>t.enabled);
-  const membership=data.membership||{};
-  return <div className="dashboard-mosaic">
-    <header className="mosaic-toolbar"><div><span className="eyebrow">DYFIRE / TODAY</span><span className="mosaic-date">北京时间 · {new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'})}</span></div><div className="mosaic-actions"><span className="mosaic-service"><i/>服务正常</span><Button variant="quiet" onClick={()=>navigate('/runs')}>执行记录 ↗</Button><Button onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'创建任务':'绑定账号'} ↗</Button></div></header>
-    <section className="mosaic-hero"><div className="mosaic-hero-type">自动续火服务<br/><span>每天，都在</span></div><div className="mosaic-hero-glyph">火<br/><em>花</em></div><div className="mosaic-hero-caption">每一次续火<br/>都是一次新的相遇</div><span className="mosaic-hero-mark">✦</span></section>
-    <Card className="mosaic-health"><div className="mosaic-card-head"><div><span className="eyebrow">ACCOUNT HEALTH</span><h2>账号健康</h2></div><Badge tone={healthScore>=80?'good':healthScore?'warn':'neutral'}>{accounts.length?`${healthScore} / 100`:'未绑定'}</Badge></div><div className="health-score"><strong>{accounts.length?healthScore:'—'}</strong><span>分</span></div><p>{accounts.length?(healthScore>=80?'账号状态良好，续火服务运行稳定':'部分账号需要复核，请及时处理'):'绑定抖音账号后，这里会显示实时状态。'}</p><div className="health-divider"/><div className="health-metrics"><span><b>{success} / {todayRuns.length||0}</b><small>今日任务</small></span><span><b>{todayRuns.length?`${Math.round(success/todayRuns.length*100)}%`:'—'}</b><small>成功率</small></span><span><b>{failed}</b><small>待处理</small></span></div><Link className="mosaic-inline-link" to="/accounts">查看账号状态 ↗</Link></Card>
-    <Card className="mosaic-tasks"><div className="mosaic-card-head"><div><span className="eyebrow">ROUTINE</span><h2>续火任务 <em>{tasks.length}</em></h2></div><Link className="mosaic-inline-link" to="/studio">查看全部 ↗</Link></div>{tasks.length?<div className="mosaic-task-list">{tasks.slice(0,6).map((t,index)=>{const name=displayName(t?.name,'未命名好友'); return <Link to={`/tasks/${t?.id||''}/edit`} className="mosaic-task-row" key={t?.id||`${name}-${index}`}><span className="avatar avatar-small">{t?.avatar?<img src={t.avatar} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>抖音 · {displayText(t?.kind,'续火花表情')}</small></span><time>{displayText(t?.time,'—')}</time><Badge tone={t?.enabled?'good':'neutral'}>{t?.enabled?'待执行':'已暂停'}</Badge></Link>})}</div>:<Empty title="暂无续火任务" text="选择好友后，每位好友会有独立计划。" action={<Button onClick={()=>navigate('/studio')}>创建任务</Button>}/>}</Card>
-    <aside className="mosaic-contacts"><div className="mosaic-image-placeholder" aria-hidden="true"><span>RELATION<br/>STAYS<br/>CLOSE</span></div><div className="mosaic-contact-head"><h2>目标好友</h2><strong>{contacts.length}</strong></div>{contacts.length?<div className="mosaic-contact-list">{contacts.map((t,index)=>{const name=displayName(t?.name,'未命名好友'); return <Link to={`/tasks/${t?.id||''}/edit`} key={t?.id||`${name}-${index}`}><span className="avatar avatar-small">{t?.avatar?<img src={t.avatar} alt=""/>:initial(name)}</span><b>{name}</b></Link>})}</div>:<p>创建任务后，好友会出现在这里。</p>}<div className="mosaic-contact-foot">好的关系<br/>值得被持续看见。</div></aside>
-    <Card className="mosaic-runs"><div className="mosaic-card-head"><div><span className="eyebrow">DELIVERY LOG</span><h2>执行记录</h2></div><Link className="mosaic-inline-link" to="/runs">查看全部 ↗</Link></div>{runs.length?<div className="mosaic-run-list">{runs.slice(0,5).map(r=><div className="mosaic-run-row" key={r.id}><time>{r.time}</time><b>{displayName(r.name||r.target,'续火任务')}</b><span>{r.stage||'抖音'}</span><Badge tone={r.status==='success'?'good':r.status==='failed'?'danger':'warn'}>{r.label||r.status}</Badge></div>)}</div>:<Empty title="暂无近期执行记录" text="任务开始运行后，结果会显示在这里。"/>}</Card>
-    <section className="mosaic-subscription"><span className="eyebrow">SUBSCRIPTION</span><h2>我的订阅</h2><strong>{membership.active?(membership.max_tasks==null?'∞':tasks.length):'—'}<small>{membership.active&&membership.max_tasks!=null?` / ${membership.max_tasks}`:''}</small></strong><p>{membership.active?(membership.max_tasks==null?'管理员账户，可管理全部续火任务。':`当前订阅可管理 ${membership.max_tasks} 位好友的自动续火任务。`):'当前未开通订阅，兑换管理员提供的兑换码即可开通。'}</p><div className="mosaic-sub-foot"><span>{membership.days_remaining!=null?`有效期至 ${membership.days_remaining} 天后`:'尚未开通'}</span><Button variant="quiet" onClick={()=>navigate('/subscription')}>管理订阅</Button></div></section>
-    <section className="mosaic-create"><span className="mosaic-create-mark">✦</span><h2>创建任务</h2><p>选择好友与续费时长<br/>开启自动续火</p><Button onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>＋ 立即创建</Button></section>
+  const navigate=useNavigate(); const tasks=asList(data?.tasks); const accounts=asList(data?.accounts); const runs=asList(data?.runs); const membership=data.membership||{};
+  const success=runs.filter(r=>r.status==='success').length; const failed=runs.filter(r=>['failed','submitted_unconfirmed'].includes(r.status)).length; const valid=accounts.filter(a=>a.health?.state==='valid'||a.validation_state==='valid').length; const pct=accounts.length?Math.round(valid/accounts.length*100):0;
+  const friends=[...new Map(tasks.map(t=>[t?.sec_uid||`${t?.accountId}:${t?.name}`,t])).values()]; const runByName=new Map(runs.map(r=>[r.name||r.target,r]));
+  const animPct=useCountUp(pct,{duration:1100,enabled:accounts.length>0});
+  const animValid=useCountUp(valid,{duration:900,enabled:accounts.length>0});
+  const animTotal=useCountUp(accounts.length,{duration:900,enabled:accounts.length>0});
+  const [editTask,setEditTask]=useState(null);
+  const [refreshKey,setRefreshKey]=useState(0);
+  const doRefresh=()=>setRefreshKey(k=>k+1);
+  return <div className="fire-home">
+    <div className="fire-home-toolbar"><div><SplitText className="fire-kicker" stagger={14}>DYFIRE / DAILY RITUALS</SplitText><span className="fire-date">北京时间 · {new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'})}</span></div><div className="fire-home-actions"><span className="fire-live"><i/>服务正常</span><Button variant="quiet" onClick={()=>navigate('/runs')}>执行记录 ↗</Button><MagneticButton onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'新建任务':'绑定账号'} ↗</MagneticButton></div></div>
+    <section className="fire-home-hero"><div className="fire-hero-copy"><span className="fire-kicker">账号健康 · 今日状态</span><strong>{accounts.length?`${animValid}/${animTotal}`:'—'}</strong><h1>账号登录有效</h1><p>{accounts.length?(pct===100?'所有账号都可以正常续火。':`${accounts.length-valid} 个账号需要重新确认登录。`):'绑定抖音账号后，系统会在这里显示健康状态。'}</p><div className="fire-hero-chips"><span className="fire-chip good">● {success} 已发出</span><span className="fire-chip wait">● {runs.length-success-failed} 执行中</span><span className="fire-chip bad">● {failed} 待处理</span></div></div><div className="fire-ring"><svg viewBox="0 0 110 110"><circle cx="55" cy="55" r="47"/><circle className="ring-progress" cx="55" cy="55" r="47" style={{strokeDashoffset:`${295.3-(295.3*animPct/100)}`}}/></svg><b>{animPct}%</b><small>账号有效</small></div><span className="fire-hero-mark">✦</span></section>
+    <div className="fire-home-main"><section><div className="fire-section-title">好友动态 · 最近执行 <span/></div><div className="fire-friend-grid">{friends.length?friends.slice(0,8).map((t,i)=>{const last=runByName.get(t.name); return <FriendCard key={t.id||i} task={t} last={last} onEdit={setEditTask}/>;}) : <Empty title="还没有续火好友" text="创建任务后会显示在这里。"/>}{friends.length<4&&<button type="button" className="fire-friend-card fire-friend-add" onClick={()=>navigate(accounts.length?'/studio':'/accounts')}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section><aside className="fire-home-sidebar"><section className="fire-sub-card"><span className="fire-kicker">SUBSCRIPTION</span><h2>我的订阅</h2><strong>{membership.active?(membership.days_remaining??'∞'):'—'}<small>{membership.active?'天有效':'未开通'}</small></strong><p>{membership.active?`任务额度 ${tasks.length} / ${membership.max_tasks??'∞'}`:'兑换管理员提供的兑换码即可开通。'}</p><Button variant="quiet" onClick={()=>navigate('/subscription')}>管理订阅 ↗</Button></section></aside></div>
+    <div className="fire-home-bottom"><section className="fire-heat-card"><div className="fire-section-title">近 30 天互动 <span/></div><p className="fire-heat-hint">每个小方块代表一天，颜色越亮表示当天互动越多</p><div className="fire-heat-grid">{Array.from({length:30},(_,i)=><i key={i} style={{opacity:.1+((i*7)%9)/12}} title={`第 ${30-i} 天`}/>)}</div><div className="fire-heat-legend"><span>少</span><i/><i/><i/><span>多</span></div></section><section className="fire-quick-card"><span>保持日常</span><h2>把重要的人，交给稳定的计划。</h2><MagneticButton onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'创建续火任务':'绑定抖音账号'} ↗</MagneticButton></section></div>
+    <TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={()=>setEditTask(null)} onRefresh={doRefresh}/>
   </div>;
+}
+
+// FriendCard with pointer-tracking spotlight (same pattern as Card)
+function FriendCard({task: t, last, onEdit}) {
+  const ref = useRef(null);
+  const track = e => {
+    if (e.pointerType === 'touch' || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    ref.current.style.setProperty('--spot-x', `${e.clientX - r.left}px`);
+    ref.current.style.setProperty('--spot-y', `${e.clientY - r.top}px`);
+  };
+  const inner = <>
+    <div className="fire-friend-top">
+      <span className="fire-friend-avatar">{t.avatar?<img src={t.avatar} alt=""/>:initial(t.name)}</span>
+      <Badge tone={last?.status==='failed'?'danger':t.enabled?'good':'neutral'}>{last?.label||(t.enabled?'进行中':'已暂停')}</Badge>
+    </div>
+    <b>{displayName(t.name)}</b>
+    {t.streak != null && <strong><span className="fire-streak-icon" aria-hidden="true">🔥</span> {t.streak}<small> 天连续</small></strong>}
+    <time>{last?.time||t.time||'—'} · {last?.stage||'待执行'}</time>
+    <span className="fire-friend-bar"><i style={{transform:`scaleX(${t.enabled?1:.2})`}}/></span>
+  </>;
+  if (onEdit) {
+    return (
+      <button ref={ref} type="button" className="fire-friend-card" onClick={()=>onEdit(t)} onPointerMove={track}>
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <Link ref={ref} className="fire-friend-card" to={`/tasks/${t.id}/edit`} onPointerMove={track}>
+      {inner}
+    </Link>
+  );
 }
 
 function ContactPicker({open,onClose,account,data,onDone}) {
@@ -240,10 +377,15 @@ function ContactPicker({open,onClose,account,data,onDone}) {
   return <Drawer open={open} onClose={onClose} title="选择目标好友" eyebrow="SELECT CONNECTIONS" wide><div className="drawer-content"><input className="input search-input" autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="输入昵称或备注，搜索已同步会话"/><div className="drawer-tools"><span>{selected.size} 人已选</span><button onClick={()=>setSelected(new Set(visible.filter(i=>!existing.has(i?.sec_uid||i?.name)).map(i=>i?.sec_uid||i?.name).filter(Boolean)))}>全选当前结果</button><button onClick={()=>setSelected(new Set())}>清空</button></div>{loading?<div className="skeleton-stack"><div/><div/><div/></div>:<div className="contact-list">{visible.map((item,i)=>{const id=item?.sec_uid||item?.name||`contact-${i}`;const name=displayName(item?.name,'未命名好友');const disabled=existing.has(id);return <label className={`contact-row ${disabled?'disabled':''}`} key={id}><input type="checkbox" disabled={disabled} checked={selected.has(id)} onChange={e=>setSelected(s=>{const n=new Set(s);e.target.checked?n.add(id):n.delete(id);return n})}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':item?.remark_name||item?.nickname||'已同步会话'}</small></span><span>{selected.has(id)?'✓':''}</span></label>})}</div>}{!loading&&!visible.length&&<Empty title="没有匹配的已同步会话" text="好友搜索只覆盖已同步的最近会话，请先在账号页同步。"/>}</div><footer className="drawer-foot"><span>{selected.size} 位好友</span><Button onClick={()=>{onDone([...selected].map(id=>items.find(i=>(i?.sec_uid||i?.name)===id)).filter(Boolean));onClose()}}>完成选择 ↗</Button></footer></Drawer>;
 }
 
-function Studio({data,onRefresh}) {
-  const navigate=useNavigate(); const accounts=asList(data?.accounts); const tasks=asList(data?.tasks); const membership=data?.membership||{}; const [accountId,setAccountId]=useState(accounts[0]?.id||''); const [time,setTime]=useState('09:30'); const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState(''); const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false); const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [saving,setSaving]=useState(false); const [notice,setNotice]=useState(''); const account=accounts.find(a=>a?.id===accountId); const existing=tasks.filter(t=>t?.accountId===accountId); const shown=tasks.filter(t=>(filter==='all'||(filter==='active'?t?.enabled:!t?.enabled))&&(!search||displayName(t?.name,'').toLowerCase().includes(search.toLowerCase())));
+function Studio({data,onRefresh,preEditId,onEditClose}) {
+  const navigate=useNavigate(); const accounts=asList(data?.accounts); const tasks=asList(data?.tasks); const membership=data?.membership||{};
+  const [accountId,setAccountId]=useState(accounts[0]?.id||''); const [time,setTime]=useState('09:30'); const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState(''); const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false); const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [saving,setSaving]=useState(false); const [notice,setNotice]=useState('');
+  const [editTask,setEditTask]=useState(()=>preEditId?tasks.find(t=>t?.id===preEditId)||null:null);
+  const account=accounts.find(a=>a?.id===accountId); const existing=tasks.filter(t=>t?.accountId===accountId); const shown=tasks.filter(t=>(filter==='all'||(filter==='active'?t?.enabled:!t?.enabled))&&(!search||displayName(t?.name,'').toLowerCase().includes(search.toLowerCase())));
+  const openEdit=t=>{setEditTask(t);};
+  const closeEdit=()=>{setEditTask(null);onEditClose?.();};
   const submit=async e=>{e.preventDefault();if(!friends.length||!account)return setNotice('请选择一个或多个好友');if(kind==='text'&&!message.trim())return setNotice('请填写发送内容');setSaving(true);try{await api('/api/studio/tasks',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data.csrf},body:JSON.stringify({account_id:account.id,targets:friends.map(f=>({name:f.name,sec_uid:f.sec_uid||''})),send_time:time,message_kind:kind,message_template:kind==='text'?message.trim():'续火花'})});setFriends([]);setNotice('已创建续火任务');await onRefresh()}catch(err){setNotice(err.message)}finally{setSaving(false)}};
-  return <><PageHeader eyebrow="02 / ROUTINE STUDIO" title="续火任务" text="把每天的默契交给稳定、可核对的自动计划。" actions={<Button onClick={()=>document.getElementById('task-composer')?.scrollIntoView({behavior:'smooth'})}>新建任务 ↘</Button>}/><div className="studio-layout"><section className="studio-list"><div className="toolbar"><div className="segmented"><button className={filter==='all'?'selected':''} onClick={()=>setFilter('all')}>全部 <em>{tasks.length}</em></button><button className={filter==='active'?'selected':''} onClick={()=>setFilter('active')}>运行中 <em>{tasks.filter(t=>t?.enabled).length}</em></button><button className={filter==='paused'?'selected':''} onClick={()=>setFilter('paused')}>已暂停 <em>{tasks.filter(t=>!t?.enabled).length}</em></button></div><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>{shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((t,index)=>{const name=displayName(t?.name,'未命名好友');return <div className="task-row" key={t?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{t?.avatar?<img src={t.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(t?.kind,'续火花表情')}</small></span></span><time>{displayText(t?.time,'—')}<small>每天</small></time><Badge tone={t?.enabled?'good':'neutral'}>{t?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>navigate(`/tasks/${t?.id||''}/edit`)}>编辑</Button><Button variant="quiet" onClick={async()=>{try{await api(`/api/studio/tasks/${t?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!t?.enabled})});onRefresh()}catch(e){setNotice(e.message)}}}>{t?.enabled?'暂停':'恢复'}</Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}</section><Card className="composer-card" id="task-composer"><div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">01</span></div><form onSubmit={submit} className="form-stack"><label>发送账号<select className="input" value={accountId} onChange={e=>{setAccountId(e.target.value);setFriends([])}}>{accounts.length?accounts.map((a,index)=><option key={a?.id||index} value={a?.id||''}>{displayName(a?.name)}</option>):<option>请先绑定账号</option>}</select></label><label>目标好友<div className="friend-trigger" onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((f,index)=><span key={f?.sec_uid||f?.name||index} className="selected-chip">{displayName(f?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="form-grid"><label>每日发送时间<input className="input" type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label>消息类型<select className="input" value={kind} onChange={e=>setKind(e.target.value)}><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></select></label></div>{kind==='text'&&<label>发送内容<textarea className="input textarea" maxLength="300" value={message} onChange={e=>setMessage(e.target.value)} placeholder="写一句日常问候"/></label>}<div className="message-preview"><span className="preview-mark">✦</span><div><b>{kind==='text'?'自定义文字消息':'续火花表情'}</b><small>{kind==='text'?'按设定时间发送你填写的内容。':'每天定时，给选中的好友发送续火花表情。'}</small></div></div>{notice&&<div className="inline-feedback">{notice}</div>}<Button type="submit" disabled={saving||!membership.can_add_task}>{saving?'正在创建…':'创建续火任务 ↗'}</Button>{!membership.can_add_task&&<small className="muted">当前订阅不可创建新任务，请先查看订阅。</small>}</form></Card></div><ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} onDone={(value,err)=>{if(err)setNotice(err);else if(value)setFriends(value)}}/></>;
+  return <><PageHeader eyebrow="02 / ROUTINE STUDIO" title="续火任务" text="把每天的默契交给稳定、可核对的自动计划。" actions={<Button onClick={()=>document.getElementById('task-composer')?.scrollIntoView({behavior:'smooth'})}>新建任务 ↘</Button>}/><div className="studio-layout"><section className="studio-list"><div className="toolbar"><RubberSegment className="admin-segment" items={[{value:'all',label:`全部 ${tasks.length}`},{value:'active',label:`运行中 ${tasks.filter(t=>t?.enabled).length}`},{value:'paused',label:`已暂停 ${tasks.filter(t=>!t?.enabled).length}`}]} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="任务筛选"/><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>{shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((t,index)=>{const name=displayName(t?.name,'未命名好友');return <div className="task-row" key={t?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{t?.avatar?<img src={t.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(t?.kind,'续火花表情')}</small></span></span><time>{displayText(t?.time,'—')}<small>每天</small></time><Badge tone={t?.enabled?'good':'neutral'}>{t?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>openEdit(t)}>编辑</Button><Button variant="quiet" onClick={async()=>{try{await api(`/api/studio/tasks/${t?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!t?.enabled})});onRefresh()}catch(e){setNotice(e.message)}}}>{t?.enabled?'暂停':'恢复'}</Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}</section><Card className="composer-card" id="task-composer"><div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">01</span></div><form onSubmit={submit} className="form-stack"><label>发送账号<select className="input" value={accountId} onChange={e=>{setAccountId(e.target.value);setFriends([])}}>{accounts.length?accounts.map((a,index)=><option key={a?.id||index} value={a?.id||''}>{displayName(a?.name)}</option>):<option>请先绑定账号</option>}</select></label><label>目标好友<div className="friend-trigger" onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((f,index)=><span key={f?.sec_uid||f?.name||index} className="selected-chip">{displayName(f?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="form-grid"><label>每日发送时间<input className="input" type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label>消息类型<select className="input" value={kind} onChange={e=>setKind(e.target.value)}><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></select></label></div>{kind==='text'&&<label>发送内容<textarea className="input textarea" maxLength="300" value={message} onChange={e=>setMessage(e.target.value)} placeholder="写一句日常问候"/></label>}<div className="message-preview"><span className="preview-mark">✦</span><div><b>{kind==='text'?'自定义文字消息':'续火花表情'}</b><small>{kind==='text'?'按设定时间发送你填写的内容。':'每天定时，给选中的好友发送续火花表情。'}</small></div></div>{notice&&<div className="inline-feedback">{notice}</div>}<Button type="submit" disabled={saving||!membership.can_add_task}>{saving?'正在创建…':'创建续火任务 ↗'}</Button>{!membership.can_add_task&&<small className="muted">当前订阅不可创建新任务，请先查看订阅。</small>}</form></Card></div><ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} onDone={(value,err)=>{if(err)setNotice(err);else if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh}/></>;
 }
 
 function ScanVerification({scan,data,setScan}) {
@@ -302,9 +444,75 @@ function Accounts({data,onRefresh}) {
   return <><PageHeader eyebrow="03 / DOUYIN ACCOUNTS" title="抖音账号" text="集中管理登录状态、资料同步与安全复核。" actions={<Button onClick={start} disabled={busy}>{busy?'正在准备…':'绑定抖音账号 ↗'}</Button>}/>{error&&<div className="inline-feedback danger-text">{error}</div>}<div className="account-grid">{accounts.length?accounts.map(a=>{const name=String(a?.name||'抖音账号'); const profile=a?.profile||{}; const health=a?.health||{}; return <Card className="account-card" key={a.id||name}><div className="account-card-head"><span className="avatar avatar-large">{profile.avatar_url?<img src={profile.avatar_url} alt=""/>:initial(name)}</span><div className="grow"><h2>{name}</h2><small>{profile.nickname||'抖音账号'} · 绑定于此工作区</small></div><Badge tone={(health.state==='valid'||a.validation_state==='valid')?'good':'warn'}>{health.label||'等待复核'}</Badge></div><div className="account-card-meta"><span>登录状态<strong>{health.label||'未复核'}</strong></span><span>续火任务<strong>{tasks.filter(t=>t?.accountId===a?.id).length} 条</strong></span></div><div className="account-card-actions"><Button variant="quiet" onClick={()=>navigate('/studio')}>创建任务 ↗</Button><Button variant="quiet" onClick={()=>{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');api(`/accounts/${a?.id}/health-check`,{method:'POST',body:fd}).then(()=>setError('已安排登录复核')).catch(e=>setError(e.message))}}>复核状态</Button></div></Card>}):<Empty title="还没有绑定抖音账号" text="扫码后按抖音 App 提示确认登录。" action={<Button onClick={start}>开始绑定</Button>}/>}</div><Card className="account-guide"><span className="eyebrow">ACCOUNT CARE</span><h2>保持账号稳定</h2><p>系统会在发送前复核账号状态；遇到抖音安全验证时，会暂停相关计划并在这里显示处理入口。</p><div className="guide-steps"><span><b>01</b>扫码确认</span><span><b>02</b>完成验证</span><span><b>03</b>自动复核</span></div></Card><Drawer open={!!scan} onClose={()=>setScan(null)} title="绑定抖音账号" eyebrow="SECURE LOGIN" wide centered><div className="scan-panel">{scan?.status==='succeeded'?<><div className="success-mark">✓</div><h3>绑定成功</h3><p>抖音账号已安全保存，可以创建续火任务。</p><Button onClick={()=>{setScan(null);navigate('/studio')}}>去创建任务 ↗</Button></>:terminal?<><div className="success-mark failure-mark">!</div><h3>本次绑定未完成</h3><p>{scan?.message||'二维码已失效，请重新发起绑定。'}</p><Button onClick={start}>重新绑定</Button></>:<><div className="scan-progress"><span className="scan-progress-dot"/><span>安全登录通道已建立</span><span className="scan-progress-line"/><span className="scan-progress-dot active"/><span>{scan?.needs_verification?'等待验证':'等待扫码确认'}</span></div><CloudFrame scan={scan} data={data} onError={setError}/><h3>{scan?.message||'请使用抖音 App 扫码并在手机确认'}</h3><p>{scan?.needs_verification?'抖音已要求额外验证，请在下方完成一次提交。':'二维码只在当前登录窗口有效，完成确认后页面会自动更新状态。'}</p><CloudInteraction scan={scan} data={data}/><ScanVerification scan={scan} data={data} setScan={setScan}/><Button variant="quiet" onClick={()=>{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');api(`/accounts/scan/${scan?.id}/cancel`,{method:'POST',body:fd});setScan(null)}}>取消绑定</Button></>}</div></Drawer></>;
 }
 
-function Runs({data}) { const [rows,setRows]=useState(asList(data?.runs)); const [filter,setFilter]=useState(''); useEffect(()=>{api(`/api/studio/runs?status=${filter}`).then(v=>setRows(asList(v?.items))).catch(()=>{})},[filter]); return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态和原因。"/><div className="toolbar runs-toolbar"><div className="segmented"><button className={!filter?'selected':''} onClick={()=>setFilter('')}>全部</button><button className={filter==='success'?'selected':''} onClick={()=>setFilter('success')}>已发出</button><button className={filter==='failed'?'selected':''} onClick={()=>setFilter('failed')}>未发出</button><button className={filter==='submitted_unconfirmed'?'selected':''} onClick={()=>setFilter('submitted_unconfirmed')}>待核实</button></div></div><Card className="runs-card">{rows.length?<div className="run-list">{rows.map(r=><div className="run-row" key={r.id}><span className={`run-dot ${r.status}`}/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small></div><Badge tone={r.status==='success'?'good':r.status==='failed'?'danger':'warn'}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||'计划执行正常'}</span></div>)}</div>:<Empty title="还没有执行记录" text="任务开始运行后，结果会出现在这里。"/>}</Card></>; }
+function Runs({data}) { const [rows,setRows]=useState(asList(data?.runs)); const [filter,setFilter]=useState(''); const [expanded,setExpanded]=useState(null); useEffect(()=>{api(`/api/studio/runs?status=${filter}`).then(v=>setRows(asList(v?.items))).catch(()=>{})},[filter]); const tone=r=>r.status==='success'?'good':r.status==='failed'?'danger':r.status==='submitted_unconfirmed'?'warn':r.status==='running'?'running':'neutral'; const runFilterItems=[{value:'',label:'全部'},{value:'success',label:'已发出'},{value:'failed',label:'未发出'},{value:'submitted_unconfirmed',label:'待核实'}]; return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><span className="runs-count">{rows.length} 条记录</span></div><Card className="runs-card">{rows.length?<div className="run-list">{rows.map(r=><div className={`run-row ${expanded===r.id?'is-expanded':''}`} key={r.id} onClick={()=>setExpanded(expanded===r.id?null:r.id)}><span className={`run-dot ${r.status}`}/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small>{expanded===r.id&&<div className="run-detail"><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||'本次执行完成，未发现异常。'}</span>{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</div>}</div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||'计划执行正常'}</span></div>)}</div>:<Empty title="还没有执行记录" text="任务开始运行后，结果会出现在这里。"/>}</Card></>; }
 
-function TaskEdit({data,id,onRefresh}) { const task=asList(data?.tasks).find(t=>t?.id===id); const [time,setTime]=useState(task?.time||'09:30'); const [kind,setKind]=useState(task?.kind==='文字消息'?'text':'douyin_sticker'); const [message,setMessage]=useState(task?.message||''); const [status,setStatus]=useState(''); const navigate=useNavigate(); if(!task)return <Empty title="任务不存在" action={<Button onClick={()=>navigate('/studio')}>返回续火任务</Button>} />; const save=async e=>{e.preventDefault();setStatus('正在保存…');const fd=new FormData();fd.append('csrf_token',data?.csrf||'');fd.append('account_id',task?.accountId||'');fd.append('target_name',task?.name||'');fd.append('target_sec_uid',task?.sec_uid||'');fd.append('send_time',time);fd.append('message_kind',kind);fd.append('message_template',kind==='text'?message:'续火花');try{await api(`/tasks/${id}/edit`,{method:'POST',body:fd});setStatus('已保存');await onRefresh();navigate('/studio')}catch(err){setStatus(err.message)}};return <><PageHeader eyebrow="TASK SETTINGS" title={`编辑 ${displayName(task?.name,'未命名好友')}`} text="目标好友来自已保存任务，编辑时不会重新选择或同步好友。" actions={<Button variant="quiet" onClick={()=>navigate('/studio')}>返回任务列表</Button>}/><Card className="edit-card"><form className="form-stack" onSubmit={save}><div className="edit-target"><span className="avatar avatar-large">{task?.avatar?<img src={task.avatar} alt=""/>:initial(task?.name,'未')}</span><div><b>{displayName(task?.name,'未命名好友')}</b><small>目标好友 · 账号任务</small></div></div><label>每日发送时间<input className="input" type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label>消息类型<select className="input" value={kind} onChange={e=>setKind(e.target.value)}><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></select></label>{kind==='text'&&<label>发送内容<textarea className="input textarea" value={message} onChange={e=>setMessage(e.target.value)}/></label>}{status&&<div className="inline-feedback">{status}</div>}<Button type="submit">保存任务 ↗</Button></form></Card></>;
+function TaskEditDrawer({task, data, open, onClose, onRefresh}) {
+  const [time,setTime]=useState('09:30');
+  const [kind,setKind]=useState('douyin_sticker');
+  const [message,setMessage]=useState('');
+  const [status,setStatus]=useState('');
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{
+    if(!task)return;
+    setTime(task.time||'09:30');
+    setKind(task.kind==='文字消息'?'text':'douyin_sticker');
+    setMessage(task.message||'');
+    setStatus('');
+    setSaving(false);
+  },[task?.id]);
+  const save=async e=>{
+    e.preventDefault();
+    setSaving(true); setStatus('正在保存…');
+    const fd=new FormData();
+    fd.append('csrf_token',data?.csrf||'');
+    fd.append('account_id',task?.accountId||'');
+    fd.append('target_name',task?.name||'');
+    fd.append('target_sec_uid',task?.sec_uid||'');
+    fd.append('send_time',time);
+    fd.append('message_kind',kind);
+    fd.append('message_template',kind==='text'?message:'续火花');
+    try{
+      await api(`/tasks/${task?.id}/edit`,{method:'POST',body:fd});
+      setStatus('已保存');
+      await onRefresh();
+      setTimeout(onClose, 600);
+    }catch(err){setStatus(err.message);}
+    finally{setSaving(false);}
+  };
+  if(!task) return null;
+  const name=displayName(task?.name,'未命名好友');
+  return (
+    <Drawer open={open} onClose={onClose} title={`编辑 ${name}`} eyebrow="TASK SETTINGS" centered>
+      <div className="drawer-content">
+        <form className="form-stack" onSubmit={save}>
+          <div className="edit-target">
+            <span className="avatar avatar-large">{task?.avatar?<img src={task.avatar} alt=""/>:initial(task?.name,'未')}</span>
+            <div><b>{name}</b><small>目标好友 · 账号任务</small></div>
+          </div>
+          <label>每日发送时间
+            <input className="input" type="time" value={time} onChange={e=>setTime(e.target.value)}/>
+          </label>
+          <label>消息类型
+            <select className="input" value={kind} onChange={e=>setKind(e.target.value)}>
+              <option value="douyin_sticker">续火花表情</option>
+              <option value="text">文字消息</option>
+            </select>
+          </label>
+          {kind==='text'&&<label>发送内容
+            <textarea className="input textarea" value={message} onChange={e=>setMessage(e.target.value)} placeholder="写一句日常问候"/>
+          </label>}
+          {status&&<div className="inline-feedback">{status}</div>}
+          <Button type="submit" disabled={saving}>{saving?'正在保存…':'保存任务 ↗'}</Button>
+        </form>
+      </div>
+    </Drawer>
+  );
+}
+
+function TaskEdit({data,id,onRefresh}) {
+  const navigate=useNavigate();
+  // Render Studio with the edit drawer pre-opened for this task id
+  return <Studio data={data} onRefresh={onRefresh} preEditId={id} onEditClose={()=>navigate('/studio')}/>;
 }
 
 function Notifications({data}) {
@@ -430,10 +638,13 @@ function Admin({data,onRefresh}) {
   const toggleSelected=(setter,id)=>setter(current=>{const next=new Set(current);next.has(id)?next.delete(id):next.add(id);return next});
   const runBulk=async(path,body,success)=>{setFeedback('正在处理…');try{const result=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf,...body})});setFeedback(`${success}（${result.updated||0} 项）`);setSelectedUsers(new Set());setSelectedSubscriptions(new Set());setSelectedTasks(new Set());onRefresh();if(baseSection==='users'&&userWorkspaceTab==='customers')refreshUsers();if(baseSection==='users'&&userWorkspaceTab==='subscriptions')refreshSubscriptions();if(baseSection==='users'&&userWorkspaceTab==='tasks'&&!isTaskGroup)api(`/api/admin/task-groups?q=${encodeURIComponent(query)}&status=${encodeURIComponent(taskStatusFilter)}&page=${taskGroupsPagination?.page||1}`).then(v=>{setTaskGroups(v.items||[]);setTaskGroupsPagination(v.pagination||null)});if(isTaskGroup&&groupParts.length===2)api(`/api/admin/tasks/groups/${groupParts[0]}/${groupParts[1]}?q=${encodeURIComponent(query)}`).then(setGroupDetail);}catch(error){setFeedback(error.message)}};
   const adminHeader=<PageHeader eyebrow={`ADMIN / ${section.toUpperCase()}`} title={title} text="管理员工作区 · 用户、任务和运行状态集中管理。" actions={<Button variant="quiet" onClick={onRefresh}>刷新数据 ↻</Button>}/>;
+  const usersTabItems=[{value:'customers',label:'客户'},{value:'subscriptions',label:'订阅'},{value:'tasks',label:'任务'}];
+  const runsTabItems=[{value:'today',label:'今日'},{value:'all',label:'全部记录'}];
+  const opsTabItems=[{value:'server',label:'服务器'},{value:'diagnostics',label:'执行诊断'},{value:'audit',label:'审计日志'}];
   return <>{adminHeader}{feedback&&<div className="inline-feedback">{feedback}</div>}
-    {baseSection==='users'&&<div className="admin-subview-tabs" role="tablist" aria-label="用户管理视图">{[['customers','客户'],['subscriptions','订阅'],['tasks','任务']].map(([tab,label])=><button key={tab} role="tab" aria-selected={userWorkspaceTab===tab} className={userWorkspaceTab===tab?'active':''} onClick={()=>{setUserWorkspaceTab(tab);navigate(`/admin/users?view=${tab}`)}}>{label}</button>)}</div>}
-    {baseSection==='runs'&&<div className="admin-subview-tabs" role="tablist" aria-label="执行记录视图">{[['today','今日'],['all','全部记录']].map(([tab,label])=><button key={tab} role="tab" aria-selected={(tab==='today')===(runDay==='today')} className={(tab==='today')===(runDay==='today')?'active':''} onClick={()=>{setRunPage(1);setRunDay(tab==='today'?'today':'all');navigate(`/admin/runs?view=${tab}`)}}>{label}</button>)}</div>}
-    {baseSection==='operations'&&<div className="admin-subview-tabs" role="tablist" aria-label="运维工作台视图">{[['server','服务器'],['diagnostics','执行诊断'],['audit','审计日志']].map(([tab,label])=><button key={tab} role="tab" aria-selected={operationsTab===tab} className={operationsTab===tab?'active':''} onClick={()=>{setOperationsTab(tab);navigate(`/admin/operations?view=${tab}`)}}>{label}</button>)}</div>}
+    {baseSection==='users'&&<div className="admin-segment-wrap"><RubberSegment className="admin-segment" items={usersTabItems} value={userWorkspaceTab} onChange={tab=>{setUserWorkspaceTab(tab);navigate(`/admin/users?view=${tab}`)}} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="用户管理视图"/></div>}
+    {baseSection==='runs'&&<div className="admin-segment-wrap"><RubberSegment className="admin-segment" items={runsTabItems} value={runDay==='today'?'today':'all'} onChange={tab=>{setRunPage(1);setRunDay(tab==='today'?'today':'all');navigate(`/admin/runs?view=${tab}`)}} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录视图"/></div>}
+    {baseSection==='operations'&&<div className="admin-segment-wrap"><RubberSegment className="admin-segment" items={opsTabItems} value={operationsTab} onChange={tab=>{setOperationsTab(tab);navigate(`/admin/operations?view=${tab}`)}} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="运维工作台视图"/></div>}
     {section==='overview'&&<><div className="metric-grid admin-metrics"><Metric label="用户" value={counts.users||0} detail="注册账户"/><Metric label="抖音账号" value={counts.accounts||0} detail="绑定数量"/><Metric label="续火任务" value={counts.tasks||0} detail="全部用户" tone="accent"/><Metric label="执行记录" value={counts.runs||0} detail="累计记录"/></div><AdminInsights insights={insights} days={insightDays} onDaysChange={setInsightDays} onOpenUser={openUser}/><Card><div className="section-head"><h2>最近执行</h2><Link to="/admin/runs">查看全部 ↗</Link></div><AdminRuns rows={data.recentRuns}/></Card></>}
     {section==='users'&&userWorkspaceTab==='customers'&&<Card><div className="section-head"><div><h2>客户工作台</h2><p className="muted-copy">筛选客户状态，打开详情执行账号、订阅和任务管理。</p></div><span className="eyebrow">{usersPagination?.total??users.length} USERS</span></div><div className="toolbar admin-toolbar"><input className="input compact-search" value={query} onChange={e=>{if(usersPagination?.page!==1)setUsersPagination({...usersPagination,page:1});setQuery(e.target.value)}} placeholder="搜索用户名"/><select className="input compact-search" value={userStatusFilter} onChange={e=>{if(usersPagination?.page!==1)setUsersPagination({...usersPagination,page:1});setUserStatusFilter(e.target.value)}}><option value="">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option></select><span className="muted-copy">本页已选 {selectedUsers.size}</span></div>{selectedUsers.size>0&&<div className="admin-bulk-bar"><span>已选择 {selectedUsers.size} 位客户</span><Button variant="quiet" onClick={()=>runBulk('/api/admin/users/bulk',{user_ids:[...selectedUsers],action:'enable'},'已启用')}>批量启用</Button><Button variant="danger" onClick={()=>runBulk('/api/admin/users/bulk',{user_ids:[...selectedUsers],action:'disable'},'已停用')}>批量停用</Button><Button variant="quiet" onClick={()=>setSelectedUsers(new Set())}>清除选择</Button></div>}<div className="admin-table"><div className="table-head user-workbench-head"><span>选择</span><span>账号</span><span>订阅 / 资源</span><span>状态</span><span>操作</span></div>{users.map(u=>{const sub=subscriptionFor(u.id);return <div className="admin-row admin-user-row user-workbench-row" key={u.id}><input type="checkbox" checked={selectedUsers.has(u.id)} disabled={u.role==='admin'||u.id===data.user?.id} onChange={()=>toggleSelected(setSelectedUsers,u.id)} aria-label={`选择 ${u.username}`}/><button className="admin-cell-button" onClick={()=>openUser(u)}><b>{u.username}<small>{u.role==='admin'?'管理员':'普通用户'} · 注册于 {u.created}</small></b></button><span>{u.account_count??sub.account_count??0} 个账号 · {u.task_count??sub.task_count??0} 个任务<small>{u.membership_label||sub.membership_label||'未开通订阅'}</small></span><Badge tone={u.status==='active'?'good':'danger'}>{u.status==='active'?'正常':'停用'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>openUser(u)}>详情</Button><Button variant="quiet" disabled={u.role==='admin'||u.id===data.user?.id} onClick={async()=>{try{await api(`/api/admin/users/${u.id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf})});setFeedback('用户状态已更新');refreshUsers();onRefresh()}catch(e){setFeedback(e.message)}}}>{u.status==='active'?'停用':'启用'}</Button></span></div>})}</div><AdminPagination value={usersPagination} onChange={page=>setUsersPagination(p=>({...p,page}))}/></Card>}
     {section==='subscriptions'&&<Card><div className="section-head"><h2>订阅与额度工作台</h2><span className="eyebrow">{subscriptionsPagination?.total??subscriptions.length} ACCOUNTS</span></div><div className="toolbar admin-toolbar"><input className="input compact-search" value={query} onChange={e=>{if(subscriptionsPagination?.page!==1)setSubscriptionsPagination({...subscriptionsPagination,page:1});setQuery(e.target.value)}} placeholder="搜索用户名"/><select className="input compact-search" value={subscriptionStatusFilter} onChange={e=>{if(subscriptionsPagination?.page!==1)setSubscriptionsPagination({...subscriptionsPagination,page:1});setSubscriptionStatusFilter(e.target.value)}}><option value="">全部订阅</option><option value="active">使用中</option><option value="expiring">即将到期</option><option value="expired">已过期</option><option value="inactive">未开通</option></select><span className="muted-copy">本页已选 {selectedSubscriptions.size}</span></div>{selectedSubscriptions.size>0&&<div className="admin-bulk-bar"><span>已选择 {selectedSubscriptions.size} 个订阅</span><Button variant="quiet" onClick={()=>runBulk('/api/admin/subscriptions/bulk',{user_ids:[...selectedSubscriptions],action:'extend',duration_days:30},'已批量续期 30 天')}>续期 30 天</Button><Button variant="danger" onClick={()=>{if(window.confirm(`将撤销 ${selectedSubscriptions.size} 个有效订阅，继续吗？`))runBulk('/api/admin/subscriptions/bulk',{user_ids:[...selectedSubscriptions],action:'revoke'},'已撤销订阅')}}>批量撤销</Button><Button variant="quiet" onClick={()=>setSelectedSubscriptions(new Set())}>清除选择</Button></div>}<div className="admin-table"><div className="table-head subscription-workbench-head"><span>选择</span><span>用户</span><span>状态</span><span>有效期 / 额度</span><span>操作</span></div>{subscriptions.map(u=><div className="admin-row subscription-workbench-row" key={u.id}><input type="checkbox" checked={selectedSubscriptions.has(u.id)} disabled={u.role==='admin'} onChange={()=>toggleSelected(setSelectedSubscriptions,u.id)} aria-label={`选择 ${u.username}`}/><button className="admin-cell-button" onClick={()=>openUser(u)}><b>{u.username}<small>{u.account_count} 个账号 · {u.task_count} 个任务</small></b></button><Badge tone={u.membership_status==='active'?'good':u.membership_status==='expiring'?'warn':'danger'}>{u.membership_label}</Badge><span>{u.valid_until?new Date(u.valid_until).toLocaleDateString('zh-CN'):'未开通'}<small>最多 {u.max_accounts||1} 个账号 · {u.max_tasks||10} 个任务</small></span><span className="row-actions"><Button variant="quiet" onClick={()=>submit(`/admin/users/${u.id}/subscription`,{duration_days:'30',max_accounts:String(u.max_accounts||1),max_tasks:String(u.max_tasks||10)})}>续期 30 天</Button><Button variant="quiet" onClick={()=>openUser(u)}>详情</Button></span></div>)}</div><AdminPagination value={subscriptionsPagination} onChange={page=>setSubscriptionsPagination(p=>({...p,page}))}/></Card>}
