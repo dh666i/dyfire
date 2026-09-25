@@ -2,7 +2,13 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createPortal} from 'react-dom';
 import {BrowserRouter, Link, useLocation, useNavigate} from 'react-router-dom';
-import {AnimatePresence, motion} from 'motion/react';
+// Lightweight motion primitives — avoids motion/react subpath import issues with Vite 8 Rolldown
+function AnimatePresence({children}) { return children; }
+function RouteMotionDiv({children, locationKey}) {
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => { setVisible(false); const t = setTimeout(() => setVisible(true), 10); return () => clearTimeout(t); }, [locationKey]);
+  return <div className="route-view" style={{opacity: visible?1:0, transform: visible?'none':'translateY(5px)', transition: 'opacity 150ms ease-out, transform 150ms ease-out'}}>{children}</div>;
+}
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-500.css';
 import '@fontsource/inter/latin-700.css';
@@ -180,14 +186,12 @@ function SplitText({children, className='', stagger=18, delay=0}) {
   return (
     <span className={className} aria-label={children}>
       {String(children).split('').map((ch, i) => (
-        <motion.span
+        <span
           key={i}
           aria-hidden="true"
-          style={{display: ch === ' ' ? 'inline' : 'inline-block'}}
-          initial={{opacity: 0, filter: 'blur(6px)'}}
-          animate={{opacity: 1, filter: 'blur(0px)'}}
-          transition={{duration: 0.32, delay: delay + i * stagger / 1000, ease: 'easeOut'}}
-        >{ch}</motion.span>
+          className="split-char"
+          style={{display: ch === ' ' ? 'inline' : 'inline-block', animationDelay: `${delay + i * stagger}ms`}}
+        >{ch}</span>
       ))}
     </span>
   );
@@ -308,7 +312,7 @@ function AppShell({data, children, refresh}) {
   const navLink=([href,label,IconComp])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><IconComp/>{label}</Link>;
   const dockLink=([href,label,IconComp])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><IconComp/><small>{label}</small></Link>;
   return <div className="app-shell fire-shell">
-    <main className="main-shell fire-main" id="workspace"><header className="fire-nav"><div className="fire-nav-brand"><Logo/></div><RubberSegment className="fire-nav-segment" items={topNavItems} value={activeTopRoute} onChange={href=>navigate(href)} trackColor={theme==='light'?'rgba(255,255,255,.62)':'rgba(255,255,255,.035)'} thumbColor={theme==='light'?'#e55b20':'#ff6b25'} textColor={theme==='light'?'#74645b':'#a88f83'} activeTextColor={theme==='light'?'#fff8f2':'#20100a'} size="md" radius={999} inset={5} equalSlots stretch={100} squash={3} speed={1} glide={75} draggable aria-label={admin?'管理导航':'工作区导航'}/><div className="fire-nav-right"><span className="fire-service"><i/>服务正常</span><button type="button" className="fire-theme" onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label="切换主题"><ThemeIcon light={theme==='light'}/></button><button type="button" className="fire-account" onClick={()=>navigate(admin?'/admin/settings':'/account-center')}><span className="avatar avatar-small">{initial(userName).toUpperCase()}</span><span>{admin?'管理员':userName}</span></button></div></header><div className="main-inner"><AnimatePresence mode="popLayout" initial={false}><motion.div className="route-view" key={location.pathname} initial={{opacity:0,y:5}} animate={{opacity:1,y:0}} transition={{duration:.15,ease:'easeOut'}}>{children}</motion.div></AnimatePresence></div></main>
+    <main className="main-shell fire-main" id="workspace"><header className="fire-nav"><div className="fire-nav-brand"><Logo/></div><RubberSegment className="fire-nav-segment" items={topNavItems} value={activeTopRoute} onChange={href=>navigate(href)} trackColor={theme==='light'?'rgba(255,255,255,.62)':'rgba(255,255,255,.035)'} thumbColor={theme==='light'?'#e55b20':'#ff6b25'} textColor={theme==='light'?'#74645b':'#a88f83'} activeTextColor={theme==='light'?'#fff8f2':'#20100a'} size="md" radius={999} inset={5} equalSlots stretch={100} squash={3} speed={1} glide={75} draggable aria-label={admin?'管理导航':'工作区导航'}/><div className="fire-nav-right"><span className="fire-service"><i/>服务正常</span><button type="button" className="fire-theme" onClick={()=>setTheme(theme==='dark'?'light':'dark')} aria-label="切换主题"><ThemeIcon light={theme==='light'}/></button><button type="button" className="fire-account" onClick={()=>navigate(admin?'/admin/settings':'/account-center')}><span className="avatar avatar-small">{initial(userName).toUpperCase()}</span><span>{admin?'管理员':userName}</span></button></div></header><div className="main-inner"><RouteMotionDiv locationKey={location.pathname}>{children}</RouteMotionDiv></div></main>
     <nav className="mobile-dock" aria-label="移动端主导航">{dockRoutes.map(dockLink)}</nav><Toast message={toast} onClose={()=>setToast('')}/>
   </div>;
 }
