@@ -159,7 +159,7 @@ class Worker:
                         "用户账号已停用",
                     )
                 if owner.role != "admin" and not SubscriptionService(
-                    db, AuditService(db)
+                    db, AuditService(db), now=lambda: current_time
                 ).active(owner.id):
                     return finish_run(
                         run,

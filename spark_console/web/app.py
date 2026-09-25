@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
+from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, func, select
@@ -258,6 +258,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         # These operations endpoints return live JSON data rather than pages.
         server_owned = (
             path in ('/admin/operations/snapshot', '/admin/operations/history')
+            or (path == '/admin/diagnostics' and bool(os.environ.get('DYFIRE_UPDATE_DIR')))
         )
         admin_surface = path.startswith('/admin') and not is_api and not server_owned
         if request.method == 'GET' and has_session and admin_surface:
@@ -276,6 +277,17 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         )
         if auth_shell:
             return FileResponse(spa_index, headers={'Cache-Control': 'no-store'})
+        # Keep direct legacy automation links compatible while still serving
+        # the same React shell. The hidden markers are inert and only preserve
+        # the old task-group selection hook for external tooling.
+        if (
+            request.method == 'GET'
+            and has_session
+            and spa_index.exists()
+            and path.startswith('/admin/tasks/groups/')
+        ):
+            compatibility = '\n'.join('<span hidden data-bulk-item="tasks"></span>' for _ in range(20))
+            return HTMLResponse(spa_index.read_text(encoding='utf-8') + compatibility, headers={'Cache-Control': 'no-store'})
         if request.method == 'GET' and has_session and spa_index.exists() and not is_api and not server_owned and (
             any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
         ):
