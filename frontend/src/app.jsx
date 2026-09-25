@@ -40,6 +40,7 @@ function normalizeBootstrap(value) {
     redemptionCodes: asList(source.redemptionCodes),
     groups: asList(source.groups),
     audit: asList(source.audit),
+    activity: source.activity && typeof source.activity === 'object' ? source.activity : {days: [], total: 0, period_days: 365},
     membership: source.membership && typeof source.membership === 'object' ? source.membership : {},
     operations: source.operations && typeof source.operations === 'object' ? source.operations : {},
     mail: {...mail, events: asList(mail.events), deliveries: asList(mail.deliveries)},
@@ -80,6 +81,7 @@ let previewScan = null;
 
 function previewData() {
   const account = {id:'preview-account', name:'主账号', profile:{nickname:'火花用户'}, health:{state:'valid', label:'登录有效'}, validation_state:'valid'};
+  const activityDays = Array.from({length:371},(_,i)=>({date:`2025-09-${String((i%30)+1).padStart(2,'0')}`,count:(i*7)%6,outside:i>364}));
   const secondAccount = {id:'preview-account-2', name:'副账号', profile:{nickname:'备用火花'}, health:{state:'verification', label:'需要重新验证'}, validation_state:'verification'};
   const thirdAccount = {id:'preview-account-3', name:'测试账号', profile:{nickname:'小号'}, health:{state:'valid', label:'登录有效'}, validation_state:'valid'};
   const tasks = [
@@ -102,6 +104,7 @@ function previewData() {
     user:{name:'演示用户', role:new URLSearchParams(window.location.search).has('admin')?'admin':'user'}, csrf:'preview-csrf',
     accounts:[account,secondAccount,thirdAccount], tasks, runs, recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':run.status==='running'?'warn':'danger'})),
     membership:{active:true, can_add_task:true, max_tasks:10, days_remaining:27, status_label:'专业版 · 有效中'},
+    activity:{period_days:365,total:126,days:activityDays},
     counts:{users:18, accounts:26, tasks:74, runs:1260},
     users:[{id:'preview-user-1',username:'演示用户',role:'user',status:'active',created:'2026-09-01'},{id:'preview-user-2',username:'管理员',role:'admin',status:'active',created:'2026-08-21'}],
     subscriptions:[{id:'preview-user-1',username:'演示用户',account_count:1,task_count:3,membership_status:'active',membership_label:'有效',valid_until:'2026-10-18',max_accounts:2,max_tasks:10}],
@@ -305,7 +308,7 @@ function AppShell({data, children, refresh}) {
   const admin = user.role === 'admin';
   const isActive = href => location.pathname === href || (href === '/studio' && location.pathname.startsWith('/tasks')) || (href === '/admin/users' && (['/admin/subscriptions','/admin/tasks'].includes(location.pathname)||location.pathname.startsWith('/admin/tasks/groups/')||location.pathname.startsWith('/admin/customers/'))) || (href === '/admin/runs' && location.pathname==='/admin/today') || (href === '/admin/operations' && ['/admin/diagnostics','/admin/audit'].includes(location.pathname));
   const dockRoutes=admin?adminRoutes.slice(0,4):routes.slice(0,4);
-  const topRoutes=admin?adminRoutes:routes.slice(0,4);
+  const topRoutes=admin?[...routes.slice(0,3),...adminRoutes]:routes.slice(0,4);
   const activeTopRoute=topRoutes.find(([href])=>isActive(href))?.[0] || topRoutes[0]?.[0];
   const topNavItems=topRoutes.map(([href,label,IconComp])=>({value:href,label,icon:<span className="fire-nav-segment-icon" aria-hidden="true"><IconComp/></span>}));
   useEffect(()=>{document.documentElement.dataset.theme=theme; localStorage.setItem('dyfire-theme',theme)},[theme]);
@@ -326,7 +329,10 @@ function AccountStatus({account={}, onAction}) { const health=account.health||{}
 function Dashboard({data}) {
   const navigate=useNavigate(); const tasks=asList(data?.tasks); const accounts=asList(data?.accounts); const runs=asList(data?.runs); const membership=data.membership||{};
   const success=runs.filter(r=>r.status==='success').length; const failed=runs.filter(r=>['failed','submitted_unconfirmed'].includes(r.status)).length; const valid=accounts.filter(a=>a.health?.state==='valid'||a.validation_state==='valid').length; const pct=accounts.length?Math.round(valid/accounts.length*100):0;
-  const friends=[...new Map(tasks.map(t=>[t?.sec_uid||`${t?.accountId}:${t?.name}`,t])).values()]; const runByName=new Map(runs.map(r=>[r.name||r.target,r]));
+  const runByTaskId=new Map(); runs.forEach(run=>{if(run?.taskId&&!runByTaskId.has(run.taskId))runByTaskId.set(run.taskId,run)});
+  const friends=[...new Map(tasks.filter(t=>t?.enabled||runByTaskId.has(t?.id)).map(t=>[t?.sec_uid||`${t?.accountId}:${t?.name}`,t])).values()];
+  const activity=data.activity||{}; const heatDays=asList(activity.days); while(heatDays.length&&heatDays.length%7)heatDays.push({date:'',count:0,outside:true});
+  const heatColumns=Math.max(1,Math.ceil(heatDays.length/7)); const heatMonths=Array.from({length:heatColumns},(_,column)=>{const date=heatDays[column*7]?.date||'';if(!date)return '';const month=Number(date.slice(5,7));const day=Number(date.slice(8,10));return day<=7?`${month}月`:''});
   const animPct=useCountUp(pct,{duration:1100,enabled:accounts.length>0});
   const animValid=useCountUp(valid,{duration:900,enabled:accounts.length>0});
   const animTotal=useCountUp(accounts.length,{duration:900,enabled:accounts.length>0});
@@ -336,14 +342,22 @@ function Dashboard({data}) {
   return <div className="fire-home">
     <div className="fire-home-toolbar"><div><SplitText className="fire-kicker" stagger={14}>DYFIRE / DAILY RITUALS</SplitText><span className="fire-date">北京时间 · {new Date().toLocaleDateString('zh-CN',{month:'long',day:'numeric'})}</span></div><div className="fire-home-actions"><span className="fire-live"><i/>服务正常</span><Button variant="quiet" onClick={()=>navigate('/runs')}>执行记录 ↗</Button><MagneticButton onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'新建任务':'绑定账号'} ↗</MagneticButton></div></div>
     <section className="fire-home-hero"><div className="fire-hero-copy"><span className="fire-kicker">账号健康 · 今日状态</span><strong>{accounts.length?`${animValid}/${animTotal}`:'—'}</strong><h1>账号登录有效</h1><p>{accounts.length?(pct===100?'所有账号都可以正常续火。':`${accounts.length-valid} 个账号需要重新确认登录。`):'绑定抖音账号后，系统会在这里显示健康状态。'}</p><div className="fire-hero-chips"><span className="fire-chip good">● {success} 已发出</span><span className="fire-chip wait">● {runs.length-success-failed} 执行中</span><span className="fire-chip bad">● {failed} 待处理</span></div></div><div className="fire-ring"><svg viewBox="0 0 110 110"><circle cx="55" cy="55" r="47"/><circle className="ring-progress" cx="55" cy="55" r="47" style={{strokeDashoffset:`${295.3-(295.3*animPct/100)}`}}/></svg><b>{animPct}%</b><small>账号有效</small></div><span className="fire-hero-mark">✦</span></section>
-    <div className="fire-home-main"><section><div className="fire-section-title">好友动态 · 最近执行 <span/></div><div className="fire-friend-grid">{friends.length?friends.slice(0,8).map((t,i)=>{const last=runByName.get(t.name); return <FriendCard key={t.id||i} task={t} last={last} onEdit={setEditTask}/>;}) : <Empty title="还没有续火好友" text="创建任务后会显示在这里。"/>}{friends.length<4&&<button type="button" className="fire-friend-card fire-friend-add" onClick={()=>navigate(accounts.length?'/studio':'/accounts')}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section><aside className="fire-home-sidebar"><section className="fire-sub-card"><span className="fire-kicker">SUBSCRIPTION</span><h2>我的订阅</h2><strong>{membership.active?(membership.days_remaining??'∞'):'—'}<small>{membership.active?'天有效':'未开通'}</small></strong><p>{membership.active?`任务额度 ${tasks.length} / ${membership.max_tasks??'∞'}`:'兑换管理员提供的兑换码即可开通。'}</p><Button variant="quiet" onClick={()=>navigate('/subscription')}>管理订阅 ↗</Button></section></aside></div>
-    <div className="fire-home-bottom"><section className="fire-heat-card"><div className="fire-section-title">近 30 天互动 <span/></div><p className="fire-heat-hint">每个小方块代表一天，颜色越亮表示当天互动越多</p><div className="fire-heat-grid">{Array.from({length:30},(_,i)=><i key={i} style={{opacity:.1+((i*7)%9)/12}} title={`第 ${30-i} 天`}/>)}</div><div className="fire-heat-legend"><span>少</span><i/><i/><i/><span>多</span></div></section><section className="fire-quick-card"><span>保持日常</span><h2>把重要的人，交给稳定的计划。</h2><MagneticButton onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'创建续火任务':'绑定抖音账号'} ↗</MagneticButton></section></div>
+    <div className="fire-home-main"><section><div className="fire-section-title">续火花任务 <span/></div><div className="fire-friend-grid">{friends.length?friends.slice(0,8).map((t,i)=>{const last=runByTaskId.get(t.id); return <FriendCard key={t.id||i} task={t} last={last} state={friendState(t,last)} onEdit={setEditTask}/>;}) : <Empty title="还没有今日续火任务" text="创建任务后会显示今日执行状态。"/>}{friends.length<4&&<button type="button" className="fire-friend-card fire-friend-add" onClick={()=>navigate(accounts.length?'/studio':'/accounts')}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section><aside className="fire-home-sidebar"><section className="fire-sub-card"><span className="fire-kicker">SUBSCRIPTION</span><h2>我的订阅</h2><strong>{membership.active?(membership.days_remaining??'∞'):'—'}<small>{membership.active?'天有效':'未开通'}</small></strong><p>{membership.active?`任务额度 ${tasks.length} / ${membership.max_tasks??'∞'}`:'兑换管理员提供的兑换码即可开通。'}</p><Button variant="quiet" onClick={()=>navigate('/subscription')}>管理订阅 ↗</Button></section></aside></div>
+    <div className="fire-home-bottom"><section className="fire-heat-card"><div className="fire-section-title">近 365 天互动 · {activity.total||0} 次 <span/></div><p className="fire-heat-hint">每格代表一天，颜色越亮表示当天互动越多</p><div className="fire-heat-months" style={{gridTemplateColumns:`repeat(${heatColumns},minmax(0,1fr))`}}>{heatMonths.map((label,i)=><span key={i}>{label}</span>)}</div><div className="fire-heat-grid" style={{gridTemplateColumns:`repeat(${heatColumns},minmax(0,1fr))`}}>{heatDays.map((day,i)=><i key={i} className={day.outside?'outside':''} style={{opacity:day.outside?0:Math.min(1,.12+(Number(day.count||0)/Math.max(1,Math.max(...heatDays.map(item=>Number(item.count||0)))))*.88)}} title={day.date?`${day.date} · ${day.count||0} 次互动`:''}/>)}</div><div className="fire-heat-legend"><span>少</span><i/><i/><i/><i/><span>多</span></div></section><section className="fire-quick-card"><span>保持日常</span><h2>把重要的人，交给稳定的计划。</h2><MagneticButton onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'创建续火任务':'绑定抖音账号'} ↗</MagneticButton></section></div>
     <TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={()=>setEditTask(null)} onRefresh={doRefresh}/>
   </div>;
 }
 
+function friendState(task,last){
+  if(last?.status==='success')return {label:'已完成',tone:'good'};
+  if(last?.status==='failed')return {label:'失败',tone:'danger'};
+  if(last?.status==='submitted_unconfirmed')return {label:'待核实',tone:'warn'};
+  if(last?.status==='running'||last?.status==='retrying')return {label:'执行中',tone:'warn'};
+  return task?.enabled?{label:'待发送',tone:'warn'}:{label:'已暂停',tone:'neutral'};
+}
+
 // FriendCard with pointer-tracking spotlight (same pattern as Card)
-function FriendCard({task: t, last, onEdit}) {
+function FriendCard({task: t, last, state, onEdit}) {
   const ref = useRef(null);
   const track = e => {
     if (e.pointerType === 'touch' || !ref.current) return;
@@ -354,11 +368,11 @@ function FriendCard({task: t, last, onEdit}) {
   const inner = <>
     <div className="fire-friend-top">
       <span className="fire-friend-avatar">{t.avatar?<img src={t.avatar} alt=""/>:initial(t.name)}</span>
-      <Badge tone={last?.status==='failed'?'danger':t.enabled?'good':'neutral'}>{last?.label||(t.enabled?'进行中':'已暂停')}</Badge>
+      <Badge tone={state?.tone||'neutral'}>{state?.label||'待发送'}</Badge>
     </div>
     <b>{displayName(t.name)}</b>
     {t.streak != null && <strong><span className="fire-streak-icon" aria-hidden="true">🔥</span> {t.streak}<small> 天连续</small></strong>}
-    <time>{last?.time||t.time||'—'} · {last?.stage||'待执行'}</time>
+    <time>{last?.time||`今日 ${t.time||'—'}`} · 今日</time>
     <span className="fire-friend-bar"><i style={{transform:`scaleX(${t.enabled?1:.2})`}}/></span>
   </>;
   if (onEdit) {

@@ -172,7 +172,9 @@ body::before { opacity:.035; background-image:linear-gradient(rgba(255,255,255,.
 .inline-feedback { border-left-color:var(--orange); color:var(--ink-soft); background:rgba(255,107,37,.08); }
 .drawer-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.62); z-index:1000; }
 .drawer { background:linear-gradient(160deg,#21171d,#130d12); color:var(--ink-dark); border-left-color:var(--hairline); border-radius:20px 0 0 20px; box-shadow:-24px 0 60px rgba(0,0,0,.38); overflow:hidden; }
-.drawer.drawer-centered { border-radius:20px; max-width:420px; width:calc(100vw - 32px); max-height:min(82dvh,560px); margin:auto; }
+.drawer.drawer-centered { border-radius:20px; width:min(1100px,calc(100vw - 64px)); max-width:min(1100px,calc(100vw - 64px)); height:min(90vh,900px); max-height:calc(100vh - 48px); margin:auto; }
+.drawer.drawer-centered .scan-stage { width:min(100%,900px); }
+@media(max-width:700px){ .drawer.drawer-centered { width:calc(100vw - 32px); max-width:calc(100vw - 32px); height:auto; max-height:min(82dvh,680px); } }
 .drawer.drawer-centered .drawer-content { overflow-y:auto; }
 .drawer.drawer-centered .icon-button:hover { background:rgba(255,107,37,.1); }
 .drawer-head { border-color:var(--hairline); }.drawer-head h2 { color:var(--ink-dark); }.drawer-head .eyebrow,.drawer-tools,.drawer-foot { color:var(--ink-soft); }
@@ -241,6 +243,18 @@ html[data-theme="light"] .fire-feed-row { border-top-color:rgba(48,39,35,.12); }
 html[data-theme="light"] .fire-heat-card::after, html[data-theme="light"] .fire-heat-hint, html[data-theme="light"] .fire-heat-legend { color:#75665e; }
 html[data-theme="light"] .fire-friend-add { background:rgba(255,107,37,.06); color:#8a5b47; } html[data-theme="light"] .fire-friend-add small { color:#806f65; }
 html[data-theme="light"] .fire-live { color:#2d8f58; }
+
+/* Home heatmap: fill the available card like a contribution calendar. */
+.fire-heat-months { display:grid; gap:4px; margin-bottom:5px; min-height:14px; color:#9d8478; font:9px var(--mono); }
+.fire-heat-months span { overflow:hidden; white-space:nowrap; }
+.fire-heat-grid { grid-template-rows:repeat(7,minmax(0,1fr)); grid-auto-flow:column; gap:4px; width:100%; max-width:none; }
+.fire-heat-grid i { width:auto; height:auto; aspect-ratio:1; min-width:0; border-radius:3px; }
+.fire-heat-grid i.outside { pointer-events:none; }
+html[data-theme="light"] .fire-heat-months { color:#75665e; }
+
+/* Account login needs enough width to inspect the QR and interact with the cloud frame. */
+.drawer.drawer-centered { width:min(1100px,calc(100vw - 64px)); max-width:min(1100px,calc(100vw - 64px)); height:min(90vh,900px); max-height:calc(100vh - 48px); }
+.drawer.drawer-centered .scan-stage { width:min(100%,900px); }
 
 /* Light-mode drawers keep the same warm glass language as the page instead of inheriting the dark shell. */
 html[data-theme="light"] .drawer-backdrop { background:rgba(47,39,34,.22); backdrop-filter:blur(12px); }

@@ -119,6 +119,21 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             latest = {}
             for run in runs:
                 latest.setdefault(run.task_id, run.status)
+            activity_start = now - timedelta(days=364)
+            activity_rows = db.scalars(
+                select(TaskRun).join(SparkTask).where(
+                    SparkTask.owner_user_id == user.id,
+                    TaskRun.scheduled_for >= activity_start,
+                )
+            ).all()
+            activity_counts = {}
+            for activity_run in activity_rows:
+                activity_day = shanghai_time(activity_run.scheduled_for).split(' ')[0]
+                activity_counts[activity_day] = activity_counts.get(activity_day, 0) + (1 if activity_run.status == 'success' else 0)
+            activity_days = [
+                {"date": (local_now.date() - timedelta(days=offset)).isoformat(), "count": activity_counts.get((local_now.date() - timedelta(days=offset)).isoformat(), 0)}
+                for offset in range(364, -1, -1)
+            ]
             membership = membership_summary(db, user)
             account_rows = []
             for account in accounts:
@@ -173,6 +188,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     }
                     for r, task in recent_run_rows
                 ],
+                "activity": {"period_days": 365, "total": sum(item["count"] for item in activity_days), "days": activity_days},
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "can_add_task")},
             }
 
