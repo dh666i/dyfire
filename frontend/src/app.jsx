@@ -9,6 +9,8 @@ function RouteMotionDiv({children, locationKey}) {
   React.useEffect(() => { setVisible(false); const t = setTimeout(() => setVisible(true), 10); return () => clearTimeout(t); }, [locationKey]);
   return <div className="route-view" style={{opacity: visible?1:0, transform: visible?'none':'translateY(5px)', transition: 'opacity 150ms ease-out, transform 150ms ease-out'}}>{children}</div>;
 }
+// eslint-disable-next-line no-unused-vars
+const _motion_react_unused = null; // motion/react used by RubberSegment.jsx
 import '@fontsource/inter/latin-400.css';
 import '@fontsource/inter/latin-500.css';
 import '@fontsource/inter/latin-700.css';
