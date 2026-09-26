@@ -119,6 +119,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             latest = {}
             for run in runs:
                 latest.setdefault(run.task_id, run.status)
+            # Keep the activity surface to the latest year so the contribution
+            # grid remains comparable with GitHub-style activity calendars.
             activity_start = now - timedelta(days=364)
             activity_rows = db.scalars(
                 select(TaskRun).join(SparkTask).where(
