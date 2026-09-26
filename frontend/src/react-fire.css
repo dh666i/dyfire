@@ -187,6 +187,12 @@ html[data-theme="light"] .fire-select-option[aria-selected=true] { color:#b94c20
 .drawer { background:linear-gradient(160deg,#21171d,#130d12); color:var(--ink-dark); border-left-color:var(--hairline); border-radius:20px 0 0 20px; box-shadow:-24px 0 60px rgba(0,0,0,.38); overflow:hidden; }
 .drawer.drawer-centered { border-radius:20px; width:min(1100px,calc(100vw - 64px)); max-width:min(1100px,calc(100vw - 64px)); height:min(90vh,900px); max-height:calc(100vh - 48px); margin:auto; }
 .drawer.drawer-centered .scan-stage { width:min(100%,900px); }
+.drawer.drawer-centered { overflow:hidden; }
+.drawer.drawer-centered > .scan-panel { flex:1 1 auto; min-height:0; overflow-y:auto; align-content:start; scrollbar-width:none; }
+.drawer.drawer-centered > .scan-panel::-webkit-scrollbar { display:none; }
+.drawer.drawer-centered > .scan-panel > .button:last-child { position:sticky; bottom:0; z-index:3; justify-self:center; background:rgba(23,14,19,.96); box-shadow:0 -10px 18px rgba(23,14,19,.7); }
+.scan-frame-image { opacity:1; transition:opacity .16s ease; }
+.scan-stage:not(.frame-ready) .scan-frame-image { opacity:.72; }
 @media(max-width:700px){ .drawer.drawer-centered { width:calc(100vw - 32px); max-width:calc(100vw - 32px); height:auto; max-height:min(82dvh,680px); } }
 .drawer.drawer-centered .drawer-content { overflow-y:auto; }
 .drawer.drawer-centered .icon-button:hover { background:rgba(255,107,37,.1); }
@@ -289,6 +295,7 @@ html[data-theme="light"] .fire-heat-months { color:#75665e; }
 html[data-theme="light"] .drawer-backdrop { background:rgba(47,39,34,.22); backdrop-filter:blur(12px); }
 html[data-theme="light"] .drawer { color:#2b2421; background:linear-gradient(160deg,rgba(255,252,248,.97),rgba(242,236,230,.97)); border-color:rgba(48,39,35,.16); box-shadow:-24px 0 60px rgba(56,45,38,.18); }
 html[data-theme="light"] .drawer.drawer-centered { border-radius:20px; }
+html[data-theme="light"] .drawer.drawer-centered > .scan-panel > .button:last-child { background:rgba(255,252,248,.96); box-shadow:0 -10px 18px rgba(255,252,248,.78); }
 html[data-theme="light"] .drawer-head { border-color:rgba(48,39,35,.13); }
 html[data-theme="light"] .drawer-head h2, html[data-theme="light"] .drawer-head .eyebrow, html[data-theme="light"] .drawer-tools, html[data-theme="light"] .drawer-foot { color:#2b2421; }
 html[data-theme="light"] .drawer-head .eyebrow, html[data-theme="light"] .drawer-tools, html[data-theme="light"] .drawer-foot { color:#75665e; }
@@ -377,6 +384,16 @@ html[data-theme="light"] .fire-auth-caption { color:#75665e; }
 }
 @keyframes auth-card-in { from { opacity:0; transform:translateY(10px) scale(.985); } to { opacity:1; transform:none; } }
 @media(prefers-reduced-motion:reduce) { .fire-auth-card,.fire-auth-tabs a,.fire-auth-form .auth-field input,.fire-auth-form .auth-submit { animation:none; transition:none; } }
+
+/* Binding dialog: keep the cloud view scrollable while the cancel action stays
+   reachable below the fold. */
+.drawer.drawer-centered { overflow:hidden; }
+.drawer.drawer-centered > .scan-panel { flex:1 1 auto; min-height:0; overflow-y:auto; align-content:start; scrollbar-width:none; }
+.drawer.drawer-centered > .scan-panel::-webkit-scrollbar { display:none; }
+.drawer.drawer-centered > .scan-panel > .button:last-child { position:sticky; bottom:0; z-index:3; background:rgba(23,14,19,.96); box-shadow:0 -10px 18px rgba(23,14,19,.7); }
+.scan-frame-image { opacity:1; transition:opacity .16s ease; }
+.scan-stage:not(.frame-ready) .scan-frame-image { opacity:.72; }
+html[data-theme="light"] .drawer.drawer-centered > .scan-panel > .button:last-child { background:rgba(255,252,248,.96); box-shadow:0 -10px 18px rgba(255,252,248,.78); }
 
 /* Native select enhancement: same warm glass surface as the rest of the UI. */
 .fire-select, .fire-native-select { position:relative; display:block; width:100%; min-width:0; }
