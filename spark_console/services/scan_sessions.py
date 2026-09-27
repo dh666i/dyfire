@@ -240,6 +240,34 @@ class ScanSessionService:
             raise Conflict("slot_busy") from None
         return scan
 
+    def start_recovery(self, owner_id: str, account_id: str) -> DouyinLoginSession:
+        current = self._now()
+        account = self.session.scalar(select(DouyinAccount).where(
+            DouyinAccount.id == account_id,
+            DouyinAccount.owner_user_id == owner_id,
+        ))
+        if account is None:
+            raise NotFound("account not found")
+        if self.active_owned(owner_id) is not None:
+            raise Conflict("slot_busy")
+        scan = DouyinLoginSession(
+            owner_user_id=owner_id,
+            account_id=account_id,
+            mode="recovery",
+            slot=scan_slot_for_owner(owner_id),
+            status=ScanStatus.QUEUED,
+            expires_at=current + self.queue_lifetime,
+            created_at=current,
+            updated_at=current,
+        )
+        try:
+            with self.session.begin_nested():
+                self.session.add(scan)
+                self.session.flush()
+        except IntegrityError:
+            raise Conflict("slot_busy") from None
+        return scan
+
     def active_owned(self, owner_id: str) -> DouyinLoginSession | None:
         return self.session.scalar(
             select(DouyinLoginSession)

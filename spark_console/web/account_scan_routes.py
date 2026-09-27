@@ -135,6 +135,29 @@ def build_account_scan_router(
             projection = service.public_status(scan)
         return JSONResponse(projection, status_code=201, headers=NO_STORE)
 
+    @router.post("/accounts/recovery")
+    def start_recovery(
+        request: Request,
+        account_id: str = Form(default=""),
+        csrf_token: str = Form(default=""),
+    ):
+        with session_scope(engine) as db:
+            user, record = auth.current(request, db)
+            auth.csrf(record, csrf_token)
+            if response := limited(user.id, "start", START_LIMIT):
+                return response
+            if user.role != "admin" and not SubscriptionService(db, AuditService(db)).active(user.id):
+                return _error(403, "subscription_inactive", "会员未开通或已过期，请开通后重试")
+            service = ScanSessionService(db)
+            try:
+                scan = service.start_recovery(user.id, account_id.strip())
+            except NotFound:
+                return _error(404, "not_found", "未找到抖音账号")
+            except Conflict:
+                return _error(409, "slot_busy", "复核通道正在使用，请稍后重试")
+            projection = service.public_status(scan)
+        return JSONResponse(projection, status_code=201, headers=NO_STORE)
+
     @router.get("/accounts/scan/{scan_id}")
     def scan_status(request: Request, scan_id: str):
         with session_scope(engine) as db:

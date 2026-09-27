@@ -173,6 +173,7 @@ class DouyinQrScanner:
         next_interaction=None,
         on_needs_verification=None,
         on_interaction_result=None,
+        recovery_storage_state: dict[str, object] | None = None,
     ) -> ScannedAccount:
         deadline = self._deadline(expires_at)
         self._checkpoint(cancelled, deadline)
@@ -196,7 +197,9 @@ class DouyinQrScanner:
                     deadline,
                 )
                 context = await self._await_stage(
-                    browser.new_context(), cancelled, deadline
+                    browser.new_context(storage_state=recovery_storage_state)
+                    if recovery_storage_state is not None
+                    else browser.new_context(), cancelled, deadline
                 )
                 page = await self._await_stage(
                     context.new_page(), cancelled, deadline
@@ -207,6 +210,24 @@ class DouyinQrScanner:
                 # publication callback. A fast scan must not fall into a listener
                 # gap while the image is being handed to the web process.
                 page.on("response", capture_qrconnect)
+                if recovery_storage_state is not None:
+                    await self._await_stage(
+                        page.goto(CHAT_LOGIN_URL, wait_until="domcontentloaded", timeout=120_000),
+                        cancelled, deadline,
+                    )
+                    await self._await_stage(
+                        self._wait_for_recovery(
+                            page, context, cancelled,
+                            on_view=on_view,
+                            next_interaction=next_interaction,
+                            on_needs_verification=on_needs_verification,
+                            on_interaction_result=on_interaction_result,
+                        ), cancelled, deadline,
+                    )
+                    from spark_console.directory_browser import read_self_profile
+                    profile = await self._await_stage(read_self_profile(context), cancelled, deadline)
+                    storage_state = await self._await_stage(context.storage_state(), cancelled, deadline)
+                    return ScannedAccount(profile.get("nickname") or "抖音账号", None, storage_state, profile=profile)
                 await self._await_stage(
                     page.goto(
                         CHAT_LOGIN_URL,
@@ -293,6 +314,34 @@ class DouyinQrScanner:
                 finally:
                     if browser is not None:
                         await browser.close()
+
+    async def _wait_for_recovery(self, page, context, cancelled, *, on_view=None,
+                                 next_interaction=None, on_needs_verification=None,
+                                 on_interaction_result=None):
+        live_view = asyncio.create_task(self._stream_browser_view(page, on_view)) if on_view else None
+        interaction = asyncio.create_task(self._process_interactions(
+            page, next_interaction, on_verification_state=on_needs_verification,
+            on_interaction_result=on_interaction_result,
+        )) if next_interaction else None
+        from core.session_health import inspect_session
+        last_verification_reason = None
+        try:
+            while True:
+                if cancelled():
+                    raise ScanCancelled()
+                evidence = await inspect_session(page, context)
+                if evidence.state == "verification":
+                    if evidence.reason != last_verification_reason and on_needs_verification:
+                        await _invoke(on_needs_verification, {"required": True, "verification_kind": "app", "reason": evidence.reason})
+                    last_verification_reason = evidence.reason
+                if evidence.state != "verification" and await self._account_session_is_authenticated(context):
+                    return
+                await asyncio.sleep(self.poll_interval_seconds)
+        finally:
+            for task in (live_view, interaction):
+                if task:
+                    task.cancel()
+            await asyncio.gather(*(task for task in (live_view, interaction) if task), return_exceptions=True)
 
     async def _open_chat_login(self, page, cancelled) -> None:
         loop = asyncio.get_running_loop()

@@ -99,6 +99,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (4, "spark_task_message_kind", _upgrade_sqlite_task_message_kind),
         (5, "spark_task_target_key", _upgrade_sqlite_task_target_key),
         (6, "normalize_spark_task_target_keys", _normalize_sqlite_task_target_keys),
+        (7, "login_session_mode", _upgrade_sqlite_login_session_mode),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -120,6 +121,19 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         connection.exec_driver_sql(
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (version, name),
+        )
+
+
+def _upgrade_sqlite_login_session_mode(connection: Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(douyin_login_sessions)"
+        ).fetchall()
+    }
+    if "mode" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE douyin_login_sessions ADD COLUMN mode VARCHAR(16) NOT NULL DEFAULT 'login'"
         )
 
 

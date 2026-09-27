@@ -332,6 +332,7 @@ class DouyinLoginSession(Base):
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     slot: Mapped[str | None] = mapped_column(String(16), unique=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default=ScanStatus.QUEUED)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="login")
     qr_png: Mapped[bytes | None] = mapped_column(LargeBinary)
     account_id: Mapped[str | None] = mapped_column(ForeignKey("douyin_accounts.id", ondelete="SET NULL"))
     error_code: Mapped[str | None] = mapped_column(String(48))

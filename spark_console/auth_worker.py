@@ -18,8 +18,9 @@ from spark_console.auth_scanner import (
 )
 from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
+from spark_console.credentials import CredentialPayload
 from spark_console.db import create_engine_for, create_schema, session_scope
-from spark_console.models import DouyinAccount, DouyinLoginSession, ScanStatus, User
+from spark_console.models import DouyinAccount, DouyinAccountIdentity, DouyinLoginSession, ScanStatus, User
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.accounts import (
     AccountIdentityAlreadyBound,
@@ -77,6 +78,7 @@ class AuthWorker:
             scan_id = scan.id
             owner_id = scan.owner_user_id
             target_account_id = scan.account_id
+            recovery_mode = getattr(scan, "mode", "login") == "recovery"
             expires_at = scan.expires_at
             entitlement_error = self._account_entitlement_error(
                 db, owner_id, target_account_id
@@ -160,7 +162,20 @@ class AuthWorker:
 
         scanned = None
         storage_state = None
+        recovery_storage_state = None
         try:
+            if recovery_mode and target_account_id:
+                with session_scope(self.engine) as db:
+                    account = db.get(DouyinAccount, target_account_id)
+                    raw = AccountService(db, self.cipher, AuditService(db)).decrypt_for_worker(target_account_id)
+                    payload = CredentialPayload.parse(bytes(raw), account.cookie_version)
+                    recovery_storage_state = payload.context_options().get("storage_state")
+                    if recovery_storage_state is None and payload.cookies_to_add():
+                        recovery_storage_state = {"cookies": payload.cookies_to_add(), "origins": []}
+                    raw[:] = b"\0" * len(raw)
+                    raw.clear()
+                if not isinstance(recovery_storage_state, dict):
+                    raise _CredentialInvalid()
             scanned = await self.scanner.run(
                 on_qr,
                 on_confirming,
@@ -170,6 +185,7 @@ class AuthWorker:
                 next_interaction=next_interaction,
                 on_needs_verification=on_needs_verification,
                 on_interaction_result=on_interaction_result,
+                recovery_storage_state=recovery_storage_state,
             )
             if stopping is not None and stopping.is_set():
                 raise ScanCancelled()
@@ -195,7 +211,7 @@ class AuthWorker:
                         owner_id,
                         target_account_id,
                         storage_state,
-                        scanned.unique_id,
+                        scanned.unique_id or (db.get(DouyinAccountIdentity, target_account_id).douyin_unique_id if db.get(DouyinAccountIdentity, target_account_id) else None),
                     )
                     account_service.sync_contact_avatars(account.id, {
                         identity.sec_uid: getattr(identity, "avatar_url", None)
