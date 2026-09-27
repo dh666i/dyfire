@@ -385,6 +385,9 @@ html[data-theme="light"] .fire-auth-caption { color:#75665e; }
 @keyframes auth-card-in { from { opacity:0; transform:translateY(10px) scale(.985); } to { opacity:1; transform:none; } }
 @media(prefers-reduced-motion:reduce) { .fire-auth-card,.fire-auth-tabs a,.fire-auth-form .auth-field input,.fire-auth-form .auth-submit { animation:none; transition:none; } }
 
+.account-card-head .account-health-reason { display:block; max-width:44ch; margin-top:5px; color:#ffb3a5; line-height:1.5; white-space:normal; }
+html[data-theme="light"] .account-card-head .account-health-reason { color:#a44c3b; }
+
 /* Binding dialog: keep the cloud view scrollable while the cancel action stays
    reachable below the fold. */
 .drawer.drawer-centered { overflow:hidden; }
