@@ -14,3 +14,15 @@
 {% elif total_attempts|default(0) > 1 %}
 <p class="run-note">共尝试 {{ total_attempts }} 次；此历史记录未保存逐次详情。</p>
 {% endif %}
+{% set timeline_run_id = run.id if run is defined else item.id %}
+{% set timeline = event_history.get(timeline_run_id, []) if event_history is defined else [] %}
+{% if timeline %}
+<details class="run-event-timeline">
+  <summary>执行时间线 · {{ timeline|length }} 个节点</summary>
+  <ol>
+    {% for item in timeline %}
+    <li><time>{{ item.occurred_at|shanghai_time }}</time><strong>{{ item.stage|run_stage }}</strong><span>{{ item.detail or item.event }}</span></li>
+    {% endfor %}
+  </ol>
+</details>
+{% endif %}

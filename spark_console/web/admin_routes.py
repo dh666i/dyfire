@@ -14,6 +14,7 @@ from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
 from spark_console.db import session_scope
 from spark_console.run_attempts import for_runs as attempts_for_runs
+from spark_console.run_events import for_runs as events_for_runs
 from spark_console.models import (
     DouyinAccount,
     InviteCode,
@@ -636,6 +637,7 @@ def build_admin_router(
                 admin_section="runs",
                 runs=runs,
                 attempt_history=attempts_for_runs(db, [r.id for r in runs]),
+                event_history=events_for_runs(db, [r.id for r in runs]),
                 start=start,
                 end=end,
                 pagination=pagination,

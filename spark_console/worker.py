@@ -25,12 +25,15 @@ from spark_console.models import (
     TaskHealthRetry,
     User,
     WorkerLock,
+    DouyinContactIdentity,
 )
 from spark_console.health_retry import WINDOW
 from spark_console.scheduler import RUN_LEASE, claim_next_due_task, finish_run
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.subscriptions import SubscriptionService
+from spark_console.run_events import record as record_event
+from spark_console.task_targets import task_target_key
 
 
 logger = logging.getLogger(__name__)
@@ -90,6 +93,7 @@ class Worker:
             if run is None:
                 return None
             run_id = run.id
+            record_event(run, "claimed", "claimed", "Worker 已领取任务", current_time)
             reclaimed = run.stage in ("reclaimed", "health_retry")
             scheduled = (
                 run.scheduled_for
@@ -204,8 +208,38 @@ class Worker:
                 target_identity = db.get(SparkTaskTargetIdentity, task.id)
                 target_sec_uid = target_identity.sec_uid if target_identity else None
                 target_name = task.target_name
+                if not target_sec_uid:
+                    # Legacy tasks may only have a display name. Upgrade to a
+                    # stable identity when the synced directory has exactly
+                    # one match; never guess when duplicate names exist.
+                    candidates = db.scalars(
+                        select(DouyinContactIdentity).where(
+                            DouyinContactIdentity.account_id == account.id,
+                            or_(
+                                DouyinContactIdentity.nickname == target_name,
+                                DouyinContactIdentity.remark_name == target_name,
+                                DouyinContactIdentity.unique_id == target_name,
+                                DouyinContactIdentity.short_id == target_name,
+                            ),
+                        )
+                    ).all()
+                    if len(candidates) == 1:
+                        target_sec_uid = candidates[0].sec_uid
+                        db.add(SparkTaskTargetIdentity(task_id=task.id, sec_uid=target_sec_uid))
+                        task.target_key = task_target_key(target_name, target_sec_uid)
+                        record_event(run, "target_bound", "selecting_target", "已将旧任务绑定到好友稳定身份", current_time)
+                    elif len(candidates) > 1:
+                        return finish_run(
+                            run,
+                            "failed",
+                            "selecting_target",
+                            current_time,
+                            "target_ambiguous",
+                            "同步好友中存在多个同名目标，请编辑任务后重新选择具体好友",
+                        )
                 message_template = task.message_template
                 message_kind = getattr(task, "message_kind", "text") or "text"
+                record_event(run, "account_ready", "authenticating", "账号健康状态已通过", current_time)
                 try:
                     cookies = account_service.decrypt_for_worker(
                         task.douyin_account_id
@@ -281,6 +315,10 @@ class Worker:
                 if remaining > 0:
                     await asyncio.sleep(remaining)
             self._account_last_started[account_id] = self._clock()
+            with session_scope(self.engine) as db:
+                current_run = db.get(TaskRun, run_id)
+                if current_run is not None:
+                    record_event(current_run, "target_search", "selecting_target", f"查找好友：{target_name}")
             kwargs = dict(
                 credential_version=credential_version,
                 target_sec_uid=target_sec_uid,
@@ -506,6 +544,9 @@ class Worker:
                 )
                 if updated.rowcount != 1:
                     raise _LeaseOwnershipLost("task run lease no longer owned")
+                current_run = db.get(TaskRun, run_id)
+                if current_run is not None:
+                    record_event(current_run, "submitted", "submitted", "消息已进入发送步骤", checkpoint_time)
                 worker = db.execute(
                     update(WorkerLock)
                     .where(

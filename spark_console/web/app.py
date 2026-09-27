@@ -19,6 +19,7 @@ from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.run_attempts import for_runs as attempts_for_runs
+from spark_console.run_events import for_runs as events_for_runs
 from spark_console.models import (
     DouyinAccount,
     DouyinContactIdentity,
@@ -77,9 +78,11 @@ RUN_STAGE_LABELS = {
     "clock_check": "时间校验",
     "entitlement_check": "会员校验",
     "navigation": "打开聊天页",
-    "target_search": "查找好友",
     "message_input": "填写消息",
     "delivery_confirmation": "确认送达",
+    "account_queue": "等待账号",
+    "target_bound": "绑定好友",
+    "target_search": "查找好友",
 }
 UI_NOTICES = {
     "password-updated": ("success", "登录密码已更新。"),
@@ -116,6 +119,7 @@ MISS_ERROR_CODES = {
     "account_busy",
     "missed_window",
     "worker_was_offline",
+    "target_ambiguous",
 }
 
 
@@ -128,6 +132,10 @@ def run_view_status(run) -> dict[str, str]:
         return {"label": "待核实", "tone": "warn", "kind": "unconfirmed"}
     if error_code in LOGIN_ERROR_CODES:
         return {"label": "需要验证", "tone": "danger", "kind": "login"}
+    if error_code == "account_busy":
+        return {"label": "等待账号", "tone": "warn", "kind": "account_queue"}
+    if error_code == "target_ambiguous":
+        return {"label": "目标需确认", "tone": "danger", "kind": "failed"}
     if status == "retrying" or error_code.startswith("retry_scheduled_") or error_code == "health_retry_waiting":
         return {"label": "等待重试", "tone": "warn", "kind": "retry"}
     if status == "running":
@@ -170,6 +178,8 @@ def run_guidance(run) -> dict[str, str] | None:
         return {"text": "会员当前不可用，续费后可继续执行后续计划。", "action": "subscription"}
     if code in {"target_not_found", "conversation_not_opened"}:
         return {"text": "请检查目标好友，并从该账号的最近会话中重新选择。", "action": "task"}
+    if code == "target_ambiguous":
+        return {"text": "同步好友中存在多个同名目标。请编辑任务并重新选择具体好友，避免发错人。", "action": "task"}
     if code in {"account_unavailable", "task_inactive"}:
         return {"text": "发送账号或任务当前不可用，请检查任务设置。", "action": "task"}
     if code in {"worker_was_offline", "missed_window"}:
@@ -183,6 +193,14 @@ def run_guidance(run) -> dict[str, str] | None:
         return {"text": "服务器时间异常，请联系管理员处理。", "action": "none"}
     if code in {"automation_failed", "unexpected_error"}:
         return {"text": "页面操作未完成；如连续出现，请联系管理员并提供本次执行时间。", "action": "none"}
+    if code == "page_timeout":
+        return {"text": "抖音页面暂时没有完成加载，系统会在安全窗口内自动重试。", "action": "none"}
+    if code == "browser_unavailable":
+        return {"text": "云端浏览器连接暂时中断，系统会自动重试；连续出现时请复核账号状态。", "action": "none"}
+    if code == "message_input_failed":
+        return {"text": "消息还没有进入提交步骤，系统会自动重试，不会重复发送。", "action": "none"}
+    if code == "delivery_confirmation_timeout":
+        return {"text": "消息已经进入发送步骤，但页面确认超时。请先核对聊天记录，系统不会自动重发。", "action": "none"}
     return None
 
 
@@ -923,6 +941,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 title="执行记录",
                 runs=runs,
                 attempt_history=attempts_for_runs(db, [r.id for r, _ in runs]),
+                event_history=events_for_runs(db, [r.id for r, _ in runs]),
                 q=q,
                 status=status,
                 account_id=account_id,start=start,end=end,accounts=accounts,

@@ -252,7 +252,15 @@ def finish_run(
 ) -> TaskRun:
     now_utc = _utc(now)
     from spark_console.run_attempts import save
+    from spark_console.run_events import record as record_event
     save(run, status, stage, now_utc, error_summary)
+    record_event(
+        run,
+        "finished" if status not in {"retrying", "running"} else status,
+        stage,
+        error_summary or "执行阶段完成",
+        now_utc,
+    )
     run.status = status
     run.stage = stage
     run.finished_at = now_utc

@@ -61,6 +61,41 @@ class DouyinExecutor:
     def __init__(self):
         self._live: dict[str, object] | None = None
 
+    @staticmethod
+    def _classify_automation_error(error: Exception, stage: str) -> tuple[str, str, bool]:
+        """Turn browser-driver failures into actionable, stable run codes."""
+        name = type(error).__name__.lower()
+        message = str(error).strip().replace("\n", " ")
+        if "timeout" in name or "timeout" in message.lower():
+            if stage == ExecutionStage.CONFIRMING:
+                return (
+                    "delivery_confirmation_timeout",
+                    "消息已进入发送步骤，但抖音页面确认超时；为避免重复消息，本次不会自动重发",
+                    False,
+                )
+            return (
+                "page_timeout",
+                "抖音页面在规定时间内未就绪，系统会在安全窗口内重试",
+                True,
+            )
+        if any(token in name for token in ("targetclosed", "browser", "page", "connection")):
+            return (
+                "browser_unavailable",
+                "云端浏览器连接中断，系统会自动重试；如果连续出现请复核账号状态",
+                True,
+            )
+        if stage == ExecutionStage.SENDING:
+            return (
+                "message_input_failed",
+                "消息输入或提交前页面操作失败，系统会自动重试",
+                True,
+            )
+        return (
+            "automation_failed",
+            f"页面操作未完成（{type(error).__name__}），系统会自动重试",
+            True,
+        )
+
     async def close_session(self) -> None:
         live = self._live
         self._live = None
@@ -609,10 +644,11 @@ class DouyinExecutor:
             if stage == ExecutionStage.AUTHENTICATING:
                 return ExecutionResult(False, stage, 'account_health_pending', '登录页面暂时无法检查，等待后台复核',
                     health_state='temporary', health_reason=f'登录检查异常：{type(error).__name__}')
+            error_code, error_summary, retryable = self._classify_automation_error(error, stage)
             return ExecutionResult(
                 False,
                 stage,
-                "automation_failed",
-                f"页面操作或发送确认失败（{type(error).__name__}）",
-                retryable=True,
+                error_code,
+                error_summary,
+                retryable=retryable,
             )

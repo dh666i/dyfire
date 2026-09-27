@@ -500,6 +500,25 @@ class TaskRunAttempt(Base):
     reason: Mapped[str | None] = mapped_column(String(240))
 
 
+class TaskRunEvent(Base):
+    """Immutable stage events used to explain one run without exposing secrets."""
+    __tablename__ = "task_run_events"
+    __table_args__ = (
+        Index("uq_task_run_event_sequence", "run_id", "sequence", unique=True),
+        Index("ix_task_run_events_run_at", "run_id", "occurred_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    event: Mapped[str] = mapped_column(String(32), nullable=False)
+    stage: Mapped[str] = mapped_column(String(24), nullable=False)
+    detail: Mapped[str | None] = mapped_column(String(240))
+
+
 class TaskHealthRetry(Base):
     """Durable, bounded recovery of one unsubmitted scheduled run."""
     __tablename__ = "task_health_retries"

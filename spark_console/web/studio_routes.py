@@ -128,6 +128,8 @@ def build_studio_router(engine, auth, cipher):
     @router.get('/api/studio/runs')
     def runs(request: Request, page: int = Query(1,ge=1), q: str = Query('',max_length=100), status: str = ''):
         from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
+        from spark_console.run_attempts import for_runs as attempts_for_runs
+        from spark_console.run_events import for_runs as events_for_runs
         with session_scope(engine) as db:
             user,_ = auth.current(request,db)
             criteria=[SparkTask.owner_user_id==user.id]
@@ -139,9 +141,22 @@ def build_studio_router(engine, auth, cipher):
             total=db.scalar(select(func.count()).select_from(TaskRun).join(SparkTask).where(*criteria)) or 0
             pages=max(1,(total+11)//12);page=min(page,pages)
             rows=db.execute(select(TaskRun,SparkTask).join(SparkTask).where(*criteria).order_by(TaskRun.scheduled_for.desc(),TaskRun.id.desc()).offset((page-1)*12).limit(12)).all()
+            attempts = attempts_for_runs(db, [run.id for run, _task in rows])
+            events = events_for_runs(db, [run.id for run, _task in rows])
+            def timeline_for(run):
+                return [{'sequence': event.sequence, 'event': event.event,
+                    'stage': RUN_STAGE_LABELS.get(event.stage, event.stage),
+                    'occurred_at': shanghai_time(event.occurred_at),
+                    'detail': event.detail} for event in events.get(run.id, [])]
             return {'total':total,'page':page,'pages':pages,'items':[{'id':run.id,'name':task.target_name,
                 'time':shanghai_time(run.scheduled_for),'status':run.status,'label':run_view_status(run)['label'],
                 'stage':RUN_STAGE_LABELS.get(run.stage,run.stage),'guidance':run_guidance(run),
-                'error':run.error_summary,'kind':'续火花表情' if task.message_kind=='douyin_sticker' else '文字消息'} for run,task in rows]}
+                'error':run.error_summary,'kind':'续火花表情' if task.message_kind=='douyin_sticker' else '文字消息',
+                'attempts':[{'number': attempt.number, 'status': attempt.status,
+                    'stage': RUN_STAGE_LABELS.get(attempt.stage, attempt.stage), 'reason': attempt.reason,
+                    'started_at': shanghai_time(attempt.started_at),
+                    'finished_at': shanghai_time(attempt.finished_at) if attempt.finished_at else None}
+                    for attempt in attempts.get(run.id, [])],
+                'timeline': timeline_for(run)} for run,task in rows]}
 
     return router

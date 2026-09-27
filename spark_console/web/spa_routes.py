@@ -43,6 +43,7 @@ from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.ops_monitor import operations_snapshot
 from spark_console.today_sends import board as today_send_board
 from spark_console.run_attempts import for_runs as attempts_for_runs
+from spark_console.run_events import for_runs as events_for_runs
 from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
 
 
@@ -116,6 +117,17 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 .order_by(TaskRun.scheduled_for.desc())
                 .limit(30)
             ).all()
+            bootstrap_event_ids = [r.id for r in runs] + [r.id for r, _task in recent_run_rows]
+            bootstrap_events = events_for_runs(db, bootstrap_event_ids)
+
+            def timeline_for(run):
+                return [{
+                    "sequence": event.sequence,
+                    "event": event.event,
+                    "stage": RUN_STAGE_LABELS.get(event.stage, event.stage),
+                    "occurred_at": shanghai_time(event.occurred_at),
+                    "detail": event.detail,
+                } for event in bootstrap_events.get(run.id, [])]
             latest = {}
             for run in runs:
                 latest.setdefault(run.task_id, run.status)
@@ -174,6 +186,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "time": shanghai_time(r.scheduled_for),
                         "error": r.error_summary,
                         "guidance": run_guidance(r),
+                        "timeline": timeline_for(r),
                     }
                     for r in runs
                 ],
@@ -187,6 +200,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "time": shanghai_time(r.scheduled_for),
                         "error": r.error_summary,
                         "guidance": run_guidance(r),
+                        "timeline": timeline_for(r),
                     }
                     for r, task in recent_run_rows
                 ],
@@ -389,6 +403,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             except ValueError:
                 return JSONResponse({"detail": "日期范围不正确"}, status_code=400)
             attempts = attempts_for_runs(db, [row.id for row in rows])
+            events = events_for_runs(db, [row.id for row in rows])
             items = []
             for row in rows:
                 run = row.run
@@ -402,12 +417,16 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     "stage_code": run.stage, "error_code": run.error_code, "error": run.error_summary,
                     "guidance": guidance, "can_retry": bool(guidance and guidance.get("action") == "retry"),
                     "attempt": run.attempt, "submitted_at": shanghai_time(run.submitted_at) if run.submitted_at else None,
-                    "attempts": [{"number": attempt.number, "status": attempt.status,
+                     "attempts": [{"number": attempt.number, "status": attempt.status,
                         "stage": RUN_STAGE_LABELS.get(attempt.stage, attempt.stage), "reason": attempt.reason,
                         "started_at": shanghai_time(attempt.started_at),
                         "finished_at": shanghai_time(attempt.finished_at) if attempt.finished_at else None,
                         "submitted_at": shanghai_time(attempt.submitted_at) if attempt.submitted_at else None}
-                        for attempt in attempts.get(run.id, [])]})
+                         for attempt in attempts.get(run.id, [])],
+                     "timeline": [{"sequence": event.sequence, "event": event.event,
+                         "stage": RUN_STAGE_LABELS.get(event.stage, event.stage),
+                         "occurred_at": shanghai_time(event.occurred_at),
+                         "detail": event.detail} for event in events.get(run.id, [])]})
             return {"items": items, "pagination": pagination,
                 "today_board": jsonable_encoder(board_data) if board_data else None}
 
