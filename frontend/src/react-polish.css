@@ -242,6 +242,8 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
   width: 100%;
   height: 150px;
   overflow: visible;
+  grid-column: 2;
+  grid-row: 1;
 }
 .usage-chart path:not(.usage-grid-line) {
   fill: none;
@@ -250,7 +252,7 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
   stroke-linejoin: round;
 }
 .usage-grid-line { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 5; }
-.usage-axis { display: flex; flex-direction: column; justify-content: space-between; padding: 0 8px 8px 0; color: var(--muted); font: 10px var(--mono); }
+.usage-axis { display: flex; flex-direction: column; justify-content: space-between; grid-column: 1; grid-row: 1; padding: 0 8px 8px 0; color: var(--muted); font: 10px var(--mono); }
 .usage-legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 11px; }
 .usage-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .usage-legend i { width: 8px; height: 8px; border-radius: 50%; }
