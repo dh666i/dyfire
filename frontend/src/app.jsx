@@ -743,24 +743,24 @@ function MailAdmin({data,onSaved}) {
 }
   function UsageTrend({history}) {
     const points=Array.isArray(history?.points)?history.points:[];
-    const series=[{key:'cpu',label:'CPU',color:'var(--accent)'},{key:'memory',label:'内存',color:'var(--green-bright)'},{key:'disk',label:'磁盘',color:'var(--yellow)'}];
-    const chartWidth=640, chartHeight=150;
-    const pathFor=key=>{
+    const series=[{key:'cpu',label:'CPU',color:'#ff6b25'},{key:'memory',label:'内存',color:'#6ee7b7'},{key:'disk',label:'磁盘',color:'#fbbf24'}];
+    const chartHeight=140;
+    const areaFor=key=>{
       const values=points.map(point=>Number(point?.[key])).filter(Number.isFinite);
       if(!values.length)return '';
       const max=Math.max(100,...values);
-      let started=false;
-      return points.map((point,index)=>{
+      const len=points.length;
+      const coords=points.map((point,index)=>{
         const value=Number(point?.[key]);
         if(!Number.isFinite(value))return null;
-        const x=points.length===1?chartWidth/2:(index/(points.length-1))*chartWidth;
-        const y=chartHeight-(value/max)*chartHeight;
-        const command=started?'L':'M';
-        started=true;
-        return `${command} ${x.toFixed(1)} ${y.toFixed(1)}`;
-      }).filter(Boolean).join(' ');
+        const x=(index/(len-1||1))*100;
+        const y=(1-value/max)*100;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).filter(Boolean);
+      if(!coords.length)return '';
+      return `M0,100 L${coords.join(' L')} L100,100 Z`;
     };
-    return <Card className="usage-trend-card"><div className="section-head"><div><span className="eyebrow">RESOURCE HISTORY</span><h2>服务器使用率</h2></div><span className="muted-copy">近 24 小时 · {history?.state==='fresh'?'实时采样':'等待采样'}</span></div>{points.length?<><div className="usage-chart"><svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-label="CPU、内存和磁盘使用率走势图"><path className="usage-grid-line" d={`M0 ${chartHeight*.25}H${chartWidth}M0 ${chartHeight*.5}H${chartWidth}M0 ${chartHeight*.75}H${chartWidth}`}/>{series.map(item=><path key={item.key} d={pathFor(item.key)} style={{stroke:item.color}}/>)}</svg><div className="usage-axis"><span>100%</span><span>50%</span><span>0%</span></div></div><div className="usage-chart-range"><span>{history?.start?new Date(history.start*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'24 小时前'}</span><span>最新采样 {history?.latest_at?new Date(history.latest_at*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—'}</span></div><div className="usage-legend">{series.map(item=><span key={item.key}><i style={{background:item.color}}/>{item.label} 峰值 {history?.[`${item.key}_peak`]!=null?`${Math.round(history[item.key+'_peak'])}%`:'—'}</span>)}</div></>:<div className="usage-empty">监控服务启动后会在这里显示真实采样曲线。</div>}</Card>;
+    return <Card className="usage-trend-card"><div className="section-head"><div><span className="eyebrow">RESOURCE HISTORY</span><h2>服务器使用率</h2></div><span className="muted-copy">近 24 小时 · {history?.state==='fresh'?'实时采样':'等待采样'}</span></div>{points.length?<><div className="usage-chart"><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="CPU、内存和磁盘使用率走势图">{series.map(item=><path key={item.key} d={areaFor(item.key)} style={{fill:item.color}}/>)}</svg><div className="usage-axis"><span>100%</span><span>50%</span><span>0%</span></div></div><div className="usage-chart-range"><span>{history?.start?new Date(history.start*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'24 小时前'}</span><span>最新采样 {history?.latest_at?new Date(history.latest_at*1000).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}):'—'}</span></div><div className="usage-legend">{series.map(item=><span key={item.key}><i style={{background:item.color}}/>{item.label} 峰值 {history?.[`${item.key}_peak`]!=null?`${Math.round(history[item.key+'_peak'])}%`:'—'}</span>)}</div></>:<div className="usage-empty">监控服务启动后会在这里显示真实采样曲线。</div>}</Card>;
   }
 
   function AdminRuns({rows=[]}) { return <div className="run-list admin-runs">{rows.length?rows.map(r=><div className="run-row" key={r.id}><span className={`run-dot ${r.tone||''}`}/><div className="grow"><b>{r.target}</b><small>{r.owner} · {r.time}</small></div><Badge tone={r.tone||'neutral'}>{r.status}</Badge></div>):<Empty title="暂无记录"/>}</div>; }
