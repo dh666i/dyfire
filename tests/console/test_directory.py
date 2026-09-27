@@ -12,12 +12,12 @@ from spark_console.services.audits import AuditService
 from spark_console.services.directory import save_profile, save_contacts, process_directory_job, task_avatar_map
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.directory_browser import collect_directory, ROWS_SCRIPT, read_self_profile
-from tests.console import test_web_user
+from tests.console.test_web_fixture import UserFixture
 
 
 class DirectoryTests(unittest.TestCase):
     def setUp(self):
-        self.fx = test_web_user.UserWebTests()
+        self.fx = UserFixture()
         self.fx.setUp()
         self.addCleanup(self.fx.tearDown)
         self.engine, self.client = self.fx.engine, self.fx.client

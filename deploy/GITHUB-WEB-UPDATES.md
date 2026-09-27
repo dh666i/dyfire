@@ -1,4 +1,6 @@
-# 现有站点的网页更新
+# 现有站点的网页更新（已废弃）
+
+本文件记录的 `dyfire-web-updater` Git 拉取方案已停用。请使用 [`README.md`](README.md) 中的固定 GHCR 镜像、正式 GitHub Release 和 `dyfire-updater.service` 方案；不要重新运行本文件中的安装脚本。
 
 主机服务：`dyfire-web-updater`，目录 `/opt/dyfire-web-updater`。
 私有仓库使用单仓库只读部署密钥，GitHub SSH 使用官方 443 端口。

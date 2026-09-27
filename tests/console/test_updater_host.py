@@ -23,7 +23,7 @@ def host(tmp_path,monkeypatch):
     previous={'version':'0.1.0','schema':1,'image':module.IMAGE+'@sha256:'+'a'*64}
     target={'version':'0.2.0','schema':1,'image':module.IMAGE+'@sha256:'+'b'*64}
     (tmp_path/'installed.json').write_text(json.dumps(previous))
-    monkeypatch.setattr(module,'latest',lambda:target)
+    monkeypatch.setattr(module,'latest',lambda force=False:target)
     monkeypatch.setattr(module.shutil,'disk_usage',lambda _:SimpleNamespace(free=10*1024**3))
     calls=[]
     monkeypatch.setattr(module,'compose',lambda *args:calls.append(args))
@@ -80,3 +80,34 @@ def test_web_install_keeps_other_services_running(host,monkeypatch):
     assert json.loads((module.ROOT/'installed.json').read_text()) == previous
     assert json.loads((module.ROOT/'web-installed.json').read_text()) == target
     assert module.STATE['phase'] == 'web_complete'
+
+
+def test_rollback_selects_the_newest_allowed_release(host, monkeypatch):
+    module, previous, _target, calls = host
+    releases = [
+        {'version': '0.1.9', 'image': module.IMAGE + '@sha256:' + 'c' * 64},
+        {'version': '0.1.8', 'image': module.IMAGE + '@sha256:' + 'd' * 64},
+    ]
+    monkeypatch.setattr(module, 'rollback_versions', lambda _current: releases)
+    monkeypatch.setattr(module, 'ready', lambda _version: None)
+    module.rollback()
+    assert calls == [
+        (releases[0]['image'], 'pull', *module.SERVICES),
+        (previous['image'], 'stop', '-t', '180', *module.SERVICES),
+        (releases[0]['image'], 'up', '-d', '--no-build', *module.SERVICES),
+    ]
+    assert json.loads((module.ROOT / 'installed.json').read_text())['version'] == '0.1.9'
+    assert module.STATE['phase'] == 'rollback_complete'
+
+
+def test_release_manifest_must_match_tag_and_digest(host):
+    module, *_ = host
+    manifest = json.dumps({
+        'version': '0.2.0',
+        'schema': 1,
+        'image': module.IMAGE + '@sha256:' + 'e' * 64,
+    })
+    release = {'tag_name': 'v0.2.0', 'body': '<!-- dyfire-manifest ' + manifest + ' -->'}
+    assert module._release_from_payload(release, resolve_registry=False)['image'].endswith('e' * 64)
+    mismatched = {'tag_name': 'v0.2.1', 'body': '<!-- dyfire-manifest ' + manifest + ' -->'}
+    assert module._release_from_payload(mismatched, resolve_registry=False) == {}

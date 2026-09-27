@@ -19,10 +19,21 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Validate application version contract
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          version = Path('VERSION').read_text().strip()
+          package = json.loads(Path('frontend/package.json').read_text())
+          lock = json.loads(Path('frontend/package-lock.json').read_text())
+          assert package.get('version') == version
+          assert lock.get('version') == version
+          assert lock.get('packages', {}).get('', {}).get('version') == version
       - run: npm ci && npm run build
         working-directory: frontend
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_session_recovery.py tests/console/test_directory.py tests/console/test_account_health.py tests/console/test_health_retry.py tests/console/test_scheduler_worker.py tests/console/test_executor_session.py tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_schedule_slots.py tests/console/test_today_sends.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py tests/console/test_design_system.py tests/console/test_studio_site.py -q
+      - run: python -m pytest tests/console/test_session_recovery.py tests/console/test_directory.py tests/console/test_account_health.py tests/console/test_health_retry.py tests/console/test_scheduler_worker.py tests/console/test_executor_session.py tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_schedule_slots.py tests/console/test_today_sends.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py tests/console/test_design_system.py -q
       - name: Verify shared UI interactions without browser automation
         run: |
           npm install --prefix "$RUNNER_TEMP/dyfire-ui-tests" --no-save --package-lock=false jsdom@26.1.0

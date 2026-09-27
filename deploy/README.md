@@ -7,7 +7,7 @@
 1. 首次部署经过验证，镜像为 `ghcr.io/dh666i/dyfire@sha256:...` 的完整摘要。
 2. `installed.json` 记录实际部署的 `version`、`schema`（目前为 1）、`image`。不得填写尚未部署的镜像。
 3. 私有 GitHub 仓库只读令牌置于 `secrets/github-token`，root 所有、0600 权限。令牌只需读取仓库内容与发行信息。另用有 read:packages 权限的凭据在主机完成 `docker login ghcr.io`，不写入网页或仓库。
-4. 每个可更新发行版使用 `vX.Y.Z` 标签，发行说明包含发布流水线生成的 `dyfire-manifest` JSON 注释，记录与镜像实际一致的 version、schema、image 摘要。草稿不参与自动更新。
+4. 每个可更新发行版使用 `vX.Y.Z` 标签。GitHub Actions 会在容器健康检查通过后发布正式 Release，发行说明包含 `dyfire-manifest` JSON 注释，记录与镜像实际一致的 version、schema、image 摘要。草稿和预发行版永不参与自动更新。
 5. 复制 `dyfire-updater.service` 到 systemd 服务目录并启用。没有完成上述配置，网页保持“更新服务暂未连接”。
 
 更新过程：从固定私有仓库读取版本 → 校验版本与数据结构 → 检查扫码/发送及空间 → 下载固定镜像 → 停止写入服务 → 备份 data → 启动新版本 → 校验健康与实际版本。失败恢复旧镜像。不会自动恢复旧数据库，避免回滚执行记录后重复发送。
@@ -18,4 +18,4 @@
 
 更新请求目录由应用写入，其余更新状态及部署目录由主机拥有。网页仅允许管理员提交 check/install，检查 CSRF，已有请求不会重复排队。
 
-首次 Linux 容器和失败回滚演练尚未完成，暂不在旧生产服务器启用更新器。
+旧的 `dyfire-web-updater` Git 拉取服务已废弃，不应与本更新器并行运行。迁移时应停止并禁用旧 unit，安装 `dyfire-updater.service`，并让 `/opt/henng-spark-console/updates` 同时作为 Web 容器的只读状态目录和请求目录的宿主路径。完成一次正式 Release 的检查、Web-only 更新、完整更新和失败恢复演练后，再对外开放管理员更新入口。

@@ -114,13 +114,10 @@ class AccountScanWebTests(unittest.TestCase):
 
     @staticmethod
     def _csrf(client):
-        page = client.get("/accounts")
-        marker = (
-            'data-csrf-token="'
-            if 'data-csrf-token="' in page.text
-            else 'name="csrf_token" value="'
-        )
-        return page.text.split(marker, 1)[1].split('"', 1)[0]
+        response = client.get("/api/app/bootstrap")
+        if response.status_code != 200:
+            raise AssertionError(response.text)
+        return response.json()["csrf"]
 
     @staticmethod
     def _request_id(number=1):
@@ -843,10 +840,6 @@ class AccountScanWebTests(unittest.TestCase):
         self.assertEqual(
             "/accounts?notice=account-login-active", response.headers["location"]
         )
-        notice = self.owner_client.get(response.headers["location"])
-        self.assertIn(
-            "该账号正在重新登录，请先完成或取消登录后再删除。", notice.text
-        )
         with Session(self.engine) as db:
             self.assertIsNotNone(db.get(DouyinAccount, self.account_id))
             scan = db.get(DouyinLoginSession, scan_id)
@@ -876,76 +869,6 @@ class AccountScanWebTests(unittest.TestCase):
         self.assertEqual("/accounts", renamed.headers["location"])
         with session_scope(self.engine) as db:
             self.assertEqual("我的主账号", db.get(DouyinAccount, self.account_id).display_name)
-
-    def test_account_page_has_qr_dialog_and_rename_but_no_manual_credentials(self):
-        response = self.owner_client.get("/accounts")
-
-        self.assertEqual(200, response.status_code)
-        self.assertIn("扫码绑定抖音账号", response.text)
-        self.assertIn("<dialog", response.text)
-        self.assertRegex(response.text, r'src="/static/account_scan\.js\?v=\d{8}-\d+"')
-        self.assertIn('id="scan-qr-panel"', response.text)
-        self.assertIn('id="scan-browser-hint"', response.text)
-        self.assertIn('id="scan-text"', response.text)
-        self.assertIn('id="scan-type"', response.text)
-        self.assertIn('id="scan-interaction-status"', response.text)
-        self.assertNotIn('id="scan-placeholder"', response.text)
-        self.assertNotIn('id="scan-verification"', response.text)
-        self.assertNotIn('id="scan-verification-sms"', response.text)
-        self.assertNotIn('id="scan-verification-app"', response.text)
-        self.assertNotIn('id="scan-masked-phone"', response.text)
-        self.assertNotIn('id="scan-resend-countdown"', response.text)
-        self.assertNotIn('id="scan-resend"', response.text)
-        self.assertIn("健康状态：正常", response.text)
-        self.assertIn("最近验证：2026-08-31 12:05:06", response.text)
-        self.assertIn("重新登录", response.text)
-        self.assertIn(f'data-scan-account-id="{self.account_id}"', response.text)
-        self.assertIn("修改备注", response.text)
-        self.assertIn(f'action="/accounts/{self.account_id}/rename"', response.text)
-        self.assertNotIn('textarea name="cookies"', response.text)
-        self.assertNotIn('name="cookies"', response.text)
-        self.assertNotIn("Cookie JSON", response.text)
-        self.assertNotIn("Token", response.text)
-        self.assertNotIn("storage_state", response.text)
-
-    def test_invalid_account_is_highlighted_as_needing_relogin(self):
-        with session_scope(self.engine) as db:
-            account = db.get(DouyinAccount, self.account_id)
-            account.validation_state = "invalid"
-            account.last_verified_at = None
-
-        response = self.owner_client.get("/accounts")
-
-        self.assertEqual(200, response.status_code)
-        self.assertIn('data-health="invalid"', response.text)
-        self.assertIn("健康状态：登录异常，待复核", response.text)
-        self.assertIn("历史失效记录，尚无详细检测依据", response.text)
-        self.assertIn("最近验证：尚未验证", response.text)
-        self.assertIn("account-relogin-urgent", response.text)
-
-    def test_quota_full_page_hides_new_binding_but_keeps_shared_relogin_dialog(self):
-        with session_scope(self.engine) as db:
-            second = DouyinAccount(
-                owner_user_id=self.owner_id,
-                display_name="第二个账号",
-                encrypted_cookies=b"encrypted-2",
-                cookie_nonce=b"nonce-2",
-                validation_state="unknown",
-            )
-            db.add(second)
-            db.flush()
-            second_id = second.id
-
-        response = self.owner_client.get("/accounts")
-
-        self.assertEqual(200, response.status_code)
-        self.assertNotIn('id="scan-start"', response.text)
-        self.assertIn("当前账号额度已用完（2/2）", response.text)
-        self.assertIn("已有账号仍可点击“重新登录”", response.text)
-        self.assertIn(f'data-scan-account-id="{self.account_id}"', response.text)
-        self.assertIn(f'data-scan-account-id="{second_id}"', response.text)
-        self.assertEqual(1, response.text.count('id="scan-dialog"'))
-        self.assertRegex(response.text, r'src="/static/account_scan\.js\?v=\d{8}-\d+"')
 
     def test_old_manual_account_submission_is_rejected(self):
         response = self.owner_client.post(

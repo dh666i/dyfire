@@ -4,7 +4,10 @@ Only immutable images from this repository can be installed. Releases with a
 different data schema require a separately reviewed migration, not auto-update.
 """
 import base64
-import fcntl
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - host service runs on Linux
+    fcntl = None
 import json
 import os
 from pathlib import Path
@@ -20,15 +23,65 @@ QUEUE = ROOT / 'updates'
 STATE = {}
 REPOSITORY = 'dh666i/dyfire'
 IMAGE = 'ghcr.io/dh666i/dyfire'
+GITHUB_API = 'https://api.github.com/repos/' + REPOSITORY
 SERVICES = ['spark-web', 'spark-auth', 'spark-worker', 'spark-monitor']
 WEB_SERVICES = ['spark-web']
 COMPOSE_PROJECT = os.environ.get('DYFIRE_COMPOSE_PROJECT', 'dyfire')
+RELEASE_CACHE_SECONDS = 20 * 60
+_RELEASE_CACHE = {}
 
 
 def version(value):
     if not isinstance(value, str) or not re.fullmatch(r'\d+\.\d+\.\d+', value):
         raise ValueError('发行版本格式无效')
     return tuple(map(int, value.split('.')))
+
+
+def _manifest(body):
+    """Read the release manifest embedded by the build pipeline."""
+    match = re.search(r'<!--\s*dyfire-manifest\s+(\{.*?\})\s*-->', body or '', re.S)
+    if not match:
+        return {}
+    try:
+        value = json.loads(match.group(1))
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _release_from_payload(release, resolve_registry=True):
+    """Normalize GitHub's release response into the updater's stable contract."""
+    tag = str(release.get('tag_name') or '').removeprefix('v')
+    if release.get('draft') or release.get('prerelease') or not re.fullmatch(r'\d+\.\d+\.\d+', tag):
+        return {}
+    body = release.get('body') or ''
+    manifest = _manifest(body)
+    manifest_version = str(manifest.get('version') or '').removeprefix('v')
+    if manifest_version and manifest_version != tag:
+        return {}
+    image = manifest.get('image') or ''
+    digest = image.removeprefix(IMAGE + '@') if image.startswith(IMAGE + '@') else ''
+    if not re.fullmatch(r'sha256:[a-f0-9]{64}', digest) and resolve_registry:
+        try:
+            _, headers = registry('/v2/' + REPOSITORY + '/manifests/' + tag)
+            digest = headers.get('Docker-Content-Digest', '')
+        except Exception:
+            digest = ''
+    normalized_image = IMAGE + '@' + digest if re.fullmatch(r'sha256:[a-f0-9]{64}', digest) else ''
+    schema = manifest.get('schema', 1)
+    if not isinstance(schema, int) or schema < 1:
+        schema = 1
+    return {
+        'version': tag,
+        'schema': schema,
+        'image': normalized_image,
+        'release_version': tag,
+        'release_name': release.get('name') or ('Dyfire ' + tag),
+        'release_body': body[:12000],
+        'release_url': release.get('html_url') or '',
+        'release_published_at': release.get('published_at') or '',
+        'release_image': normalized_image,
+    }
 
 
 def write_state(**values):
@@ -62,18 +115,77 @@ def registry(path, accept='application/vnd.oci.image.index.v1+json'):
         return json.load(response), response.headers
 
 
-def latest():
-    tags, _ = registry('/v2/' + REPOSITORY + '/tags/list', 'application/json')
-    candidates = [tag for tag in tags.get('tags', []) if isinstance(tag, str) and re.fullmatch(r'\d+\.\d+\.\d+', tag)]
-    if not candidates:
-        raise ValueError('镜像仓库没有可安装的正式版本')
-    candidate = max(candidates, key=version)
-    manifest, headers = registry('/v2/' + REPOSITORY + '/manifests/' + candidate)
-    digest = headers.get('Docker-Content-Digest')
-    if (manifest.get('schemaVersion') != 2
-            or not re.fullmatch(r'sha256:[a-f0-9]{64}', digest or '')):
-        raise ValueError('镜像清单无效')
-    return {'version': candidate, 'schema': 1, 'image': IMAGE + '@' + digest}
+def github_token():
+    token_file = os.environ.get('DYFIRE_GITHUB_TOKEN_FILE')
+    if not token_file:
+        return ''
+    try:
+        return Path(token_file).read_text(encoding='utf-8').strip()
+    except OSError:
+        return ''
+
+
+def github_api(path):
+    headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'dyfire-updater'}
+    token = github_token()
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    request = urllib.request.Request(GITHUB_API + path, headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def _cached_github(path, ttl=RELEASE_CACHE_SECONDS, force=False):
+    """Cache read-only release metadata so a UI refresh cannot rate-limit GitHub."""
+    now = time.time()
+    cached = _RELEASE_CACHE.get(path)
+    if not force and cached and now - cached[0] < ttl:
+        return cached[1]
+    value = github_api(path)
+    _RELEASE_CACHE[path] = (now, value)
+    return value
+
+
+def release_metadata(version_value=None):
+    endpoint = '/releases/latest' if not version_value else '/releases/tags/v' + version_value
+    try:
+        release = _cached_github(endpoint)
+    except Exception:
+        return {}
+    return _release_from_payload(release)
+
+
+def rollback_versions(current_version, limit=3):
+    try:
+        releases = _cached_github('/releases?per_page=15')
+    except Exception:
+        return []
+    result = []
+    for release in releases if isinstance(releases, list) else []:
+        if release.get('draft') or release.get('prerelease'):
+            continue
+        # A release may predate the manifest annotation; resolve its immutable
+        # registry digest before offering it as a rollback candidate.
+        item = _release_from_payload(release, resolve_registry=True)
+        candidate = item.get('release_version')
+        if not candidate or version(candidate) >= version(current_version):
+            continue
+        image = item.get('release_image')
+        if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', image or ''):
+            continue
+        result.append({'version': candidate, 'schema': item.get('schema', 1),
+                       'url': item.get('release_url', ''),
+                       'published_at': item.get('release_published_at', ''), 'image': image})
+        if len(result) >= limit:
+            break
+    return sorted(result, key=lambda item: version(item['version']), reverse=True)
+
+
+def latest(force=False):
+    result = _release_from_payload(_cached_github('/releases/latest', force=force))
+    if not result or not result.get('image'):
+        raise ValueError('正式 Release 没有可验证的镜像摘要')
+    return result
 
 
 def compose(image, *args):
@@ -108,8 +220,8 @@ def ready(expected):
     raise RuntimeError('新版本健康检查未通过')
 
 
-def install(target):
-    release = latest()  # Re-fetch from trusted origin; never trust status.json.
+def install(target, operation_id=''):
+    release = latest(force=True)  # Re-fetch from trusted origin; never trust status.json.
     current_file = ROOT / 'installed.json'
     current = json.loads(current_file.read_text())
     if release['version'] != target or version(target) <= version(current['version']):
@@ -132,7 +244,7 @@ def install(target):
         active += db.execute("SELECT count(*) FROM douyin_login_sessions WHERE status NOT IN ('succeeded','failed','expired','cancelled')").fetchone()[0]
     if active:
         raise ValueError('当前仍有扫码或发送操作，请完成后再更新')
-    write_state(phase='pulling', message='正在下载版本')
+    write_state(phase='pulling', message='正在下载版本', operation_id=operation_id)
     compose(release['image'], 'pull', *SERVICES)
     backup = ROOT / 'backups' / time.strftime('%Y%m%d-%H%M%S')
     backup.mkdir(parents=True, mode=0o700)
@@ -142,12 +254,18 @@ def install(target):
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
         shutil.copytree(DATA_DIR, backup / 'data')
         shutil.copy2(current_file, backup / 'installed.json')
+        web_file = ROOT / 'web-installed.json'
+        if web_file.is_file():
+            shutil.copy2(web_file, backup / 'web-installed.json')
         write_state(phase='installing', message='正在启动新版本')
         compose(release['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(target)
         temp = ROOT / 'installed.tmp'
         temp.write_text(json.dumps(release))
         temp.replace(current_file)
+        web_temp = ROOT / 'web-installed.tmp'
+        web_temp.write_text(json.dumps(release))
+        web_temp.replace(ROOT / 'web-installed.json')
         write_state(phase='complete', message='更新完成', installed=target)
     except Exception:
         write_state(phase='rollback', message='更新未通过检查，正在恢复原版本')
@@ -159,21 +277,25 @@ def install(target):
         raise
 
 
-def install_web(target):
+def install_web(target, operation_id=''):
     """Update only the React/API web container.
 
     Auth, worker and monitor keep their current image and process state. This
     is suitable for presentation/API-only releases; schema or worker changes
     must still use the full ``install`` path.
     """
-    release = latest()
+    release = latest(force=True)
     current_file = ROOT / 'installed.json'
     current = json.loads(current_file.read_text())
-    if release['version'] != target or version(target) <= version(current['version']):
+    web_file = ROOT / 'web-installed.json'
+    web_current = json.loads(web_file.read_text()) if web_file.is_file() else current
+    if release['version'] != target or version(target) <= version(web_current['version']):
         raise ValueError('版本已变化或不高于当前版本，请重新检查更新')
-    if current.get('schema') != release['schema']:
+    if current.get('schema') != release['schema'] or web_current.get('schema') != release['schema']:
         raise ValueError('数据结构不兼容')
-    write_state(phase='web_pulling', message='正在下载 Web 版本')
+    if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', web_current.get('image', '')):
+        raise ValueError('当前 Web 安装记录不是本仓库的固定镜像')
+    write_state(phase='web_pulling', message='正在下载 Web 版本', operation_id=operation_id)
     compose(release['image'], 'pull', *WEB_SERVICES)
     try:
         write_state(phase='web_installing', message='正在切换 Web 服务，发送服务保持运行')
@@ -188,10 +310,46 @@ def install_web(target):
         raise
 
 
+def rollback(target='', operation_id=''):
+    current_file = ROOT / 'installed.json'
+    current = json.loads(current_file.read_text())
+    candidates = rollback_versions(current['version'])
+    if target:
+        selected = next((item for item in candidates if item['version'] == target), None)
+    else:
+        selected = candidates[0] if candidates else None
+    if selected is None:
+        raise ValueError('没有可用的安全回滚版本')
+    if (current.get('schema') != selected.get('schema', 1)
+            or not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', current.get('image', ''))):
+        raise ValueError('当前安装记录不是本仓库的固定镜像')
+    write_state(phase='rollback_pulling', message='正在下载回滚版本', rollback_version=selected['version'], operation_id=operation_id)
+    compose(selected['image'], 'pull', *SERVICES)
+    try:
+        write_state(phase='rollback', message='正在切换回滚版本')
+        compose(current['image'], 'stop', '-t', '180', *SERVICES)
+        compose(selected['image'], 'up', '-d', '--no-build', *SERVICES)
+        ready(selected['version'])
+        temp = ROOT / 'installed.tmp'
+        record = {'version': selected['version'], 'schema': 1, 'image': selected['image']}
+        temp.write_text(json.dumps(record), encoding='utf-8')
+        temp.replace(current_file)
+        web_temp = ROOT / 'web-installed.tmp'
+        web_temp.write_text(json.dumps(record), encoding='utf-8')
+        web_temp.replace(ROOT / 'web-installed.json')
+        write_state(phase='rollback_complete', message='回滚完成', installed=selected['version'])
+    except Exception:
+        write_state(phase='rollback_failed', message='回滚未通过健康检查，正在恢复当前版本')
+        compose(current['image'], 'up', '-d', '--no-build', *SERVICES)
+        ready(current['version'])
+        raise
+
+
 def main():
     QUEUE.mkdir(exist_ok=True)
     with (ROOT / 'updater.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if fcntl is not None:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         write_state(phase='idle', message='更新服务已连接')
         while True:
             request = QUEUE / 'requests' / 'request.json'
@@ -201,18 +359,28 @@ def main():
                     data = json.loads(request.read_text())
                     if time.time() - data['requested_at'] > 300:
                         raise ValueError('请求已过期，请重试')
+                    operation_id = str(data.get('operation_id') or '')
+                    write_state(operation_id=operation_id, requested_at=data.get('requested_at'))
                     if data['action'] == 'check':
                         item = latest()
-                        write_state(phase='checked', latest=item['version'], message='版本检查完成')
+                        current = json.loads((ROOT / 'installed.json').read_text())
+                        write_state(phase='checked', latest=item['version'], message='版本检查完成', **item,
+                                    rollback_versions=rollback_versions(current['version']))
                     elif data['action'] == 'install':
-                        install(data['version'])
+                        install(data['version'], operation_id)
                     elif data['action'] == 'install-web':
-                        install_web(data['version'])
+                        install_web(data['version'], operation_id)
+                    elif data['action'] == 'rollback':
+                        rollback(data.get('version', ''), operation_id)
                     else:
                         raise ValueError('不支持的操作')
-                except Exception:
+                except Exception as error:
                     # Never expose command output or GitHub credentials to the UI.
-                    write_state(phase='failed', message='操作未完成，请检查更新服务日志和发行配置')
+                    write_state(
+                        phase='failed',
+                        message='操作未完成，请检查更新服务日志和发行配置',
+                        error_code=type(error).__name__.lower(),
+                    )
                 finally:
                     request.unlink(missing_ok=True)
             write_state()

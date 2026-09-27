@@ -6,13 +6,13 @@ from spark_console.db import session_scope
 from spark_console.models import User, MailSettings, MailPreference, MailDelivery, DouyinAccount
 from spark_console.crypto import CookieCipher
 from spark_console.services import mail
-from tests.console.test_web_user import UserWebTests
+from tests.console.test_web_fixture import UserFixture
 from spark_console.models import SparkTask
 
 
 class MailReleaseTests(unittest.TestCase):
     def setUp(self):
-        self.fixture=UserWebTests();self.fixture.setUp();self.client=self.fixture.client
+        self.fixture=UserFixture();self.fixture.setUp();self.client=self.fixture.client
         with session_scope(self.fixture.engine) as db:
             user=db.scalar(select(User).where(User.username=='friend'));user.must_change_password=False;user.role='admin';self.uid=user.id
         self.fixture.login()
