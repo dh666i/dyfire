@@ -248,16 +248,17 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
   max-width: none;
   overflow: visible;
 }
+/* v0.2.74 - thinner chart lines */
 .usage-chart path {
   fill: none;
-  stroke-width: 1;
+  stroke-width: 1px;
   stroke-linecap: round;
   stroke-linejoin: round;
   transition: stroke-width 0.2s ease, opacity 0.2s ease;
   opacity: 0.85;
 }
 .usage-chart path:hover {
-  stroke-width: 1.5;
+  stroke-width: 1.5px;
   opacity: 1;
 }
 .usage-axis { position: absolute; top: 8px; bottom: 8px; left: 0; display: flex; flex-direction: column; justify-content: space-between; padding-right: 8px; color: var(--muted); font: 10px var(--mono); text-align: right; }
