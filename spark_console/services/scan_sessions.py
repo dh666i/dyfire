@@ -734,7 +734,7 @@ class ScanSessionService:
                 DouyinLoginSession.id == scan.id,
                 DouyinLoginSession.slot == slot,
                 DouyinLoginSession.status.in_(
-                    (ScanStatus.AWAITING_SCAN, ScanStatus.CONFIRMING)
+                    (ScanStatus.LOADING_QR, ScanStatus.AWAITING_SCAN, ScanStatus.CONFIRMING)
                 ),
                 DouyinLoginSession.expires_at > current,
             )
