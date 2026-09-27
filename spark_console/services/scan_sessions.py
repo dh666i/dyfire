@@ -1098,6 +1098,8 @@ class ScanSessionService:
         if target not in TERMINAL_STATUSES:
             raise ValueError("terminal status required")
         current = self._now()
+        if account_id is None and getattr(scan, "mode", "login") == "recovery":
+            account_id = scan.account_id
         terminal = self._cas_transition(
             scan,
             target,

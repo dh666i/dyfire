@@ -224,10 +224,8 @@ class DouyinQrScanner:
                             on_interaction_result=on_interaction_result,
                         ), cancelled, deadline,
                     )
-                    from spark_console.directory_browser import read_self_profile
-                    profile = await self._await_stage(read_self_profile(context), cancelled, deadline)
                     storage_state = await self._await_stage(context.storage_state(), cancelled, deadline)
-                    return ScannedAccount(profile.get("nickname") or "抖音账号", None, storage_state, profile=profile)
+                    return ScannedAccount("抖音账号", None, storage_state, profile=None)
                 await self._await_stage(
                     page.goto(
                         CHAT_LOGIN_URL,
@@ -323,13 +321,16 @@ class DouyinQrScanner:
             page, next_interaction, on_verification_state=on_needs_verification,
             on_interaction_result=on_interaction_result,
         )) if next_interaction else None
-        from core.session_health import inspect_session
+        from core.session_health import SessionEvidence, inspect_session
         last_verification_reason = None
         try:
             while True:
                 if cancelled():
                     raise ScanCancelled()
-                evidence = await inspect_session(page, context)
+                try:
+                    evidence = await inspect_session(page, context)
+                except Exception as error:
+                    evidence = SessionEvidence("temporary", f"复核页面暂时无法读取：{type(error).__name__}")
                 if evidence.state == "verification":
                     if evidence.reason != last_verification_reason and on_needs_verification:
                         await _invoke(on_needs_verification, {"required": True, "verification_kind": "app", "reason": evidence.reason})

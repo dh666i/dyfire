@@ -263,6 +263,9 @@ class AuthWorker:
             if isinstance(storage_state, dict):
                 storage_state.clear()
             storage_state = None
+            if isinstance(recovery_storage_state, dict):
+                recovery_storage_state.clear()
+            recovery_storage_state = None
             scanned = None
 
         self._record_failure(scan_id, code)
