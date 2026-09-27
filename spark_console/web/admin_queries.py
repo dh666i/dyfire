@@ -54,6 +54,9 @@ class AdminUserRow:
     account_count: int
     task_count: int
     now: datetime
+    invalid_account_count: int = 0
+    today_success_count: int = 0
+    today_failed_count: int = 0
 
     @property
     def id(self) -> str:
@@ -145,6 +148,22 @@ class AdminUserRow:
             "task_count": self.task_count,
             "is_admin": self.user.role == "admin",
         }
+
+    @property
+    def account_health_status(self) -> str:
+        if self.invalid_account_count:
+            return "需处理"
+        if self.account_count:
+            return "正常"
+        return "未绑定"
+
+    @property
+    def account_health_label(self) -> str:
+        if self.invalid_account_count:
+            return f"{self.invalid_account_count} 个账号需复核"
+        if self.account_count:
+            return "账号正常"
+        return "暂无抖音账号"
 
 
 @dataclass(frozen=True)
@@ -281,7 +300,8 @@ def _user_aggregate_statement(now: datetime):
     )
 
 
-def _to_user_rows(rows, now: datetime) -> list[AdminUserRow]:
+def _to_user_rows(rows, now: datetime, activity: dict[str, dict[str, int]] | None = None) -> list[AdminUserRow]:
+    activity = activity or {}
     return [
         AdminUserRow(
             user=user,
@@ -289,9 +309,41 @@ def _to_user_rows(rows, now: datetime) -> list[AdminUserRow]:
             account_count=int(account_count or 0),
             task_count=int(task_count or 0),
             now=now,
+            invalid_account_count=activity.get(user.id, {}).get("invalid_accounts", 0),
+            today_success_count=activity.get(user.id, {}).get("today_success", 0),
+            today_failed_count=activity.get(user.id, {}).get("today_failed", 0),
         )
         for user, subscription, account_count, task_count in rows
     ]
+
+
+def _user_activity(db: Session, user_ids: list[str], now: datetime) -> dict[str, dict[str, int]]:
+    if not user_ids:
+        return {}
+    today = now.astimezone(ZoneInfo("Asia/Shanghai")).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(timezone.utc)
+    result = {user_id: {"invalid_accounts": 0, "today_success": 0, "today_failed": 0} for user_id in user_ids}
+    for owner_id, count in db.execute(
+        select(DouyinAccount.owner_user_id, func.count(DouyinAccount.id))
+        .where(
+            DouyinAccount.owner_user_id.in_(user_ids),
+            DouyinAccount.validation_state.in_(("invalid", "verification", "temporary")),
+        )
+        .group_by(DouyinAccount.owner_user_id)
+    ):
+        result[owner_id]["invalid_accounts"] = int(count or 0)
+    for owner_id, status, count in db.execute(
+        select(SparkTask.owner_user_id, TaskRun.status, func.count(TaskRun.id))
+        .join(SparkTask, SparkTask.id == TaskRun.task_id)
+        .where(SparkTask.owner_user_id.in_(user_ids), TaskRun.scheduled_for >= today)
+        .group_by(SparkTask.owner_user_id, TaskRun.status)
+    ):
+        if status == "success":
+            result[owner_id]["today_success"] = int(count or 0)
+        elif status in ("failed", "submitted_unconfirmed"):
+            result[owner_id]["today_failed"] += int(count or 0)
+    return result
 
 
 def list_users(
@@ -313,7 +365,9 @@ def list_users(
         .limit(ADMIN_PAGE_SIZE)
         .offset((int(pagination["page"]) - 1) * ADMIN_PAGE_SIZE)
     ).all()
-    return _to_user_rows(rows, now), pagination
+    user_rows = _to_user_rows(rows, now)
+    activity = _user_activity(db, [row.id for row in user_rows], now)
+    return _to_user_rows(rows, now, activity), pagination
 
 
 def list_subscriptions(

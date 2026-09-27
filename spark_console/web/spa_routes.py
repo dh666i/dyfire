@@ -279,7 +279,10 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "users": [
                     {"id": row.id, "username": row.username, "role": row.role, "status": row.status, "created": shanghai_time(row.created_at),
                      "account_count": row.account_count, "task_count": row.task_count,
-                     "membership_status": row.membership_status, "membership_label": row.membership_label}
+                     "membership_status": row.membership_status,
+                     "membership_label": row.membership_label,
+                     "account_health_status": row.account_health_status, "account_health_label": row.account_health_label,
+                     "today_success": row.today_success_count, "today_failed": row.today_failed_count}
                     for row in user_rows
                 ],
                 "groups": [

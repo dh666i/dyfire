@@ -390,6 +390,25 @@ class AdminWebTests(unittest.TestCase):
         self.assertEqual(1, revoked["invite_pagination"]["total"])
         self.assertEqual(1, revoked["redemption_pagination"]["total"])
 
+    def test_customer_workbench_includes_account_health_and_today_run_counts(self):
+        with session_scope(self.engine) as db:
+            account = db.scalar(
+                select(DouyinAccount).where(
+                    DouyinAccount.owner_user_id == self.customer.id
+                )
+            )
+            account.validation_state = "invalid"
+
+        response = self.real_client.get("/api/admin/bootstrap", params={"q": "customer"})
+        self.assertEqual(200, response.status_code)
+        customer = next(
+            item for item in response.json()["users"] if item["id"] == self.customer.id
+        )
+        self.assertEqual("需处理", customer["account_health_status"])
+        self.assertEqual("1 个账号需复核", customer["account_health_label"])
+        self.assertEqual(1, customer["today_success"])
+        self.assertEqual(1, customer["today_failed"])
+
     def test_reset_password_requires_csrf_revokes_sessions_and_audits(self):
         rejected = self.client.post(
             f"/admin/users/{self.customer.id}/reset-password", data={}
