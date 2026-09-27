@@ -231,19 +231,22 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
 .usage-trend-card { margin-top: 18px; }
 .usage-chart {
   position: relative;
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  min-height: 172px;
+  display: block;
+  height: 172px;
   margin-top: 16px;
   padding: 10px 0 0;
   border-top: 1px solid var(--line);
 }
 .usage-chart svg {
-  width: 100%;
+  position: absolute;
+  top: 10px;
+  right: 0;
+  bottom: auto;
+  left: 42px;
+  width: calc(100% - 42px);
   height: 150px;
+  max-width: none;
   overflow: visible;
-  grid-column: 2;
-  grid-row: 1;
 }
 .usage-chart path:not(.usage-grid-line) {
   fill: none;
@@ -252,7 +255,8 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
   stroke-linejoin: round;
 }
 .usage-grid-line { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 5; }
-.usage-axis { display: flex; flex-direction: column; justify-content: space-between; grid-column: 1; grid-row: 1; padding: 0 8px 8px 0; color: var(--muted); font: 10px var(--mono); }
+.usage-axis { position: absolute; top: 10px; bottom: 12px; left: 0; display: flex; flex-direction: column; justify-content: space-between; padding-right: 8px; color: var(--muted); font: 10px var(--mono); }
+.usage-chart-range { display: flex; justify-content: space-between; gap: 12px; margin-top: 5px; color: var(--muted); font: 10px var(--mono); }
 .usage-legend { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 11px; }
 .usage-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .usage-legend i { width: 8px; height: 8px; border-radius: 50%; }
@@ -261,7 +265,7 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
   .admin-segment-wrap { margin-bottom: 16px; }
   .admin-user-health { max-width: 150px; text-align: right; }
   .admin-user-health small { white-space: normal; line-height: 1.35; }
-  .usage-chart { grid-template-columns: 34px minmax(0, 1fr); }
+  .usage-chart svg { left: 34px; width: calc(100% - 34px); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
