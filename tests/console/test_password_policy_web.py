@@ -117,7 +117,7 @@ class PasswordPolicyWebTests(unittest.TestCase):
         with session_scope(self.engine) as db:
             reset = db.get(PasswordReset, self.user_id)
             self.assertIsNotNone(reset)
-            self.assertEqual(1, reset.attempts)
+            self.assertEqual(0, reset.attempts)
 
         valid = self.client.post(
             "/forgot-password/reset",

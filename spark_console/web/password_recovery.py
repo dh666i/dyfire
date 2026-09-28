@@ -48,25 +48,24 @@ def build_password_recovery_router(engine,auth,cipher,passwords,page):
     @router.post('/forgot-password/reset')
     def reset_password(request:Request,username:str=Form(''),code:str=Form(''),password:str=Form(''),confirmation:str=Form('')):
         success=False
-        if allowed(request):
+        password_valid = bool(password and password == confirmation)
+        if password_valid:
+            try:
+                validate_registration_password(password)
+            except ValidationError:
+                password_valid = False
+        if allowed(request) and password_valid:
             with session_scope(engine) as db:
                 user=db.scalar(select(User).where(User.username==username.strip()[:32],User.status=='active'))
                 reset=db.get(PasswordReset,user.id) if user else None
                 if reset and aware(reset.expires_at)>datetime.now(timezone.utc) and reset.attempts<5:
                     reset.attempts+=1
-                    if password and password==confirmation and secrets.compare_digest(hashlib.sha256((user.id+code.strip().upper()).encode()).hexdigest(),reset.digest):
-                        try:
-                            validate_registration_password(password)
-                        except ValidationError:
-                            # Keep recovery failures indistinguishable while applying
-                            # the same password policy as public registration.
-                            pass
-                        else:
-                            changed=db.execute(delete(PasswordReset).where(PasswordReset.user_id==user.id,PasswordReset.digest==reset.digest)).rowcount
-                            if changed:
-                                user.password_hash=passwords.hash(password);user.must_change_password=False;user.failed_login_count=0
-                                db.execute(delete(WebSession).where(WebSession.user_id==user.id));success=True
-                                AuditService(db).write(user.id,'password.recovered','user',user.id)
+                    if secrets.compare_digest(hashlib.sha256((user.id+code.strip().upper()).encode()).hexdigest(),reset.digest):
+                        changed=db.execute(delete(PasswordReset).where(PasswordReset.user_id==user.id,PasswordReset.digest==reset.digest)).rowcount
+                        if changed:
+                            user.password_hash=passwords.hash(password);user.must_change_password=False;user.failed_login_count=0
+                            db.execute(delete(WebSession).where(WebSession.user_id==user.id));success=True
+                            AuditService(db).write(user.id,'password.recovered','user',user.id)
         if success:return RedirectResponse('/login',status_code=303)
         return page(request,'forgot_password.html',title='找回密码',nav=False,ready=True,sent=True,username=username[:32],error='重置未完成：请检查账号、代码有效期以及两次密码是否一致。',status_code=400)
     return router
