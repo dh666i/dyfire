@@ -18,4 +18,4 @@
 
 更新请求目录由应用写入，其余更新状态及部署目录由主机拥有。网页仅允许管理员提交 check/install，检查 CSRF，已有请求不会重复排队。
 
-旧的 `dyfire-web-updater` Git 拉取服务已废弃，不应与本更新器并行运行。迁移时应停止并禁用旧 unit，安装 `dyfire-updater.service`，并让 `/opt/henng-spark-console/updates` 同时作为 Web 容器的只读状态目录和请求目录的宿主路径。完成一次正式 Release 的检查、Web-only 更新、完整更新和失败恢复演练后，再对外开放管理员更新入口。
+旧的 `dyfire-web-updater` Git 拉取服务已废弃，不应与本更新器并行运行。迁移时应停止并禁用旧 unit，安装 `dyfire-updater.service`，并让 `/opt/dyfire/updates` 同时作为 Web 容器的只读状态目录和请求目录的宿主路径。完成一次正式 Release 的检查、Web-only 更新、完整更新和失败恢复演练后，再对外开放管理员更新入口。

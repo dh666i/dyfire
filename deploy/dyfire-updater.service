@@ -5,12 +5,12 @@ Requires=docker.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/henng-spark-console
-Environment=DYFIRE_DEPLOY_DIR=/opt/henng-spark-console
-Environment=DYFIRE_DATA_DIR=/var/lib/docker/volumes/douyin-spark-console_spark-data/_data
-Environment=DYFIRE_GITHUB_TOKEN_FILE=/opt/henng-spark-console/secrets/github.read.token
+WorkingDirectory=/opt/dyfire
+Environment=DYFIRE_DEPLOY_DIR=/opt/dyfire
+Environment=DYFIRE_DATA_DIR=/opt/dyfire/data
+Environment=DYFIRE_GITHUB_TOKEN_FILE=/opt/dyfire/secrets/github.read.token
 Environment=DYFIRE_COMPOSE_PROJECT=douyin-spark-console
-ExecStart=/usr/bin/python3 /opt/henng-spark-console/deploy/updater.py
+ExecStart=/usr/bin/python3 /opt/dyfire/deploy/updater.py
 Restart=on-failure
 RestartSec=10
 UMask=0077
