@@ -129,7 +129,7 @@ function mockApi(path, options={}) {
   if (path === '/api/account-center/revoke-sessions' && options.method === 'POST') return Promise.resolve({ok:true,message:'其他登录会话已退出。'});
   if (path === '/api/subscription/redeem' && options.method === 'POST') { const body=JSON.parse(options.body||'{}');if(!body.code)return Promise.resolve({ok:false,message:'请输入兑换码'});return Promise.resolve({ok:true,message:'预览模式：兑换操作已模拟'}); }
   if (path === '/notifications/verify-send' || path === '/notifications/verify' || path === '/notifications/save' || path === '/notifications/policy') return Promise.resolve({message:path.endsWith('verify-send')?'验证邮件已排队，请在 10 分钟内填写验证码。':path.endsWith('/verify')?'邮箱验证成功，已开启提醒。':'设置已保存'});
-  if (path === '/api/admin/updates') return Promise.resolve({configured:true,current:'0.2.77',online:true,available:null,update_available:false,rollback_versions:[]});
+  if (path === '/api/admin/updates') return Promise.resolve({configured:true,current:'0.2.78',online:true,available:null,update_available:false,rollback_versions:[]});
   if (path === '/api/admin/diagnostics') return Promise.resolve({items:data.runs.map((run,index)=>({id:run.id,name:run.name,status:run.status,stage:run.stage,attempt:1,total:index===2?18:7,error_summary:run.error||''}))});
   if (path.startsWith('/admin/operations/history')) return Promise.resolve({hours:24,state:'fresh',points:Array.from({length:24},(_,i)=>({at:i,cpu:18+(i%5)*3,memory:42+(i%4)*2,disk:37,load:0.2,logins:0,sends:0})),cpu_peak:30,memory_peak:48});
   if (path.startsWith('/api/admin/tasks/groups/')) return Promise.resolve({items:data.tasks.map(task=>({...task,account:'我的抖音账号',username:'演示用户'}))});

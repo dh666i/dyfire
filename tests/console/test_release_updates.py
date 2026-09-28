@@ -71,10 +71,12 @@ def test_rollback_allows_default_candidate_and_rejects_invalid_payload(setup):
 
 def test_status_exposes_only_newer_release(setup):
     client, root = setup
+    current = tuple(int(part) for part in update_routes.VERSION.split('.'))
+    newer = f'{current[0]}.{current[1]}.{current[2] + 1}'
     (root / 'status.json').write_text(json.dumps({
         'heartbeat': 9999999999,
-        'latest': '0.2.77',
-        'release_name': 'Dyfire 0.2.77',
+        'latest': newer,
+        'release_name': f'Dyfire {newer}',
         'release_body': 'notes',
         'rollback_versions': [
             {'version': '0.2.1', 'url': 'https://example.invalid', 'image': 'secret'},
@@ -85,7 +87,7 @@ def test_status_exposes_only_newer_release(setup):
     response = client.get('/api/admin/updates', headers={'Role': 'admin'})
     assert response.status_code == 200
     value = response.json()
-    assert value['available'] == '0.2.77'
+    assert value['available'] == newer
     assert value['update_available'] is True
     assert value['rollback_versions'] == [{'version': '0.2.1', 'url': 'https://example.invalid'}]
     assert 'unknown' not in value
