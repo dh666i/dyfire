@@ -1,8 +1,0 @@
-[Unit]
-Description=Dyfire consistent database backup
-After=docker.service
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/python3 /opt/dyfire-backups/backup.py
-UMask=0077
-TimeoutStartSec=300

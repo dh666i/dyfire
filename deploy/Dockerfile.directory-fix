@@ -1,4 +1,0 @@
-ARG DYFIRE_BASE_IMAGE
-FROM ${DYFIRE_BASE_IMAGE}
-COPY --chown=spark:spark spark_console/directory_browser.py /app/spark_console/directory_browser.py
-COPY --chown=spark:spark spark_console/services/directory.py spark_console/services/account_health.py /app/spark_console/services/

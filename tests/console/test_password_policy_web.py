@@ -10,8 +10,10 @@ from sqlalchemy import create_engine
 
 from spark_console.config import Settings
 from spark_console.db import create_schema, session_scope
-from spark_console.models import MailPreference, PasswordReset, User
-from spark_console.security import PasswordService
+from spark_console.models import MailPreference, PasswordReset, User, WebSession, utc_now
+from spark_console.security import PasswordService, SessionService
+from spark_console.web.registration_routes import registration_client_key
+from starlette.requests import Request
 from spark_console.web.app import create_app
 
 
@@ -78,6 +80,104 @@ class PasswordPolicyWebTests(unittest.TestCase):
             self.assertTrue(user.must_change_password)
             self.assertTrue(self.passwords.verify(user.password_hash, "Original-123"))
             self.assertFalse(self.passwords.verify(user.password_hash, "weak"))
+
+    def test_login_lockout_is_persistent_and_expires(self):
+        for _ in range(5):
+            response = self.client.post(
+                "/login",
+                data={"username": "policy-user", "password": "wrong"},
+                follow_redirects=False,
+            )
+            self.assertEqual(303, response.status_code)
+
+        with session_scope(self.engine) as db:
+            user = db.get(User, self.user_id)
+            self.assertEqual(5, user.failed_login_count)
+            self.assertIsNotNone(user.locked_until)
+            self.assertGreater(user.locked_until.replace(tzinfo=timezone.utc), utc_now())
+
+        blocked = self.client.post(
+            "/login",
+            data={"username": "policy-user", "password": "Original-123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(303, blocked.status_code)
+        self.assertNotIn("spark_session", self.client.cookies)
+
+        with session_scope(self.engine) as db:
+            user = db.get(User, self.user_id)
+            user.locked_until = utc_now() - timedelta(seconds=1)
+        accepted = self.client.post(
+            "/login",
+            data={"username": "policy-user", "password": "Original-123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(303, accepted.status_code)
+        self.assertIn("spark_session", self.client.cookies)
+        with session_scope(self.engine) as db:
+            user = db.get(User, self.user_id)
+            self.assertEqual(0, user.failed_login_count)
+            self.assertIsNone(user.locked_until)
+
+    def test_password_change_rotates_current_session_and_revokes_others(self):
+        login = self.client.post(
+            "/login",
+            data={"username": "policy-user", "password": "Original-123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(303, login.status_code)
+        old_cookie = self.client.cookies.get("spark_session")
+        csrf = self.client.get("/api/auth/bootstrap").json()["csrf"]
+
+        other_client = TestClient(create_app(self.settings, self.engine), base_url="https://testserver")
+        other_raw, other_record = SessionService(b"s" * 32).create_record(self.user_id)
+        with session_scope(self.engine) as db:
+            db.add(other_record)
+
+        response = self.client.post(
+            "/change-password",
+            data={
+                "csrf_token": csrf,
+                "current_password": "Original-123",
+                "new_password": "Updated-456",
+                "new_password_confirmation": "Updated-456",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(303, response.status_code)
+        new_cookie = self.client.cookies.get("spark_session")
+        self.assertNotEqual(old_cookie, new_cookie)
+        self.assertEqual(200, self.client.get("/api/auth/bootstrap").status_code)
+        self.assertEqual(
+            401,
+            other_client.get(
+                "/api/app/bootstrap", headers={"Cookie": f"spark_session={other_raw}"}
+            ).status_code,
+        )
+
+        old_client = TestClient(create_app(self.settings, self.engine), base_url="https://testserver")
+        self.assertEqual(
+            401,
+            old_client.get(
+                "/api/auth/bootstrap", headers={"Cookie": f"spark_session={old_cookie}"}
+            ).status_code,
+        )
+        with session_scope(self.engine) as db:
+            sessions = db.query(WebSession).filter(WebSession.user_id == self.user_id).all()
+            self.assertEqual(1, len(sessions))
+            self.assertEqual(SessionService(b"s" * 32).token_hash(new_cookie), sessions[0].token_hash)
+        old_client.close()
+        other_client.close()
+
+    def test_client_key_ignores_untrusted_x_real_ip(self):
+        request = Request(
+            {
+                "type": "http",
+                "headers": [(b"x-real-ip", b"203.0.113.77")],
+                "client": ("127.0.0.1", 443),
+            }
+        )
+        self.assertEqual("127.0.0.1", registration_client_key(request))
 
     def test_recovery_keeps_code_after_weak_password_and_accepts_valid_retry(self):
         code = "AB12CD34"

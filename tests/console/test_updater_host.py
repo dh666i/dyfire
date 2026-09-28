@@ -17,6 +17,8 @@ def host(tmp_path,monkeypatch):
     module.ROOT=tmp_path;module.QUEUE=tmp_path/'updates';module.QUEUE.mkdir();module.STATE={}
     (tmp_path/'data').mkdir()
     module.DATA_DIR=tmp_path/'data'
+    module._resolve_data_dir = module.resolve_data_dir
+    monkeypatch.setattr(module,'resolve_data_dir',lambda:module.DATA_DIR)
     with sqlite3.connect(tmp_path/'data/spark.db') as db:
         db.execute('CREATE TABLE task_runs (status TEXT)')
         db.execute('CREATE TABLE douyin_login_sessions (status TEXT)')
@@ -111,3 +113,35 @@ def test_release_manifest_must_match_tag_and_digest(host):
     assert module._release_from_payload(release, resolve_registry=False)['image'].endswith('e' * 64)
     mismatched = {'tag_name': 'v0.2.1', 'body': '<!-- dyfire-manifest ' + manifest + ' -->'}
     assert module._release_from_payload(mismatched, resolve_registry=False) == {}
+
+
+def test_resolves_live_compose_data_bind_mount(host,monkeypatch):
+    module, *_ = host
+    (module.ROOT/'data'/'spark.db').touch()
+    responses=iter([
+        SimpleNamespace(stdout='container-id\n'),
+        SimpleNamespace(stdout=json.dumps([{'Mounts':[{
+            'Destination':'/data','Type':'bind','Source':str(module.ROOT/'data')
+        }]}])),
+    ])
+    calls=[]
+    def run(args,**kwargs):
+        calls.append(args)
+        return next(responses)
+    monkeypatch.setattr(module.subprocess,'run',run)
+    assert module._resolve_data_dir()==module.ROOT/'data'
+    assert calls[0][-3:]==['ps','-q','spark-web']
+
+
+def test_rejects_data_mount_outside_canonical_root(host,monkeypatch,tmp_path):
+    module, *_ = host
+    external=module.ROOT.parent/(module.ROOT.name+'-external');external.mkdir();(external/'spark.db').touch()
+    responses=iter([
+        SimpleNamespace(stdout='container-id\n'),
+        SimpleNamespace(stdout=json.dumps([{'Mounts':[{
+            'Destination':'/data','Type':'bind','Source':str(external)
+        }]}])),
+    ])
+    monkeypatch.setattr(module.subprocess,'run',lambda *args,**kwargs:next(responses))
+    with pytest.raises(ValueError,match='标准部署目录'):
+        module._resolve_data_dir()

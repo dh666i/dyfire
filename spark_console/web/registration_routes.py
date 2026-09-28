@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ipaddress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -48,12 +47,8 @@ class AdminInvite:
 
 
 def registration_client_key(request: Request) -> str:
-    supplied = request.headers.get("x-real-ip")
-    if supplied:
-        try:
-            return str(ipaddress.ip_address(supplied))
-        except ValueError:
-            pass
+    # X-Real-IP is user-controlled unless the ASGI proxy trust chain is
+    # explicitly configured. Use only the actual peer address for limits.
     return request.client.host if request.client is not None else "unknown"
 
 

@@ -2,14 +2,23 @@ from __future__ import annotations
 
 import secrets
 import string
+from datetime import timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import case, or_, select, update
 from sqlalchemy.orm import Session
 
-from spark_console.models import DouyinAccount, SparkTask, TaskRun, User, WebSession
+from spark_console.models import DouyinAccount, SparkTask, TaskRun, User, WebSession, utc_now
 from spark_console.security import PasswordService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.audits import AuditService
+
+
+MAX_FAILED_LOGINS = 5
+LOGIN_LOCKOUT_DURATION = timedelta(minutes=15)
+
+
+def _aware(value):
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def validate_registration_password(password: str) -> None:
@@ -59,8 +68,35 @@ class UserService:
         user = self.session.scalar(select(User).where(User.username == username.strip().lower()))
         if user is None or user.status != "active":
             return None
+        now = utc_now()
+        if user.locked_until is not None:
+            if _aware(user.locked_until) > now:
+                return None
+            # An expired lock starts a fresh attempt window.
+            user.failed_login_count = 0
+            user.locked_until = None
+            self.session.flush()
         if not self.passwords.verify(user.password_hash, password):
-            user.failed_login_count += 1
+            # Increment in SQL so concurrent failures cannot lose updates or
+            # race past the lock threshold on databases with row-level locks.
+            self.session.execute(
+                update(User)
+                .where(
+                    User.id == user.id,
+                    User.status == "active",
+                    or_(User.locked_until.is_(None), User.locked_until <= now),
+                )
+                .values(
+                    failed_login_count=User.failed_login_count + 1,
+                    locked_until=case(
+                        (User.failed_login_count + 1 >= MAX_FAILED_LOGINS,
+                         now + LOGIN_LOCKOUT_DURATION),
+                        else_=User.locked_until,
+                    ),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            self.session.refresh(user)
             return None
         user.failed_login_count = 0
         user.locked_until = None

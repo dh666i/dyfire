@@ -11,7 +11,7 @@ from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.engine import Engine
 from core.avatars import safe_avatar_url
 
@@ -29,6 +29,8 @@ from spark_console.models import (
     SparkTaskTargetIdentity,
     TaskRun,
     User,
+    WebSession,
+    utc_now,
 )
 from spark_console.rate_limit import FailedAttemptLimiter
 from spark_console.security import PasswordService, SessionService
@@ -37,7 +39,7 @@ from spark_console.services.audits import AuditService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.tasks import TaskService
 from spark_console.services.subscriptions import SubscriptionService
-from spark_console.services.users import validate_registration_password
+from spark_console.services.users import UserService, validate_registration_password
 from spark_console.web.account_scan_routes import build_account_scan_router
 from spark_console.web.directory_routes import build_directory_router
 from spark_console.web.health_routes import build_health_router
@@ -216,6 +218,18 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.engine = engine
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if request.url.scheme == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        return response
+
     app.mount("/static", StaticFiles(directory=str(PACKAGE_ROOT / "static")), name="static")
     passwords = PasswordService()
     sessions = SessionService(settings.session_key_file.read_bytes())
@@ -428,12 +442,9 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 username_value=username.strip(),
             )
         with session_scope(engine) as db:
-            user = db.scalar(select(User).where(User.username == username.strip().lower()))
-            valid = user is not None and user.status == "active" and passwords.verify(user.password_hash, password)
-            if not valid:
+            user = UserService(db, passwords, AuditService(db)).authenticate(username, password)
+            if user is None:
                 login_limiter.record_failure(client_key)
-                if user is not None:
-                    user.failed_login_count += 1
                 return page(
                     request,
                     "login.html",
@@ -444,7 +455,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     username_value=username.strip(),
                 )
             user.failed_login_count = 0
+            user.locked_until = None
             login_limiter.clear(client_key)
+            # Expired session rows are safe to remove when issuing a new
+            # session; this keeps the table from accumulating indefinitely.
+            db.execute(delete(WebSession).where(WebSession.expires_at <= utc_now()))
             raw, record = sessions.create_record(user.id)
             db.add(record)
             destination = "/change-password" if user.must_change_password else '/dashboard'
@@ -546,7 +561,29 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 )
             user.password_hash = passwords.hash(new_password)
             user.must_change_password = False
-        return RedirectResponse("/dashboard?notice=password-updated", status_code=303)
+            # Revoke every other session and rotate this one in place. Keeping
+            # the current browser signed in avoids stranding forced-change users.
+            db.execute(
+                delete(WebSession).where(
+                    WebSession.user_id == user.id,
+                    WebSession.id != record.id,
+                )
+            )
+            raw, rotated = sessions.create_record(user.id)
+            record.token_hash = rotated.token_hash
+            record.csrf_token = rotated.csrf_token
+            record.expires_at = rotated.expires_at
+            record.elevated_until = None
+        response = RedirectResponse("/dashboard?notice=password-updated", status_code=303)
+        response.set_cookie(
+            "spark_session",
+            raw,
+            httponly=True,
+            secure=settings.secure_cookies,
+            samesite="strict",
+            max_age=8 * 3600,
+        )
+        return response
 
     @app.get("/dashboard")
     def dashboard(request: Request):

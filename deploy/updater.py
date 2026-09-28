@@ -204,6 +204,45 @@ def compose(image, *args):
         raise RuntimeError('容器操作失败')
 
 
+def resolve_data_dir():
+    """Resolve the live bind mount for the application's SQLite data.
+
+    The environment value is only a fallback for test/initial setup. On a live
+    deployment, inspect the Compose-managed web container so an obsolete
+    named-volume path can never make an update snapshot the wrong directory.
+    """
+    result = subprocess.run(
+        ['docker', 'compose', '--project-name', COMPOSE_PROJECT,
+         '--env-file', str(ROOT / '.env.console'), '--file',
+         str(ROOT / 'compose.console.yml'), 'ps', '-q', 'spark-web'],
+        cwd=ROOT, capture_output=True, text=True, timeout=30, check=True,
+    )
+    container_id = result.stdout.strip().splitlines()
+    if len(container_id) != 1 or not container_id[0]:
+        raise ValueError('无法唯一定位运行中的 Web 容器')
+    inspected = subprocess.run(
+        ['docker', 'inspect', container_id[0]],
+        capture_output=True, text=True, timeout=30, check=True,
+    )
+    containers = json.loads(inspected.stdout)
+    if len(containers) != 1:
+        raise ValueError('Web 容器检查结果无效')
+    mounts = [mount for mount in containers[0].get('Mounts', [])
+              if mount.get('Destination') == '/data']
+    if len(mounts) != 1 or mounts[0].get('Type') != 'bind':
+        raise ValueError('Web 容器未使用标准 /data 主机绑定目录')
+    raw_source = Path(mounts[0].get('Source', ''))
+    if raw_source.is_symlink():
+        raise ValueError('Web 数据目录不能是符号链接')
+    source = raw_source.resolve()
+    expected = ROOT.resolve()
+    if source != expected and expected not in source.parents:
+        raise ValueError('Web 数据目录不在标准部署目录内')
+    if not (source / 'spark.db').is_file():
+        raise ValueError('标准 Web 数据目录或 spark.db 不存在')
+    return source
+
+
 def ready(expected):
     for _ in range(45):
         write_state()
@@ -230,15 +269,12 @@ def install(target, operation_id=''):
         raise ValueError('数据结构不兼容')
     if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', current['image']):
         raise ValueError('当前安装记录不是本仓库的固定镜像')
-    if not DATA_DIR.is_dir() or DATA_DIR.is_symlink():
-        raise ValueError('未找到标准安装的数据目录')
-    required = sum(p.stat().st_size for p in DATA_DIR.rglob('*') if p.is_file())
+    data_dir = resolve_data_dir()
+    required = sum(p.stat().st_size for p in data_dir.rglob('*') if p.is_file())
     if shutil.disk_usage(ROOT).free < required + 2 * 1024**3:
         raise ValueError('备份空间不足，请清理磁盘后重试')
     import sqlite3
-    database = DATA_DIR / 'spark.db'
-    if not database.is_file():
-        raise ValueError('自动更新仅支持标准 SQLite 数据目录')
+    database = data_dir / 'spark.db'
     with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as db:
         active = db.execute("SELECT count(*) FROM task_runs WHERE status='running'").fetchone()[0]
         active += db.execute("SELECT count(*) FROM douyin_login_sessions WHERE status NOT IN ('succeeded','failed','expired','cancelled')").fetchone()[0]
@@ -252,7 +288,7 @@ def install(target, operation_id=''):
     # Generous grace period; all data writers stop before backup.
     try:
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
-        shutil.copytree(DATA_DIR, backup / 'data')
+        shutil.copytree(data_dir, backup / 'data')
         shutil.copy2(current_file, backup / 'installed.json')
         web_file = ROOT / 'web-installed.json'
         if web_file.is_file():

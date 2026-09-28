@@ -2,7 +2,7 @@ import unittest
 from datetime import timedelta
 from sqlalchemy import select,func
 from spark_console.db import session_scope
-from spark_console.models import SparkTask,TaskRun,User,DouyinAccount,AuditEvent,utc_now
+from spark_console.models import SparkTask,TaskRun,User,DouyinAccount,AuditEvent,WebSession,utc_now
 from spark_console.services.tasks import TaskService
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -38,5 +38,39 @@ class CommercialWorkflowTests(unittest.TestCase):
         with session_scope(self.f.engine) as db:
             self.assertTrue(next(i for i in entries(db,self.f.owner) if i['id']==key)['read'])
             self.assertEqual(2,db.scalar(select(func.count()).select_from(TaskRun).where(TaskRun.status=='submitted_unconfirmed')))
+
+    def test_spa_attention_api_keeps_read_state_owned_and_csrf_protected(self):
+        with session_scope(self.f.engine) as db:
+            task=TaskService(db,AccountService(db,self.f.cipher,AuditService(db)),AuditService(db)).create(self.f.owner,self.f.account,'SPA好友','12:00','续火');db.flush()
+            db.add(TaskRun(task_id=task.id,status='failed',scheduled_for=utc_now()-timedelta(minutes=1)))
+        value=self.client.get('/api/attention')
+        self.assertEqual(200,value.status_code)
+        item=next(i for i in value.json()['items'] if '执行异常' in i['title'])
+        self.assertFalse(item['read'])
+        self.assertEqual(403,self.client.post('/api/attention/read',json={'csrf_token':'wrong','item_id':item['id']}).status_code)
+        self.assertEqual(404,self.client.post('/api/attention/read',json={'csrf_token':self.f.csrf,'item_id':'not-owned'}).status_code)
+        marked=self.client.post('/api/attention/read',json={'csrf_token':self.f.csrf,'item_id':item['id']})
+        self.assertEqual(200,marked.status_code)
+        self.assertTrue(next(i for i in marked.json()['items'] if i['id']==item['id'])['read'])
+
+    def test_account_center_api_lists_and_revokes_only_other_sessions(self):
+        with session_scope(self.f.engine) as db:
+            current=db.scalar(select(WebSession).where(WebSession.user_id==self.f.owner))
+            current_id=current.id
+            db.add(WebSession(user_id=self.f.owner,token_hash='f'*64,csrf_token='other',expires_at=utc_now()+timedelta(hours=1)))
+        response=self.client.get('/api/account-center')
+        self.assertEqual(200,response.status_code)
+        self.assertEqual(2,len(response.json()['sessions']))
+        self.assertTrue(next(item for item in response.json()['sessions'] if item['id']==current_id)['current'])
+        self.assertEqual(403,self.client.post('/api/account-center/revoke-sessions',json={'csrf_token':'wrong'}).status_code)
+        self.assertEqual(200,self.client.post('/api/account-center/revoke-sessions',json={'csrf_token':self.f.csrf}).status_code)
+        after=self.client.get('/api/account-center').json()['sessions']
+        self.assertEqual([current_id],[item['id'] for item in after])
+
+    def test_subscription_api_exposes_current_entitlement(self):
+        value=self.client.get('/api/subscription')
+        self.assertEqual(200,value.status_code)
+        self.assertTrue(value.json()['membership']['active'])
+        self.assertEqual(20,value.json()['membership']['max_tasks'])
     def test_admin_diagnostics_denied_for_user(self):
         self.assertIn(self.client.get('/admin/diagnostics').status_code,(403,404))

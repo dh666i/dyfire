@@ -4,13 +4,13 @@ The existing command and automation endpoints remain the source of truth.  These
 small read models keep the browser shell independent from the legacy templates
 without duplicating any task or account mutation logic.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from spark_console.db import session_scope
 from spark_console.models import (
@@ -48,14 +48,20 @@ from spark_console.web.app import run_view_status, run_guidance, shanghai_time, 
 
 
 def _task_payload(db, tasks):
-    identities = {t.id: db.get(SparkTaskTargetIdentity, t.id) for t in tasks}
+    task_ids = [task.id for task in tasks]
+    identities = {
+        identity.task_id: identity
+        for identity in db.scalars(
+            select(SparkTaskTargetIdentity).where(SparkTaskTargetIdentity.task_id.in_(task_ids))
+        ).all()
+    } if task_ids else {}
     avatars = task_avatar_map(db, tasks)
     return [
         {
             "id": t.id,
             "name": t.target_name,
             "accountId": t.douyin_account_id,
-            "sec_uid": identities[t.id].sec_uid if identities[t.id] else "",
+            "sec_uid": identities[t.id].sec_uid if identities.get(t.id) else "",
             "time": t.send_time,
             "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息",
             "message": t.message_template,
@@ -131,19 +137,34 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             latest = {}
             for run in runs:
                 latest.setdefault(run.task_id, run.status)
-            # Keep the activity surface to the latest year so the contribution
-            # grid remains comparable with GitHub-style activity calendars.
-            activity_start = now - timedelta(days=364)
-            activity_rows = db.scalars(
-                select(TaskRun).join(SparkTask).where(
+            # Group the 365 displayed Shanghai calendar days in the database.
+            # SQLite stores UTC datetimes without their timezone suffix, so
+            # adding eight hours before extracting the date gives the same
+            # local-day boundary as shanghai_time() without loading every run.
+            first_activity_day = local_now.date() - timedelta(days=364)
+            activity_start = datetime.combine(first_activity_day, time.min, tzinfo=shanghai).astimezone(timezone.utc)
+            activity_end = datetime.combine(local_now.date() + timedelta(days=1), time.min, tzinfo=shanghai).astimezone(timezone.utc)
+            if db.bind.dialect.name == "sqlite":
+                activity_date = func.date(TaskRun.scheduled_for, "+8 hours")
+            else:
+                activity_date = func.date(func.timezone("Asia/Shanghai", TaskRun.scheduled_for))
+            activity_rows = db.execute(
+                select(
+                    activity_date.label("activity_day"),
+                    func.coalesce(
+                        func.sum(case((TaskRun.status == "success", 1), else_=0)),
+                        0,
+                    ).label("success_count"),
+                )
+                .join(SparkTask, SparkTask.id == TaskRun.task_id)
+                .where(
                     SparkTask.owner_user_id == user.id,
                     TaskRun.scheduled_for >= activity_start,
+                    TaskRun.scheduled_for < activity_end,
                 )
+                .group_by(activity_date)
             ).all()
-            activity_counts = {}
-            for activity_run in activity_rows:
-                activity_day = shanghai_time(activity_run.scheduled_for).split(' ')[0]
-                activity_counts[activity_day] = activity_counts.get(activity_day, 0) + (1 if activity_run.status == 'success' else 0)
+            activity_counts = {str(day): count for day, count in activity_rows}
             activity_days = [
                 {"date": (local_now.date() - timedelta(days=offset)).isoformat(), "count": activity_counts.get((local_now.date() - timedelta(days=offset)).isoformat(), 0)}
                 for offset in range(364, -1, -1)
@@ -732,9 +753,6 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
     @router.get("/api/admin/diagnostics")
     def admin_diagnostics(request: Request):
         """Read-only diagnostics model for the canonical React operations page."""
-        from pathlib import Path
-        import json
-        import os
         from spark_console.models import TaskRun, SparkTask
 
         with session_scope(engine) as db:
@@ -765,14 +783,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "total": seconds(run.started_at, run.finished_at),
             } for run, task in rows]
 
-            backup = {"status": "unconfigured", "message": "尚未配置备份任务"}
-            try:
-                value = json.loads((Path(os.environ.get("DYFIRE_UPDATE_DIR", "/run/dyfire-updates")) / "backup-status.json").read_text())
-                if isinstance(value, dict):
-                    backup = value
-            except (OSError, ValueError):
-                pass
-            return JSONResponse({"items": items, "backup": backup}, headers={"Cache-Control": "no-store"})
+            return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
 
     @router.get("/api/admin/tasks/groups/{owner_id}/{account_id}")
     def admin_group_tasks(request: Request, owner_id: str, account_id: str, q: str = Query("", max_length=100), status: str = Query("", max_length=24), page: int = Query(1, ge=1)):

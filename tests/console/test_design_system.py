@@ -27,7 +27,7 @@ class DesignSystemTests(TestCase):
                 self.assertIn('/assets/index-', response.text)
         self.assertEqual(200, self.client.get('/api/studio').status_code)
 
-    def test_admin_pages_and_disabled_backup_are_distinct_from_historical_success(self):
+    def test_admin_diagnostics_do_not_claim_a_backup_schedule(self):
         with session_scope(self.fixture.engine) as db:
             db.get(User, self.fixture.owner).role = 'admin'
         for route in ['/admin/overview', '/admin/today', '/admin/users', '/admin/tasks', '/admin/runs',
@@ -38,13 +38,10 @@ class DesignSystemTests(TestCase):
                 self.assertEqual(response.status_code, 200, response.text[:200])
                 self.assertIn('<div id="app"></div>', response.text)
         with TemporaryDirectory() as directory, patch.dict(os.environ, DYFIRE_UPDATE_DIR=directory):
-            Path(directory, 'backup-status.json').write_text(json.dumps({'status':'success','at':'2026-09-12T00:00:00Z'}))
-            Path(directory, 'backup-schedule.json').write_text(json.dumps({'enabled':False}))
-            backup = self.client.get('/admin/diagnostics').json()['backup']
-            self.assertEqual(backup['status'], 'success')
-            self.assertIs(backup['schedule_enabled'], False)
-            Path(directory, 'backup-schedule.json').unlink()
-            self.assertIsNone(self.client.get('/admin/diagnostics').json()['backup']['schedule_enabled'])
+            response = self.client.get('/admin/diagnostics')
+            self.assertEqual(200, response.status_code)
+            self.assertIn('items', response.json())
+            self.assertNotIn('backup', response.json())
 
     def test_ordinary_user_cannot_read_admin_diagnostics(self):
         self.assertIn(self.client.get('/admin/diagnostics').status_code, (403,404))

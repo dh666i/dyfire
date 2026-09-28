@@ -1,8 +1,0 @@
-ARG DYFIRE_WORKER_BASE
-FROM ${DYFIRE_WORKER_BASE}
-COPY --chown=spark:spark VERSION /app/VERSION
-COPY --chown=spark:spark spark_console/models.py spark_console/scheduler.py spark_console/worker.py spark_console/health_retry.py /app/spark_console/
-COPY --chown=spark:spark spark_console/run_attempts.py spark_console/executor.py spark_console/health_worker.py /app/spark_console/
-COPY --chown=spark:spark spark_console/services/account_health.py /app/spark_console/services/
-COPY --chown=spark:spark core/session_health.py /app/core/
-

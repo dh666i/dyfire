@@ -17,9 +17,6 @@ def build_reliability_router(engine,auth,cipher):
     router=APIRouter()
     @router.get('/admin/diagnostics')
     def diagnostics(request:Request):
-        from pathlib import Path
-        import json,os
-        from spark_console.models import DouyinLoginSession,ContactDirectoryJob
         with session_scope(engine) as db:
             auth.admin_context(request,db)
             rows=db.execute(select(TaskRun,SparkTask).join(SparkTask).order_by(TaskRun.scheduled_for.desc()).limit(30)).all()
@@ -37,18 +34,7 @@ def build_reliability_router(engine,auth,cipher):
                 'confirmation': seconds(r.submitted_at, r.finished_at),
                 'total': seconds(r.started_at, r.finished_at),
             } for r,t in rows]
-            backup={'status':'unconfigured','message':'尚未配置备份任务'}
-            try:
-                historical=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-status.json').read_text())
-                if isinstance(historical,dict):backup=historical
-            except (OSError,ValueError):pass
-            schedule={'enabled':None}
-            try:
-                configured=json.loads((Path(os.environ.get('DYFIRE_UPDATE_DIR','/run/dyfire-updates'))/'backup-schedule.json').read_text())
-                if isinstance(configured,dict) and isinstance(configured.get('enabled'),bool):schedule=configured
-            except (OSError,ValueError):pass
-            backup['schedule_enabled']=schedule['enabled']
-            return JSONResponse({'items':items,'backup':backup},headers={'Cache-Control':'no-store'})
+            return JSONResponse({'items':items},headers={'Cache-Control':'no-store'})
     @router.post('/tasks/preview')
     async def preview(request:Request):
         data=await request.json()
