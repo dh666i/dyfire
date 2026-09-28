@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py -q
+      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_password_policy_web.py -q
       - name: Validate version
         id: version
         shell: python

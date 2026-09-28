@@ -37,6 +37,7 @@ from spark_console.services.audits import AuditService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.tasks import TaskService
 from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.users import validate_registration_password
 from spark_console.web.account_scan_routes import build_account_scan_router
 from spark_console.web.directory_routes import build_directory_router
 from spark_console.web.health_routes import build_health_router
@@ -517,9 +518,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     is_admin=user.role == "admin",
                     error="两次输入的新密码不一致",
                 )
-            try:
-                user.password_hash = passwords.hash(new_password)
-            except ValueError:
+            if not new_password:
                 return page(
                     request,
                     "change_password.html",
@@ -531,6 +530,21 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     is_admin=user.role == "admin",
                     error="新密码不能为空",
                 )
+            try:
+                validate_registration_password(new_password)
+            except ValidationError:
+                return page(
+                    request,
+                    "change_password.html",
+                    400,
+                    title="修改密码",
+                    nav=not user.must_change_password,
+                    user=user,
+                    csrf_token=record.csrf_token,
+                    is_admin=user.role == "admin",
+                    error="密码需同时包含字母和数字",
+                )
+            user.password_hash = passwords.hash(new_password)
             user.must_change_password = False
         return RedirectResponse("/dashboard?notice=password-updated", status_code=303)
 
