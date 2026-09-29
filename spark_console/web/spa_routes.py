@@ -669,6 +669,26 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             AuditService(db).write(admin.id, "user.admin_note_updated", "user", user.id)
             return {"ok": True, "admin_note": note}
 
+    @router.post("/api/admin/redemption-codes")
+    async def admin_create_redemption_codes(request: Request):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            try:
+                quantity = max(1, min(20, int(values.get("quantity", 1))))
+                service = SubscriptionService(db, AuditService(db))
+                codes = [service.create_redemption_code(
+                    admin.id,
+                    duration_days=int(values.get("duration_days", 30)),
+                    max_accounts=int(values.get("max_accounts", 1)),
+                    max_tasks=int(values.get("max_tasks", 10)),
+                    plan_id=str(values.get("plan_id") or "") or None,
+                )[1] for _ in range(quantity)]
+            except (ValidationError, ValueError) as error:
+                return JSONResponse({"detail": str(error)}, status_code=400)
+            return {"ok": True, "codes": codes}
+
     @router.post("/api/admin/runs/{run_id}/retry")
     async def admin_retry_run(request: Request, run_id: str):
         values = await request.json()
