@@ -11,7 +11,7 @@ from spark_console.db import session_scope
 from spark_console.models import RedemptionCode, User, SubscriptionGrant, UserSubscription
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.audits import AuditService
-from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.subscriptions import SubscriptionService, pricing_plans, task_limit_label
 from spark_console.web.auth import WebAuth
 from spark_console.web.membership import membership_summary
 
@@ -74,6 +74,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
                 "subscription.html",
                 title="会员订阅",
                 grants=db.scalars(select(SubscriptionGrant).where(SubscriptionGrant.user_id==user.id).order_by(SubscriptionGrant.created_at.desc()).limit(20)).all(),
+                plans=pricing_plans(),
                 redeemed=request.query_params.get("redeemed") == "1",
                 required=request.query_params.get("required") == "1",
                 **context,
@@ -97,6 +98,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
                     "subscription.html",
                     status_code=400,
                     title="会员订阅",
+                    plans=pricing_plans(),
                     error=str(error),
                     redeemed=False,
                     required=False,
@@ -125,6 +127,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
                     "days_remaining": summary.get("days_remaining"),
                     "max_accounts": summary.get("max_accounts"),
                     "max_tasks": summary.get("max_tasks"),
+                    "task_limit_label": summary.get("task_limit_label"),
                 },
             })
 
@@ -141,7 +144,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
             start=max(now,_aware(subscription.valid_until)) if subscription else now
             from zoneinfo import ZoneInfo
             until=(start+timedelta(days=item.duration_days)).astimezone(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M')
-            return JSONResponse({'message':f'将增加 {item.duration_days} 天，有效期预计至 {until}（北京时间）。账号额度更新为 {item.max_accounts}，任务额度更新为 {item.max_tasks}。额度不叠加。预览不会消耗兑换码，实际兑换时重新校验。'})
+            return JSONResponse({'message':f'将增加 {item.duration_days} 天，有效期预计至 {until}（北京时间）。账号额度更新为 {item.max_accounts}，任务额度更新为 {task_limit_label(item.max_tasks)}。额度不叠加。预览不会消耗兑换码，实际兑换时重新校验。'})
 
     @router.post("/admin/redemption-codes")
     def create_redemption_codes(
@@ -150,6 +153,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
         max_tasks: int = Form(default=10),
+        plan_id: str = Form(default=""),
         quantity: int = Form(default=1),
     ):
         with session_scope(engine) as db:
@@ -165,6 +169,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
                         duration_days=duration_days,
                         max_accounts=max_accounts,
                         max_tasks=max_tasks,
+                        plan_id=plan_id or None,
                     )[1]
                     for _ in range(quantity)
                 ]
@@ -201,6 +206,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
         max_tasks: int = Form(default=10),
+        plan_id: str = Form(default=""),
     ):
         with session_scope(engine) as db:
             admin, record, _context = auth.admin_context(request, db)
@@ -212,6 +218,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
                     duration_days=duration_days,
                     max_accounts=max_accounts,
                     max_tasks=max_tasks,
+                    plan_id=plan_id or None,
                 )
             except NotFound as error:
                 raise HTTPException(404, str(error)) from error

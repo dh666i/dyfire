@@ -26,12 +26,12 @@
         {% for item in users %}
         <tr>
           <td class="admin-col-check"><input class="admin-check" type="checkbox" name="user_ids" value="{{ item.id }}" form="admin-users-bulk" data-bulk-item="users" aria-label="选择 {{ item.username }}"{% if item.role == 'admin' %} disabled{% endif %}></td>
-          <td><div class="admin-identity"><span class="admin-identity-avatar">{{ item.username[:2]|upper }}</span><span><a href="/admin/customers/{{ item.id }}"><strong>{{ item.username }}</strong></a><small>{{ '超级管理员' if item.role == 'admin' else '客户账号' }} · {{ item.id[:8] }}</small></span></div></td>
+          <td><div class="admin-identity"><span class="admin-identity-avatar">{{ item.username[:2]|upper }}</span><span><a href="/admin/customers/{{ item.id }}"><strong>{{ item.username }}</strong></a><small>{{ '超级管理员' if item.role == 'admin' else '客户账号' }} · {{ item.id[:8] }}</small>{% if item.admin_note %}<small>备注：{{ item.admin_note }}</small>{% endif %}</span></div></td>
           <td class="admin-col-status">{{ status_badge(item.status, '正常' if item.status == 'active' else '已停用') }}</td>
           <td><div class="admin-cell-stack">{{ status_badge(item.membership_status, item.membership_label) }}{% if item.valid_until %}<small>至 {{ item.valid_until|shanghai_time }}</small>{% endif %}</div></td>
           <td>
             {% if item.role == 'admin' %}<span class="admin-secondary-text">不受额度限制</span>
-            {% else %}<div class="admin-cell-stack"><strong>账号 {{ item.account_count }}/{{ item.max_accounts }} · 任务 {{ item.task_count }}/{{ item.max_tasks }}</strong><small>{{ item.days_remaining|default(0) }} 天剩余</small></div>{% endif %}
+            {% else %}<div class="admin-cell-stack"><strong>账号 {{ item.account_count }}/{{ item.max_accounts }} · 任务 {{ item.task_count }}/{{ item.task_limit_label }}</strong><small>{{ item.days_remaining|default(0) }} 天剩余</small></div>{% endif %}
           </td>
           <td class="admin-mono">{{ item.created_at|shanghai_time }}</td>
           <td class="admin-col-actions"><button class="admin-icon-button" type="button" data-dialog-open="user-actions-{{ item.id }}" aria-label="管理 {{ item.username }}" title="管理用户">{{ icon('more', 18) }}</button></td>
@@ -60,6 +60,15 @@
   <h2>{{ item.username }}</h2>
   <p>{{ '超级管理员' if item.role == 'admin' else item.membership_label }} · 创建于 {{ item.created_at|shanghai_time }}</p>
 
+  <div class="admin-dialog-section">
+    <div class="admin-section-copy"><strong>管理员备注</strong><small>仅管理员可见，用于标记熟人或推广用户。</small></div>
+    <form method="post" action="/admin/users/{{ item.id }}/note" class="admin-form-grid">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="admin-field admin-field-full"><span>备注</span><textarea name="admin_note" maxlength="500" rows="3" placeholder="例如：朋友介绍 / 熟人免费">{{ item.admin_note }}</textarea></label>
+      <div class="admin-form-actions"><button class="admin-button admin-button-primary" type="submit">保存备注</button></div>
+    </form>
+  </div>
+
   {% if item.role != 'admin' %}
   <div class="admin-dialog-section">
     <div class="admin-section-copy"><strong>会员与额度</strong><small>{% if item.valid_until %}当前有效期至 {{ item.valid_until|shanghai_time }}{% else %}当前未开通会员{% endif %}</small></div>
@@ -67,7 +76,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label class="admin-field"><span>增加天数</span><input type="number" name="duration_days" value="30" min="1" max="3650" required></label>
       <label class="admin-field"><span>账号上限</span><input type="number" name="max_accounts" value="{{ item.max_accounts if item.max_accounts else 1 }}" min="1" max="100" required></label>
-      <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="{{ item.max_tasks if item.max_tasks else 20 }}" min="1" max="1000" required></label>
+      <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
+      <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="{{ item.max_tasks if item.max_tasks else 10 }}" min="1" max="2147483647" required></label>
       <div class="admin-form-actions"><button class="admin-button admin-button-primary" type="submit">保存并延长</button></div>
     </form>
   </div>

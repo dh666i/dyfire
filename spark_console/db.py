@@ -100,6 +100,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (5, "spark_task_target_key", _upgrade_sqlite_task_target_key),
         (6, "normalize_spark_task_target_keys", _normalize_sqlite_task_target_keys),
         (7, "login_session_mode", _upgrade_sqlite_login_session_mode),
+        (8, "user_admin_note", _upgrade_sqlite_user_admin_note),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -134,6 +135,18 @@ def _upgrade_sqlite_login_session_mode(connection: Connection) -> None:
     if "mode" not in columns:
         connection.exec_driver_sql(
             "ALTER TABLE douyin_login_sessions ADD COLUMN mode VARCHAR(16) NOT NULL DEFAULT 'login'"
+        )
+
+
+def _upgrade_sqlite_user_admin_note(connection: Connection) -> None:
+    """Add the private administrator note without replacing an existing DB."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+    }
+    if "admin_note" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN admin_note VARCHAR(500)"
         )
 
 

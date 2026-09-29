@@ -18,6 +18,7 @@ from spark_console.models import (
     User,
     UserSubscription,
 )
+from spark_console.services.subscriptions import task_limit_label
 
 
 ADMIN_PAGE_SIZE = 20
@@ -75,6 +76,10 @@ class AdminUserRow:
         return self.user.status
 
     @property
+    def admin_note(self) -> str:
+        return self.user.admin_note or ""
+
+    @property
     def created_at(self) -> datetime:
         return self.user.created_at
 
@@ -93,6 +98,10 @@ class AdminUserRow:
         if self.user.role == "admin":
             return None
         return self.subscription.max_tasks if self.subscription else 0
+
+    @property
+    def task_limit_label(self) -> str:
+        return task_limit_label(self.max_tasks)
 
     @property
     def membership_status(self) -> str:
@@ -144,6 +153,7 @@ class AdminUserRow:
             "days_remaining": self.days_remaining,
             "max_accounts": self.max_accounts,
             "max_tasks": self.max_tasks,
+            "task_limit_label": self.task_limit_label,
             "account_count": self.account_count,
             "task_count": self.task_count,
             "is_admin": self.user.role == "admin",

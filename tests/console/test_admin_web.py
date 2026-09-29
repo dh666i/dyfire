@@ -661,6 +661,39 @@ class AdminWebTests(unittest.TestCase):
         self.assertEqual(404, denied_bulk.status_code)
         self.real_client.cookies.set("spark_session", self.admin_token)
 
+    def test_admin_user_notes_are_private_editable_and_audited(self):
+        bootstrap = self.real_client.get("/api/admin/bootstrap")
+        self.assertEqual(200, bootstrap.status_code, bootstrap.text)
+        self.assertEqual("", self.real_client.get(f"/api/admin/users/{self.customer.id}/workspace").json()["user"]["admin_note"])
+
+        saved = self.real_client.post(
+            f"/api/admin/users/{self.customer.id}/note",
+            json={"csrf_token": self.admin_csrf, "admin_note": "朋友介绍 / 免费续费"},
+        )
+        self.assertEqual(200, saved.status_code, saved.text)
+        self.assertEqual("朋友介绍 / 免费续费", saved.json()["admin_note"])
+
+        workspace = self.real_client.get(f"/api/admin/users/{self.customer.id}/workspace")
+        self.assertEqual("朋友介绍 / 免费续费", workspace.json()["user"]["admin_note"])
+        listed = self.real_client.get(f"/api/admin/users/{self.customer.id}/workspace").json()
+        self.assertEqual("朋友介绍 / 免费续费", listed["user"]["admin_note"])
+
+        self.real_client.cookies.set("spark_session", self.customer_token)
+        denied = self.real_client.post(
+            f"/api/admin/users/{self.customer.id}/note",
+            json={"csrf_token": self.admin_csrf, "admin_note": "不应保存"},
+        )
+        self.assertEqual(404, denied.status_code)
+        self.real_client.cookies.set("spark_session", self.admin_token)
+        with Session(self.engine) as db:
+            self.assertEqual("朋友介绍 / 免费续费", db.get(User, self.customer.id).admin_note)
+            self.assertTrue(
+                db.scalar(select(AuditEvent).where(
+                    AuditEvent.action == "user.admin_note_updated",
+                    AuditEvent.resource_id == self.customer.id,
+                ))
+            )
+
     def test_react_admin_run_workbench_read_model_and_retry_security(self):
         from zoneinfo import ZoneInfo
 

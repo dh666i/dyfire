@@ -17,7 +17,13 @@ from spark_console.models import (
 )
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.audits import AuditService
-from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.subscriptions import (
+    SubscriptionService,
+    UNLIMITED_TASKS,
+    pricing_plan,
+    pricing_plans,
+    task_limit_label,
+)
 
 
 def aware(value):
@@ -60,6 +66,45 @@ class SubscriptionServiceTests(unittest.TestCase):
 
     def create_code(self, **kwargs):
         return self.service.create_redemption_code(self.admin.id, **kwargs)
+
+    def test_pricing_plans_match_published_monthly_entitlements(self):
+        self.assertEqual(
+            [(plan["price_yuan"], plan["max_tasks"]) for plan in pricing_plans()],
+            [("9.9", 5), ("15", 10), ("20", UNLIMITED_TASKS)],
+        )
+        self.assertEqual(UNLIMITED_TASKS, pricing_plan("unlimited")["max_tasks"])
+        self.assertEqual("不限", task_limit_label(UNLIMITED_TASKS))
+
+    def test_unlimited_plan_allows_task_capacity(self):
+        self.service.extend(
+            self.admin.id,
+            self.user.id,
+            duration_days=30,
+            plan_id="unlimited",
+        )
+        subscription = self.session.get(UserSubscription, self.user.id)
+        self.assertEqual(UNLIMITED_TASKS, subscription.max_tasks)
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="customer-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
+        for index in range(3):
+            self.session.add(
+                SparkTask(
+                    owner_user_id=self.user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"好友{index}",
+                    send_time=f"0{index}:00",
+                    message_template="今日火花",
+                    enabled=True,
+                )
+            )
+        self.session.flush()
+        self.assertIsNotNone(self.service.require_task_capacity(self.user.id, 100_000))
 
     def test_redemption_code_returns_plaintext_once_and_persists_only_sha256(self):
         code, plaintext = self.create_code(

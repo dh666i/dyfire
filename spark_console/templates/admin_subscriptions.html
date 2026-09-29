@@ -25,7 +25,7 @@
           <td data-label="订阅状态">{{ status_badge(item.membership_status, item.membership_label) }}</td>
           <td data-label="有效期"><div class="admin-cell-stack"><strong>{{ item.valid_until|shanghai_time if item.valid_until else '未开通' }}</strong><small>{% if item.days_remaining %}剩余 {{ item.days_remaining }} 天{% else %}暂无有效时长{% endif %}</small></div></td>
           <td data-label="账号额度"><div class="admin-meter"><span><strong>{{ item.account_count }}/{{ item.max_accounts }}</strong><em>已使用</em></span><div class="admin-meter-track"><i style="--meter-value: {{ ((item.account_count * 100 / item.max_accounts) if item.max_accounts else 0)|round }}%"></i></div></div></td>
-          <td data-label="任务额度"><div class="admin-meter"><span><strong>{{ item.task_count }}/{{ item.max_tasks }}</strong><em>已使用</em></span><div class="admin-meter-track"><i style="--meter-value: {{ ((item.task_count * 100 / item.max_tasks) if item.max_tasks else 0)|round }}%"></i></div></div></td>
+          <td data-label="任务额度"><div class="admin-meter"><span><strong>{{ item.task_count }}/{{ item.task_limit_label }}</strong><em>已使用</em></span><div class="admin-meter-track"><i style="--meter-value: {{ ((item.task_count * 100 / item.max_tasks) if item.max_tasks and item.max_tasks < 2147483647 else 0)|round }}%"></i></div></div></td>
           <td class="admin-col-actions" data-label="管理"><button class="admin-icon-button" type="button" data-dialog-open="subscription-{{ item.id }}" aria-label="管理 {{ item.username }} 的订阅" title="管理订阅">{{ icon('edit', 17) }}</button></td>
         </tr>
         {% endfor %}
@@ -41,10 +41,11 @@
   <h2>生成会员兑换码</h2><p>兑换后自动增加会员时长，并应用指定的账号与任务额度。</p>
   <form method="post" action="/admin/codes/redemptions" class="admin-form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / 月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
     <label class="admin-field"><span>有效天数</span><input type="number" name="duration_days" value="30" min="1" max="3650" required></label>
     <label class="admin-field"><span>生成数量</span><input type="number" name="quantity" value="1" min="1" max="20" required></label>
     <label class="admin-field"><span>账号上限</span><input type="number" name="max_accounts" value="1" min="1" max="100" required></label>
-    <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="20" min="1" max="1000" required></label>
+    <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="10" min="1" max="2147483647" required></label>
     <div class="admin-form-actions"><button class="admin-button admin-button-ghost" type="button" data-dialog-close>取消</button><button class="admin-button admin-button-primary" type="submit">生成兑换码</button></div>
   </form>
 </dialog>
@@ -57,6 +58,7 @@
     <div class="admin-section-copy"><strong>续期并设置额度</strong><small>从当前有效期末尾续期；已过期则从现在开始。</small></div>
     <form method="post" action="/admin/subscriptions/{{ item.id }}/extend" class="admin-form-grid cols-3">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="">沿用下方额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / 月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
       <label class="admin-field"><span>增加天数</span><input type="number" name="duration_days" value="30" min="1" max="3650" required></label>
       <label class="admin-field"><span>账号上限</span><input type="number" name="max_accounts" value="{{ item.max_accounts if item.max_accounts else 1 }}" min="1" max="100" required></label>
       <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="{{ item.max_tasks if item.max_tasks else 20 }}" min="1" max="1000" required></label>

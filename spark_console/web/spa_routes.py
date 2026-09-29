@@ -35,7 +35,7 @@ from spark_console.services.audits import AuditService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.users import UserService
 from spark_console.security import PasswordService
-from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.subscriptions import SubscriptionService, pricing_plans, task_limit_label
 from spark_console.web.membership import membership_summary
 from spark_console.web.auth import WebAuth
 from spark_console.web.admin_queries import admin_stats, list_audit_events, list_runs, list_subscriptions, list_users
@@ -226,7 +226,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     for r, task in recent_run_rows
                 ],
                 "activity": {"period_days": 365, "total": sum(item["count"] for item in activity_days), "days": activity_days},
-                "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "can_add_task")},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "can_add_task")},
+                "plans": pricing_plans(),
             }
 
     @router.get("/api/admin/bootstrap")
@@ -298,7 +299,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "stats": jsonable_encoder(stats),
                 "counts": {"users": users_total, "accounts": account_total, "tasks": task_total, "runs": run_total},
                 "users": [
-                    {"id": row.id, "username": row.username, "role": row.role, "status": row.status, "created": shanghai_time(row.created_at),
+                    {"id": row.id, "username": row.username, "role": row.role, "status": row.status, "created": shanghai_time(row.created_at), "admin_note": row.admin_note,
                      "account_count": row.account_count, "task_count": row.task_count,
                      "membership_status": row.membership_status,
                      "membership_label": row.membership_label,
@@ -344,6 +345,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "days_remaining": item.days_remaining,
                         "max_accounts": item.max_accounts,
                         "max_tasks": item.max_tasks,
+                        "task_limit_label": item.task_limit_label,
                         "account_count": item.account_count,
                         "task_count": item.task_count,
                     }
@@ -356,11 +358,13 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "duration_days": item.duration_days,
                         "max_accounts": item.max_accounts,
                         "max_tasks": item.max_tasks,
+                        "task_limit_label": task_limit_label(item.max_tasks),
                         "created_at": _date_value(item.created_at),
                         "expires_at": _date_value(item.expires_at),
                     }
                     for item in redemption_codes
                 ],
+                "plans": pricing_plans(),
                 "invites": [
                     {
                         "id": item.id,
@@ -393,10 +397,11 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
         with session_scope(engine) as db:
             auth.admin_context(request, db)
             rows, pagination = list_subscriptions(db, q=q, status=status, page=page)
-            return {"items": [{"id": row.id, "username": row.username, "role": row.role, "status": row.status,
+            return {"items": [{"id": row.id, "username": row.username, "role": row.role, "status": row.status, "admin_note": row.admin_note,
                 "membership_status": row.membership_status, "membership_label": row.membership_label,
                 "valid_until": _date_value(row.valid_until), "days_remaining": row.days_remaining,
                 "max_accounts": row.max_accounts, "max_tasks": row.max_tasks,
+                "task_limit_label": row.task_limit_label,
                 "account_count": row.account_count, "task_count": row.task_count} for row in rows], "pagination": pagination}
 
     @router.get("/api/admin/task-groups")
@@ -636,12 +641,33 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             ).all()
             membership = membership_summary(db, user)
             return {
-                "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at)},
-                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "account_count", "task_count", "is_admin")},
+                "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at), "admin_note": user.admin_note or ""},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "is_admin")},
                 "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health_views(db, [a]).get(a.id, {})} for a in accounts],
                 "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": identities[t.id].sec_uid if identities[t.id] else "", "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
                 "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
             }
+
+    @router.post("/api/admin/users/{user_id}/note")
+    async def admin_update_user_note(request: Request, user_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            user = db.get(User, user_id)
+            if user is None:
+                return JSONResponse({"detail": "用户不存在"}, status_code=404)
+            raw_note = values.get("admin_note", values.get("note", ""))
+            if raw_note is None:
+                raw_note = ""
+            if not isinstance(raw_note, str):
+                return JSONResponse({"detail": "备注格式不正确"}, status_code=400)
+            note = raw_note.strip()
+            if len(note) > 500:
+                return JSONResponse({"detail": "备注最多 500 个字符"}, status_code=400)
+            user.admin_note = note or None
+            AuditService(db).write(admin.id, "user.admin_note_updated", "user", user.id)
+            return {"ok": True, "admin_note": note}
 
     @router.post("/api/admin/runs/{run_id}/retry")
     async def admin_retry_run(request: Request, run_id: str):

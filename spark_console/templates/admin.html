@@ -37,13 +37,14 @@
       {% if item.role != 'admin' %}
       <div class="admin-membership-meta">
         {% if member and member.valid_until %}<span>有效期至 {{ member.valid_until|shanghai_time }}</span>{% else %}<span>暂无有效期</span>{% endif %}
-        {% if member %}<span>账号 {{ member.account_count }}/{{ member.max_accounts }}</span><span>任务 {{ member.task_count }}/{{ member.max_tasks }}</span>{% endif %}
+        {% if member %}<span>账号 {{ member.account_count }}/{{ member.max_accounts }}</span><span>任务 {{ member.task_count }}/{{ member.task_limit_label }}</span>{% endif %}
       </div>
       <form method="post" action="/admin/users/{{ item.id }}/subscription" class="admin-subscription-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>增加天数<input type="number" name="duration_days" value="30" min="1" required></label>
         <label>账号上限<input type="number" name="max_accounts" value="{{ member.max_accounts if member and member.max_accounts else 1 }}" min="1" required></label>
-        <label>任务上限<input type="number" name="max_tasks" value="{{ member.max_tasks if member and member.max_tasks else 20 }}" min="1" required></label>
+        <label>套餐<select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
+        <label>任务上限<input type="number" name="max_tasks" value="{{ member.max_tasks if member and member.max_tasks else 10 }}" min="1" required></label>
         <button type="submit">保存并延长</button>
       </form>
       {% endif %}
@@ -78,7 +79,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>有效天数<input type="number" name="duration_days" value="30" min="1" required></label>
       <label>账号上限<input type="number" name="max_accounts" value="1" min="1" required></label>
-      <label>任务上限<input type="number" name="max_tasks" value="20" min="1" required></label>
+      <label>套餐<select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
+      <label>任务上限<input type="number" name="max_tasks" value="10" min="1" required></label>
       <label>生成数量<input type="number" name="quantity" value="1" min="1" max="20" required></label>
       <button type="submit">生成兑换码</button>
     </form>
@@ -87,7 +89,7 @@
       <article class="redemption-item">
         <div class="redemption-copy">
           <div><strong>兑换码 {{ item.code.id[:8] }}</strong><span class="pill {{ 'good' if item.can_revoke else 'off' }}">{{ item.status }}</span></div>
-          <p class="muted">{{ item.code.duration_days }} 天 · 账号 {{ item.code.max_accounts }} · 任务 {{ item.code.max_tasks }}</p>
+          <p class="muted">{{ item.code.duration_days }} 天 · 账号 {{ item.code.max_accounts }} · 任务 {{ '不限' if item.code.max_tasks >= 2147483647 else item.code.max_tasks }}</p>
           <p class="muted">有效期至 {{ item.code.expires_at|shanghai_time }}{% if item.used_by_username %} · 使用者：{{ item.used_by_username }}{% endif %}</p>
         </div>
         {% if item.can_revoke %}<form method="post" action="/admin/redemption-codes/{{ item.code.id }}/revoke"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="danger quiet compact-button">撤销</button></form>{% endif %}

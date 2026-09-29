@@ -31,7 +31,7 @@ from spark_console.security import PasswordService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.audits import AuditService
 from spark_console.services.invites import InviteService
-from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.subscriptions import SubscriptionService, pricing_plans
 from spark_console.services.users import UserService
 from spark_console.task_targets import targets_conflict, task_target_key
 from spark_console.web.admin_queries import (
@@ -436,6 +436,7 @@ def render_admin_codes(
         invite_pagination=invite_pagination,
         redemption_pagination=redemption_pagination,
         pagination=redemption_pagination,
+        plans=pricing_plans(),
         **extra,
         **context,
     )
@@ -539,6 +540,7 @@ def build_admin_router(
                 q=q,
                 status=status,
                 stats=admin_stats(db),
+                plans=pricing_plans(),
                 **context,
             )
 
@@ -562,6 +564,7 @@ def build_admin_router(
                 q=q,
                 status=status,
                 stats=admin_stats(db),
+                plans=pricing_plans(),
                 **context,
             )
 
@@ -794,7 +797,27 @@ def build_admin_router(
                 stats=admin_stats(db),
                 one_time_password=temporary,
                 **context,
-            )
+        )
+
+    @router.post("/admin/users/{user_id}/note")
+    def update_user_note(
+        request: Request,
+        user_id: str,
+        csrf_token: str = Form(default=""),
+        admin_note: str = Form(default=""),
+    ):
+        with session_scope(engine) as db:
+            admin, record, _context = auth.admin_context(request, db)
+            auth.csrf(record, csrf_token)
+            user = db.get(User, user_id)
+            if user is None:
+                raise HTTPException(404, "用户不存在")
+            note = (admin_note or "").strip()
+            if len(note) > 500:
+                raise HTTPException(400, "备注最多 500 个字符")
+            user.admin_note = note or None
+            AuditService(db).write(admin.id, "user.admin_note_updated", "user", user.id)
+        return RedirectResponse("/admin/users", status_code=303)
 
     @router.post("/admin/users/bulk")
     def bulk_update_users(
@@ -873,6 +896,7 @@ def build_admin_router(
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
         max_tasks: int = Form(default=10),
+        plan_id: str = Form(default=""),
     ):
         with session_scope(engine) as db:
             admin, record, _context = auth.admin_context(request, db)
@@ -884,6 +908,7 @@ def build_admin_router(
                     duration_days=duration_days,
                     max_accounts=max_accounts,
                     max_tasks=max_tasks,
+                    plan_id=plan_id or None,
                 )
             except NotFound as error:
                 raise HTTPException(404, str(error)) from error
@@ -985,6 +1010,7 @@ def build_admin_router(
         duration_days: int = Form(default=30),
         max_accounts: int = Form(default=1),
         max_tasks: int = Form(default=10),
+        plan_id: str = Form(default=""),
         quantity: int = Form(default=1),
     ):
         with session_scope(engine) as db:
@@ -1000,6 +1026,7 @@ def build_admin_router(
                         duration_days=duration_days,
                         max_accounts=max_accounts,
                         max_tasks=max_tasks,
+                        plan_id=plan_id or None,
                     )[1]
                     for _ in range(quantity)
                 ]

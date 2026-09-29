@@ -46,7 +46,7 @@
           {% for item in redemption_codes %}
           <tr>
             <td><div class="admin-code-type"><span class="admin-code-icon">{{ icon('codes', 16) }}</span><span class="admin-cell-stack"><strong class="admin-mono">#{{ item.code.id[:8] }}</strong><small>{{ item.code.created_at|shanghai_time }} 创建</small></span></div></td>
-            <td><div class="admin-cell-stack"><strong>{{ item.code.duration_days }} 天</strong><small>账号 {{ item.code.max_accounts }} · 任务 {{ item.code.max_tasks }}</small></div></td>
+            <td><div class="admin-cell-stack"><strong>{{ item.code.duration_days }} 天</strong><small>账号 {{ item.code.max_accounts }} · 任务 {{ '不限' if item.code.max_tasks >= 2147483647 else item.code.max_tasks }}</small></div></td>
             <td><div class="admin-cell-stack">{{ status_badge(item.status, item.status) }}<small>{% if item.used_by_username %}使用者：{{ item.used_by_username }}{% else %}尚未兑换{% endif %}</small></div></td>
             <td class="admin-mono">{{ item.code.expires_at|shanghai_time }}</td>
             <td class="admin-col-actions">{% if item.can_revoke %}<form method="post" action="/admin/codes/redemptions/{{ item.code.id }}/revoke" data-confirm="撤销后该兑换码将立即失效。" data-confirm-title="撤销兑换码？"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="admin-icon-button admin-icon-button-danger" type="submit" aria-label="撤销兑换码" title="撤销">{{ icon('pause', 15) }}</button></form>{% else %}<span class="admin-secondary-text">—</span>{% endif %}</td>
@@ -65,10 +65,11 @@
   <h2>生成会员兑换码</h2><p>完整兑换码只显示一次，请生成后立即保存并安全交付。</p>
   <form method="post" action="/admin/codes/redemptions" class="admin-form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / 月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
     <label class="admin-field"><span>有效天数</span><input type="number" name="duration_days" value="30" min="1" max="3650" required></label>
     <label class="admin-field"><span>生成数量</span><input type="number" name="quantity" value="1" min="1" max="20" required></label>
     <label class="admin-field"><span>账号上限</span><input type="number" name="max_accounts" value="1" min="1" max="100" required></label>
-    <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="20" min="1" max="1000" required></label>
+    <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="10" min="1" max="2147483647" required></label>
     <div class="admin-form-actions"><button class="admin-button admin-button-ghost" type="button" data-dialog-close>取消</button><button class="admin-button admin-button-primary" type="submit">生成兑换码</button></div>
   </form>
 </dialog>

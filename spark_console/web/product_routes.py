@@ -7,6 +7,7 @@ from spark_console.models import User, DouyinAccount, SparkTask, TaskRun, WebSes
 from spark_console.services.account_health import views as health_views
 from spark_console.services.audits import AuditService
 from spark_console.web.membership import membership_summary
+from spark_console.services.subscriptions import pricing_plans
 
 
 def build_product_router(engine,auth,page):
@@ -54,7 +55,7 @@ def build_product_router(engine,auth,page):
             user,record=auth.current(request,db)
             summary=membership_summary(db,user)
             grants=db.scalars(select(SubscriptionGrant).where(SubscriptionGrant.user_id==user.id).order_by(SubscriptionGrant.created_at.desc()).limit(20)).all()
-            return {'csrf':record.csrf_token,'membership':{key:summary.get(key) for key in ('active','status','status_label','valid_until','days_remaining','max_accounts','max_tasks','account_count','task_count')},'grants':[{'id':item.id,'source':item.source,'valid_from':item.valid_from,'valid_until':item.valid_until,'created_at':item.created_at} for item in grants]}
+            return {'csrf':record.csrf_token,'membership':{key:summary.get(key) for key in ('active','status','status_label','valid_until','days_remaining','max_accounts','max_tasks','account_count','task_count','task_limit_label')},'plans':pricing_plans(),'grants':[{'id':item.id,'source':item.source,'valid_from':item.valid_from,'valid_until':item.valid_until,'created_at':item.created_at} for item in grants]}
 
     @router.post('/attention/read')
     def read_attention(request:Request,csrf_token:str=Form(''),item_id:str=Form('')):

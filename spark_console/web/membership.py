@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from spark_console.models import DouyinAccount, SparkTask, User, UserSubscription, utc_now
+from spark_console.services.subscriptions import task_limit_label
 
 
 def _aware(value: datetime) -> datetime:
@@ -91,6 +92,7 @@ def membership_summary(
         "days_remaining": days_remaining,
         "max_accounts": max_accounts,
         "max_tasks": max_tasks,
+        "task_limit_label": task_limit_label(max_tasks),
         "account_count": account_count,
         "task_count": task_count,
         "can_add_account": active

@@ -22,9 +22,80 @@ from spark_console.services.audits import AuditService
 
 DEFAULT_MAX_ACCOUNTS = 1
 DEFAULT_MAX_TASKS = 10
+# Keep the unlimited entitlement representable in the existing positive integer
+# columns. API/UI helpers render this sentinel as "不限".
+UNLIMITED_TASKS = 2_147_483_647
+PRICING_PLANS = (
+    {
+        "id": "starter",
+        "name": "基础版",
+        "price_yuan": "9.9",
+        "duration_days": 30,
+        "max_accounts": 1,
+        "max_tasks": 5,
+        "task_limit_label": "5 个好友任务",
+    },
+    {
+        "id": "standard",
+        "name": "标准版",
+        "price_yuan": "15",
+        "duration_days": 30,
+        "max_accounts": 1,
+        "max_tasks": 10,
+        "task_limit_label": "10 个好友任务",
+    },
+    {
+        "id": "unlimited",
+        "name": "不限版",
+        "price_yuan": "20",
+        "duration_days": 30,
+        "max_accounts": 1,
+        "max_tasks": UNLIMITED_TASKS,
+        "task_limit_label": "不限好友任务",
+    },
+)
 MAX_SUBSCRIPTION_DAYS = 36_500
 INVALID_CODE = "兑换码无效或已使用"
 INACTIVE_SUBSCRIPTION = "会员未开通或已过期"
+
+
+def pricing_plans() -> tuple[dict[str, object], ...]:
+    """Return immutable copies so callers cannot mutate billing metadata."""
+    return tuple(dict(plan) for plan in PRICING_PLANS)
+
+
+def pricing_plan(plan_id: str | None) -> dict[str, object] | None:
+    if not plan_id:
+        return None
+    return next((dict(plan) for plan in PRICING_PLANS if plan["id"] == plan_id), None)
+
+
+def is_unlimited_tasks(max_tasks: int | None) -> bool:
+    return isinstance(max_tasks, int) and max_tasks >= UNLIMITED_TASKS
+
+
+def task_limit_label(max_tasks: int | None) -> str:
+    return "不限" if max_tasks is None or is_unlimited_tasks(max_tasks) else str(max_tasks or 0)
+
+
+def resolve_plan_limits(
+    plan_id: str | None,
+    *,
+    duration_days: int,
+    max_accounts: int,
+    max_tasks: int,
+) -> tuple[int, int, int, str | None]:
+    plan = pricing_plan(plan_id)
+    if plan is None:
+        if plan_id:
+            raise ValidationError("会员套餐无效")
+        return duration_days, max_accounts, max_tasks, None
+    return (
+        int(plan["duration_days"]),
+        int(plan["max_accounts"]),
+        int(plan["max_tasks"]),
+        str(plan["id"]),
+    )
 
 
 def _digest(code: str) -> str:
@@ -63,9 +134,16 @@ class SubscriptionService:
         duration_days: int = 30,
         max_accounts: int = DEFAULT_MAX_ACCOUNTS,
         max_tasks: int = DEFAULT_MAX_TASKS,
+        plan_id: str | None = None,
         lifetime: timedelta = timedelta(days=30),
     ) -> tuple[RedemptionCode, str]:
         self._require_admin(actor_id)
+        duration_days, max_accounts, max_tasks, resolved_plan = resolve_plan_limits(
+            plan_id,
+            duration_days=duration_days,
+            max_accounts=max_accounts,
+            max_tasks=max_tasks,
+        )
         duration_days = _duration_days(duration_days)
         max_accounts = _positive_int(max_accounts, "账号上限必须大于 0")
         max_tasks = _positive_int(max_tasks, "任务上限必须大于 0")
@@ -94,7 +172,8 @@ class SubscriptionService:
             "redemption_code.created",
             "redemption_code",
             code.id,
-            self._detail(duration_days, max_accounts, max_tasks),
+            f"{self._detail(duration_days, max_accounts, max_tasks)};"
+            f"plan_id={resolved_plan or 'custom'}",
         )
         self.session.flush()
         return code, plaintext
@@ -156,9 +235,18 @@ class SubscriptionService:
         duration_days: int,
         max_accounts: int | None = None,
         max_tasks: int | None = None,
+        plan_id: str | None = None,
     ) -> UserSubscription:
         self._require_admin(actor_id)
         self._require_user(user_id)
+        if plan_id:
+            duration_days, resolved_accounts, resolved_tasks, _ = resolve_plan_limits(
+                plan_id,
+                duration_days=duration_days,
+                max_accounts=max_accounts or DEFAULT_MAX_ACCOUNTS,
+                max_tasks=max_tasks or DEFAULT_MAX_TASKS,
+            )
+            max_accounts, max_tasks = resolved_accounts, resolved_tasks
         duration_days = _duration_days(duration_days)
         if max_accounts is not None:
             max_accounts = _positive_int(max_accounts, "账号上限必须大于 0")
@@ -359,7 +447,7 @@ class SubscriptionService:
             .select_from(SparkTask)
             .where(SparkTask.owner_user_id == user_id)
         )
-        if int(count or 0) + additional_tasks > subscription.max_tasks:
+        if not is_unlimited_tasks(subscription.max_tasks) and int(count or 0) + additional_tasks > subscription.max_tasks:
             raise Conflict("续火任务数量已达套餐上限")
         return subscription
 

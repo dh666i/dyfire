@@ -3,7 +3,7 @@
 {{ heading('会员订阅', '04 / MEMBERSHIP', '管理有效期、使用额度与兑换记录') }}
 
 {% if error %}<div class="form-error subscription-message" role="alert">{{ error }}</div>{% endif %}
-{% if redeemed %}<div class="notice good-notice subscription-message" role="status"><strong>兑换成功</strong>{% if membership %}<p>当前额度：{{ membership.max_accounts }} 个抖音账号 / {{ membership.max_tasks }} 个续火任务。{% if membership.valid_until %}新的有效期至 {{ membership.valid_until|shanghai_time }}。{% endif %}</p>{% else %}<p>会员状态已更新。</p>{% endif %}</div>{% endif %}
+{% if redeemed %}<div class="notice good-notice subscription-message" role="status"><strong>兑换成功</strong>{% if membership %}<p>当前额度：{{ membership.max_accounts }} 个抖音账号 / {{ membership.task_limit_label }} 个续火任务。{% if membership.valid_until %}新的有效期至 {{ membership.valid_until|shanghai_time }}。{% endif %}</p>{% else %}<p>会员状态已更新。</p>{% endif %}</div>{% endif %}
 {% if required %}<div class="notice subscription-message" role="status">请先开通有效会员，或续费后再使用该功能。</div>{% endif %}
 {% if message %}<div class="notice subscription-message" role="status">{{ message }}</div>{% endif %}
 
@@ -27,8 +27,8 @@
           <progress value="{{ membership.account_count if membership.max_accounts > 0 else 0 }}" max="{{ membership.max_accounts if membership.max_accounts > 0 else 1 }}">{{ membership.account_count }}/{{ membership.max_accounts }}</progress>
         </div>
         <div class="usage-row">
-          <div><span>续火任务</span><strong>{{ membership.task_count }}/{{ membership.max_tasks }}</strong></div>
-          <progress value="{{ membership.task_count if membership.max_tasks > 0 else 0 }}" max="{{ membership.max_tasks if membership.max_tasks > 0 else 1 }}">{{ membership.task_count }}/{{ membership.max_tasks }}</progress>
+          <div><span>续火任务</span><strong>{{ membership.task_count }}/{{ membership.task_limit_label }}</strong></div>
+          <progress value="{{ membership.task_count if membership.max_tasks and membership.max_tasks < 2147483647 else 0 }}" max="{{ membership.max_tasks if membership.max_tasks and membership.max_tasks < 2147483647 else 1 }}">{{ membership.task_count }}/{{ membership.task_limit_label }}</progress>
         </div>
       </div>
       {% endif %}
@@ -48,6 +48,10 @@
     </form>
   </section>
 </div>
+
+<section class="subscription-help" aria-label="会员套餐">
+  <article class="workspace-section panel subscription-help-card"><div><h2>月度套餐</h2>{% for plan in plans|default([]) %}<p><strong>{{ plan.name }} · ¥{{ plan.price_yuan }} / 月</strong> · {{ plan.task_limit_label }}</p>{% endfor %}</div></article>
+</section>
 
 <section class="subscription-help" aria-label="会员服务说明">
   <article class="workspace-section panel subscription-help-card"><div><h2>续费如何计算</h2><p>会员未到期时，从原到期时间顺延；已到期时，从兑换时间开始计算。账号和任务额度按本次兑换码套餐更新，不与原额度相加。每位好友对应一个任务。</p></div></article>
