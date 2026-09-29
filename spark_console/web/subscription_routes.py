@@ -11,7 +11,12 @@ from spark_console.db import session_scope
 from spark_console.models import RedemptionCode, User, SubscriptionGrant, UserSubscription
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.audits import AuditService
-from spark_console.services.subscriptions import SubscriptionService, pricing_plans, task_limit_label
+from spark_console.services.subscriptions import (
+    NEVER_EXPIRES_AT,
+    SubscriptionService,
+    pricing_plans,
+    task_limit_label,
+)
 from spark_console.web.auth import WebAuth
 from spark_console.web.membership import membership_summary
 
@@ -43,7 +48,7 @@ def admin_redemption_items(db) -> list[AdminRedemptionCode]:
             status = "已兑换"
         elif code.revoked_at is not None:
             status = "已撤销"
-        elif _aware(code.expires_at) <= now:
+        elif code.expires_at is not None and _aware(code.expires_at) < NEVER_EXPIRES_AT and _aware(code.expires_at) <= now:
             status = "已过期"
         else:
             status = "待兑换"
@@ -139,7 +144,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
             user,record=auth.current(request,db);auth.csrf(record,csrf_token)
             item=db.scalar(select(RedemptionCode).where(RedemptionCode.code_hash==_digest(code.strip())))
             now=datetime.now(timezone.utc)
-            if not item or item.redeemed_at or item.revoked_at or _aware(item.expires_at)<=now:return JSONResponse({'message':'兑换码不可用，请检查输入或联系管理员。'},status_code=400)
+            if not item or item.redeemed_at or item.revoked_at or (item.expires_at is not None and _aware(item.expires_at) < NEVER_EXPIRES_AT and _aware(item.expires_at)<=now):return JSONResponse({'message':'兑换码不可用，请检查输入或联系管理员。'},status_code=400)
             subscription=db.get(UserSubscription,user.id)
             start=max(now,_aware(subscription.valid_until)) if subscription else now
             from zoneinfo import ZoneInfo

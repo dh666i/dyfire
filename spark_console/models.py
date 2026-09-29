@@ -278,11 +278,19 @@ class RedemptionCode(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    # Keep the plaintext available to administrators.  Redemption codes are
+    # deliberately retrievable in the admin console, matching the product's
+    # one-click copy workflow.  Legacy rows may be null because their original
+    # plaintext was never persisted.
+    code: Mapped[str | None] = mapped_column(String(128), unique=True)
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     max_accounts: Mapped[int] = mapped_column(Integer, nullable=False)
     max_tasks: Mapped[int] = mapped_column(Integer, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Before redemption the service stores a far-future sentinel because old
+    # SQLite databases declared this column NOT NULL. It is treated as no
+    # expiry; once redeemed it records the membership term's final date.
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by_user_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), index=True
     )

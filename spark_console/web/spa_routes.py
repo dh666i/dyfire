@@ -258,6 +258,11 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             redemption_codes = db.scalars(
                 select(RedemptionCode).order_by(RedemptionCode.created_at.desc()).limit(50)
             ).all()
+            redeemed_user_ids = {item.redeemed_by_user_id for item in redemption_codes if item.redeemed_by_user_id}
+            redeemed_users = {
+                item.id: item.username
+                for item in db.scalars(select(User).where(User.id.in_(redeemed_user_ids))).all()
+            } if redeemed_user_ids else {}
             invite_codes = db.scalars(
                 select(InviteCode).order_by(InviteCode.created_at.desc()).limit(50)
             ).all()
@@ -354,13 +359,17 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "redemptionCodes": [
                     {
                         "id": item.id,
+                        "code": item.code,
                         "status": "已兑换" if item.redeemed_at else "已撤销" if item.revoked_at else "待兑换",
+                        "username": redeemed_users.get(item.redeemed_by_user_id),
                         "duration_days": item.duration_days,
                         "max_accounts": item.max_accounts,
                         "max_tasks": item.max_tasks,
                         "task_limit_label": task_limit_label(item.max_tasks),
                         "created_at": _date_value(item.created_at),
-                        "expires_at": _date_value(item.expires_at),
+                        "redeemed_at": _date_value(item.redeemed_at),
+                        "redeemed_by_user_id": item.redeemed_by_user_id,
+                        "expires_at": _date_value(item.expires_at) if item.redeemed_at else None,
                     }
                     for item in redemption_codes
                 ],

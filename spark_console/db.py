@@ -101,6 +101,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (6, "normalize_spark_task_target_keys", _normalize_sqlite_task_target_keys),
         (7, "login_session_mode", _upgrade_sqlite_login_session_mode),
         (8, "user_admin_note", _upgrade_sqlite_user_admin_note),
+        (9, "redemption_code_retrieval", _upgrade_sqlite_redemption_code_retrieval),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -148,6 +149,35 @@ def _upgrade_sqlite_user_admin_note(connection: Connection) -> None:
         connection.exec_driver_sql(
             "ALTER TABLE users ADD COLUMN admin_note VARCHAR(500)"
         )
+
+
+def _upgrade_sqlite_redemption_code_retrieval(connection: Connection) -> None:
+    """Persist newly issued redemption codes and remove pre-redemption expiry."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(redemption_codes)"
+        ).fetchall()
+    }
+    if "code" not in columns:
+        # Existing codes cannot be reconstructed because prior releases only
+        # stored SHA-256 digests.  Keep those rows nullable and fully support
+        # retrieval for every code issued after this migration.
+        connection.exec_driver_sql(
+            "ALTER TABLE redemption_codes ADD COLUMN code VARCHAR(128)"
+        )
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_redemption_codes_code "
+        "ON redemption_codes (code) WHERE code IS NOT NULL"
+    )
+    # The old table declared expires_at NOT NULL. Keep migration additive by
+    # using a far-future sentinel for unredeemed legacy rows; service code
+    # treats this as "never expires" until redemption.
+    connection.exec_driver_sql(
+        "UPDATE redemption_codes SET expires_at = '9999-12-31 23:59:59.999999' "
+        "WHERE redeemed_at IS NULL AND revoked_at IS NULL "
+        "AND expires_at IS NOT NULL"
+    )
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:

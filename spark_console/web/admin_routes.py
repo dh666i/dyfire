@@ -31,7 +31,11 @@ from spark_console.security import PasswordService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.audits import AuditService
 from spark_console.services.invites import InviteService
-from spark_console.services.subscriptions import SubscriptionService, pricing_plans
+from spark_console.services.subscriptions import (
+    NEVER_EXPIRES_AT,
+    SubscriptionService,
+    pricing_plans,
+)
 from spark_console.services.users import UserService
 from spark_console.task_targets import targets_conflict, task_target_key
 from spark_console.web.admin_queries import (
@@ -99,7 +103,8 @@ def _redemption_status(code: RedemptionCode, now: datetime) -> str:
         return "已兑换"
     if code.revoked_at is not None:
         return "已撤销"
-    if _aware(code.expires_at) <= now:
+    expires_at = _aware(code.expires_at) if code.expires_at is not None else None
+    if expires_at is not None and expires_at < NEVER_EXPIRES_AT and expires_at <= now:
         return "已过期"
     return "待兑换"
 
@@ -141,14 +146,17 @@ def _redemption_filters(q: str, status: str, now: datetime):
     if query:
         pattern = f"%{query}%"
         filters.append(
-            or_(RedemptionCode.id.ilike(pattern), User.username.ilike(pattern))
+            or_(
+                RedemptionCode.id.ilike(pattern),
+                RedemptionCode.code.ilike(pattern),
+                User.username.ilike(pattern),
+            )
         )
     if status in {"active", "valid", "available"}:
         filters.extend(
             [
                 RedemptionCode.redeemed_at.is_(None),
                 RedemptionCode.revoked_at.is_(None),
-                RedemptionCode.expires_at > now,
             ]
         )
     elif status in {"used", "redeemed"}:
@@ -158,8 +166,9 @@ def _redemption_filters(q: str, status: str, now: datetime):
     elif status == "expired":
         filters.extend(
             [
-                RedemptionCode.redeemed_at.is_(None),
+                RedemptionCode.redeemed_at.is_not(None),
                 RedemptionCode.revoked_at.is_(None),
+                RedemptionCode.expires_at < NEVER_EXPIRES_AT,
                 RedemptionCode.expires_at <= now,
             ]
         )

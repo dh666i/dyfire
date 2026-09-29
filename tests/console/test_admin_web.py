@@ -694,6 +694,31 @@ class AdminWebTests(unittest.TestCase):
                 ))
             )
 
+    def test_admin_bootstrap_returns_full_redemption_code_and_redemption_date(self):
+        created = self.real_client.post(
+            "/api/admin/redemption-codes",
+            json={
+                "csrf_token": self.admin_csrf,
+                "duration_days": 30,
+                "max_accounts": 1,
+                "max_tasks": 5,
+                "quantity": 1,
+            },
+        )
+        self.assertEqual(200, created.status_code, created.text)
+        plaintext = created.json()["codes"][0]
+        self.assertTrue(plaintext)
+
+        bootstrap = self.real_client.get("/api/admin/bootstrap")
+        self.assertEqual(200, bootstrap.status_code, bootstrap.text)
+        row = next(
+            item for item in bootstrap.json()["redemptionCodes"]
+            if item["code"] == plaintext
+        )
+        self.assertEqual("待兑换", row["status"])
+        self.assertIsNone(row["redeemed_at"])
+        self.assertIsNone(row["expires_at"])
+
     def test_react_admin_run_workbench_read_model_and_retry_security(self):
         from zoneinfo import ZoneInfo
 

@@ -41,7 +41,7 @@
 <dialog class="admin-dialog admin-credential-dialog" open data-admin-dialog="codes-result">
   <div class="admin-dialog-head"><span class="admin-dialog-icon success">{{ icon('codes', 20) }}</span><button class="admin-icon-button" type="button" data-dialog-close aria-label="关闭" title="关闭">{{ icon('x', 18) }}</button></div>
   <h2>兑换码已生成</h2>
-  <p>兑换码只显示一次，请立即保存。</p>
+  <p>兑换码会保存在记录中，之后仍可查看和复制。</p>
   <div class="admin-secret-list">{% for code in one_time_codes %}<div class="admin-secret"><code>{{ code }}</code><button class="admin-icon-button" type="button" data-copy-value="{{ code }}" data-copy-invite="{{ code }}" aria-label="复制兑换码" title="复制">{{ icon('copy', 17) }}</button></div>{% endfor %}</div>
   <button class="admin-button admin-button-primary admin-dialog-done" type="button" data-dialog-close>完成</button>
 </dialog>

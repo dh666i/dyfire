@@ -57,6 +57,7 @@ PRICING_PLANS = (
 MAX_SUBSCRIPTION_DAYS = 36_500
 INVALID_CODE = "兑换码无效或已使用"
 INACTIVE_SUBSCRIPTION = "会员未开通或已过期"
+NEVER_EXPIRES_AT = datetime.max.replace(tzinfo=timezone.utc)
 
 
 def pricing_plans() -> tuple[dict[str, object], ...]:
@@ -135,7 +136,7 @@ class SubscriptionService:
         max_accounts: int = DEFAULT_MAX_ACCOUNTS,
         max_tasks: int = DEFAULT_MAX_TASKS,
         plan_id: str | None = None,
-        lifetime: timedelta = timedelta(days=30),
+        lifetime: timedelta | None = None,
     ) -> tuple[RedemptionCode, str]:
         self._require_admin(actor_id)
         duration_days, max_accounts, max_tasks, resolved_plan = resolve_plan_limits(
@@ -147,20 +148,30 @@ class SubscriptionService:
         duration_days = _duration_days(duration_days)
         max_accounts = _positive_int(max_accounts, "账号上限必须大于 0")
         max_tasks = _positive_int(max_tasks, "任务上限必须大于 0")
-        if not isinstance(lifetime, timedelta) or lifetime <= timedelta(0):
+        if lifetime is not None and (
+            not isinstance(lifetime, timedelta) or lifetime <= timedelta(0)
+        ):
             raise ValidationError("兑换码有效期必须大于 0")
-
         current = self._now()
         plaintext = secrets.token_urlsafe(24)
-        try:
-            expires_at = current + lifetime
-        except OverflowError:
-            raise ValidationError("兑换码有效期无效") from None
+        expires_at = None
+        if lifetime is not None:
+            try:
+                expires_at = current + lifetime
+            except OverflowError:
+                raise ValidationError("兑换码有效期无效") from None
+        else:
+            # Existing SQLite tables declare expires_at NOT NULL. Use a
+            # stable far-future sentinel for both old and new schemas.
+            expires_at = NEVER_EXPIRES_AT
         code = RedemptionCode(
+            code=plaintext,
             code_hash=_digest(plaintext),
             duration_days=duration_days,
             max_accounts=max_accounts,
             max_tasks=max_tasks,
+            # Codes remain usable indefinitely until redeemed.  ``expires_at``
+            # is populated atomically by redeem() with the membership expiry.
             expires_at=expires_at,
             created_by_user_id=actor_id,
             created_at=current,
@@ -198,7 +209,9 @@ class SubscriptionService:
                 RedemptionCode.id == code.id,
                 RedemptionCode.redeemed_at.is_(None),
                 RedemptionCode.revoked_at.is_(None),
-                RedemptionCode.expires_at > current,
+                (RedemptionCode.expires_at.is_(None))
+                | (RedemptionCode.expires_at >= NEVER_EXPIRES_AT)
+                | (RedemptionCode.expires_at > current),
             )
             .values(redeemed_by_user_id=user_id, redeemed_at=current)
             .execution_options(synchronize_session="fetch")
@@ -216,6 +229,10 @@ class SubscriptionService:
             redemption_code_id=code.id,
             current=current,
         )
+        # Once redeemed, expose the resulting membership expiry.  If the user
+        # already has an active subscription, the grant is appended after its
+        # current end and the table should show that final date.
+        code.expires_at = _aware(grant.valid_until)
         self.audit.write(
             user_id,
             "subscription.redeemed",

@@ -130,6 +130,22 @@ class SubscriptionServiceTests(unittest.TestCase):
         self.assertNotIn(plaintext, audit_text)
         self.assertFalse(hasattr(self.service, "reveal_redemption_code"))
 
+    def test_new_redemption_code_is_retrievable_and_does_not_expire_before_use(self):
+        code, plaintext = self.create_code(duration_days=30)
+
+        self.assertEqual(plaintext, code.code)
+        self.assertIsNotNone(code.code)
+        self.assertIsNone(code.redeemed_at)
+        # The compatibility sentinel is deliberately far in the future for
+        # the deployed SQLite schema; it is never treated as a pre-redemption
+        # expiry by the service.
+        self.now += timedelta(days=3650)
+        subscription = self.service.redeem(self.user.id, plaintext)
+
+        self.assertEqual(self.now, aware(code.redeemed_at))
+        self.assertEqual(self.now + timedelta(days=30), aware(code.expires_at))
+        self.assertEqual(self.now + timedelta(days=30), aware(subscription.valid_until))
+
     def test_redeem_creates_subscription_and_append_only_grant(self):
         code, plaintext = self.create_code(
             duration_days=30, max_accounts=2, max_tasks=8

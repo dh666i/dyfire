@@ -464,7 +464,7 @@ class DatabaseTests(unittest.TestCase):
                 "SELECT version, name, applied_at FROM schema_migrations ORDER BY version"
             ).fetchall()
 
-        self.assertGreaterEqual(len(migrations), 8)
+        self.assertGreaterEqual(len(migrations), 9)
         self.assertEqual((1, "task_runs_reliability"), migrations[0][:2])
         self.assertEqual(
             (2, "login_input_delivery_receipts"), migrations[1][:2]
@@ -477,6 +477,7 @@ class DatabaseTests(unittest.TestCase):
         )
         self.assertEqual((7, "login_session_mode"), migrations[6][:2])
         self.assertEqual((8, "user_admin_note"), migrations[7][:2])
+        self.assertEqual((9, "redemption_code_retrieval"), migrations[8][:2])
         self.assertTrue(all(row[2] is not None for row in migrations))
 
     def test_target_key_migration_preserves_legacy_duplicates_and_enabled_state(self):
@@ -597,7 +598,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((8, "user_admin_note"), migrations[-1])
+            self.assertEqual((9, "redemption_code_retrieval"), migrations[-1])
         finally:
             engine.dispose()
 
