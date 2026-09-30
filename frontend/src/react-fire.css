@@ -70,11 +70,14 @@ html:not([data-theme="light"]) .contact-qr-dark { display:block !important; }
 .onboarding-step b { display:block; margin-top:3px; font-size:12px; }
 .onboarding-step p { min-height:34px; margin:7px 0 11px; color:#a88f83; font-size:10px; line-height:1.6; }
 .onboarding-step .button { grid-column:1/-1; width:100%; min-height:31px; padding:0 7px; font-size:10px; }
+.mobile-route-status { display:none; }
+.account-error-actions, .scan-recovery-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:9px; }
 html[data-theme="light"] .contact-support-card, html[data-theme="light"] .onboarding-guide { color:#2b211d; background:linear-gradient(135deg,rgba(255,107,37,.1),rgba(255,255,255,.82)); border-color:rgba(87,59,45,.16); }
 html[data-theme="light"] .contact-support-copy p, html[data-theme="light"] .onboarding-head p, html[data-theme="light"] .onboarding-step p { color:#75655d; }
 html[data-theme="light"] .onboarding-step { background:rgba(255,255,255,.55); border-color:rgba(87,59,45,.13); }
 @media(max-width:700px){ .admin-note-edit-row { align-items:stretch; flex-direction:column; } .workspace-plan-select { width:100%; } .redemption-table { overflow-x:auto; } .redemption-table .table-head, .redemption-table .admin-row { min-width:820px; } }
 @media(max-width:700px){ .contact-support-card { align-items:stretch; flex-direction:column; } .contact-qr-frame { align-self:center; flex-basis:clamp(190px,65vw,260px); width:min(100%,260px); } .contact-qr-large { flex-basis:clamp(240px,78vw,320px); width:min(100%,320px); } .contact-support-plans { display:grid; grid-template-columns:1fr; } .onboarding-steps { grid-template-columns:1fr; } .onboarding-step { grid-template-columns:auto 1fr auto; } .onboarding-step p { min-height:0; margin-bottom:0; } .onboarding-step .button { grid-column:auto; align-self:center; width:auto; } .onboarding-guide { padding:16px; } }
+@media(max-width:700px){ .mobile-route-status { display:block; padding:5px 14px 0; color:var(--ink-soft); font:10px var(--mono); } .account-error-actions .button, .scan-recovery-actions .button { flex:1; min-width:130px; } }
 body { background:radial-gradient(circle at 92% -8%, rgba(255,83,24,.14), transparent 29%), var(--canvas); }
 body::before { opacity:.035; background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:72px 72px; mask-image:linear-gradient(to bottom,#000,transparent 88%); }
 .sidebar { width:230px; flex-basis:230px; padding:26px 15px 20px; background:rgba(10,7,10,.86); border-right:1px solid var(--hairline); }
