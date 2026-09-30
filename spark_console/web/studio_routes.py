@@ -84,7 +84,7 @@ def build_studio_router(engine, auth, cipher):
             membership = membership_summary(db, user)
             return {'user': {'id': user.id, 'name': user.username, 'role': user.role}, 'csrf': record.csrf_token,
                     'accounts': [{'id': a.id, 'name': a.display_name, 'health': health[a.id]} for a in accounts],
-                    'tasks': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id, 'sec_uid': identities[t.id].sec_uid if identities[t.id] else '',
+                    'tasks': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id, 'sec_uid': (identity.sec_uid if (identity := identities.get(t.id)) else ''),
                                'time': t.send_time, 'kind': '续火花表情' if t.message_kind == 'douyin_sticker' else '文字消息',
                                'message': t.message_template, 'enabled': t.enabled, 'avatar': avatars.get(t.id),
                                'confirmed': latest.get(t.id) == 'success', 'status': latest.get(t.id, 'scheduled')} for t in tasks],

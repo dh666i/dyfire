@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -227,6 +227,30 @@ class TaskService:
             ).all()
         )
         if matching_keys:
+            raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")
+
+        # Preserve the legacy rule that a manual name conflicts with a stable
+        # identity carrying the same display name (and vice versa).  Restrict
+        # this compatibility query to the candidate names so it does not
+        # materialise the account's complete task set.
+        candidate_names = {
+            normalize_target_name(target) for target, _stable in normalized_targets
+        }
+        name_matches = list(self.session.execute(
+            select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
+            .outerjoin(
+                SparkTaskTargetIdentity,
+                SparkTaskTargetIdentity.task_id == SparkTask.id,
+            )
+            .where(
+                SparkTask.douyin_account_id == account.id,
+                func.lower(SparkTask.target_name).in_(candidate_names),
+            )
+        ).all())
+        if any(
+            self._has_target_conflict(name_matches, target, stable_target)
+            for target, stable_target in normalized_targets
+        ):
             raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")
 
         # A small compatibility check handles legacy rows whose key was not
