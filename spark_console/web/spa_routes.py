@@ -486,26 +486,45 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             now = datetime.now(timezone.utc)
             local_today = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
             start = datetime.combine(local_today - timedelta(days=days - 1), datetime.min.time(), ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)
-            run_rows = db.execute(select(TaskRun.status, TaskRun.scheduled_for).where(TaskRun.scheduled_for >= start)
-                .order_by(TaskRun.scheduled_for.desc()).limit(20000)).all()
             counts = Counter()
             totals = Counter()
             failures = Counter()
-            for run_status, scheduled in run_rows:
-                day = _aware(scheduled).astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
-                if _aware(scheduled) > now:
-                    continue
-                totals[day] += 1
-                if run_status == "success": counts[day] += 1
-                elif run_status in {"failed", "submitted_unconfirmed"}: failures[day] += 1
+            # Aggregate in SQL instead of materialising up to 20,000 runs in
+            # the web process.  The result is bounded by days * statuses and
+            # remains small even when the run table grows into the millions.
+            if db.bind.dialect.name == "sqlite":
+                run_day = func.date(TaskRun.scheduled_for, "+8 hours")
+            else:
+                run_day = func.date(func.timezone("Asia/Shanghai", TaskRun.scheduled_for))
+            run_rows = db.execute(
+                select(run_day.label("run_day"), TaskRun.status, func.count(TaskRun.id))
+                .where(
+                    TaskRun.scheduled_for >= start,
+                    TaskRun.scheduled_for <= now,
+                )
+                .group_by(run_day, TaskRun.status)
+            ).all()
+            for day_value, run_status, total in run_rows:
+                day = str(day_value)
+                totals[day] += int(total or 0)
+                if run_status == "success":
+                    counts[day] += int(total or 0)
+                elif run_status in {"failed", "submitted_unconfirmed"}:
+                    failures[day] += int(total or 0)
             trend = [{"date": (local_today - timedelta(days=offset)).isoformat(),
                 "total": totals[(local_today - timedelta(days=offset)).isoformat()],
                 "success": counts[(local_today - timedelta(days=offset)).isoformat()],
                 "failed": failures[(local_today - timedelta(days=offset)).isoformat()]} for offset in range(days - 1, -1, -1)]
-            accounts = db.scalars(select(DouyinAccount).where(DouyinAccount.validation_state.in_(["invalid", "verification", "temporary"])).order_by(DouyinAccount.updated_at.desc()).limit(50)).all()
-            account_owners = {row.id: db.get(User, row.owner_user_id) for row in accounts}
-            account_alerts = [{"id": account.id, "name": account.display_name, "owner_id": account.owner_user_id, "owner": account_owners[account.id].username if account_owners.get(account.id) else "—",
-                "state": account.validation_state, "label": account_health_views(db, [account]).get(account.id, {}).get("label", "需要复核")} for account in accounts]
+            account_rows = db.execute(
+                select(DouyinAccount, User.username)
+                .join(User, User.id == DouyinAccount.owner_user_id)
+                .where(DouyinAccount.validation_state.in_(["invalid", "verification", "temporary"]))
+                .order_by(DouyinAccount.updated_at.desc())
+                .limit(50)
+            ).all()
+            alert_health = account_health_views(db, [account for account, _ in account_rows])
+            account_alerts = [{"id": account.id, "name": account.display_name, "owner_id": account.owner_user_id, "owner": owner_username or "—",
+                "state": account.validation_state, "label": alert_health.get(account.id, {}).get("label", "需要复核")} for account, owner_username in account_rows]
             failures = db.execute(select(TaskRun, SparkTask, User).join(SparkTask, SparkTask.id == TaskRun.task_id)
                 .join(User, User.id == SparkTask.owner_user_id).where(TaskRun.status.in_(["failed", "submitted_unconfirmed"]), TaskRun.scheduled_for >= now - timedelta(days=7))
                 .order_by(TaskRun.scheduled_for.desc()).limit(20)).all()

@@ -56,7 +56,20 @@ def build_studio_router(engine, auth, cipher):
             health = views(db, accounts)
             avatars = task_avatar_map(db, tasks)
             today = datetime.now(ZoneInfo('Asia/Shanghai')).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-            runs = db.scalars(select(TaskRun).join(SparkTask).where(SparkTask.owner_user_id == user.id, TaskRun.scheduled_for >= today).order_by(TaskRun.scheduled_for.desc())).all()
+            # Keep the lightweight bootstrap bounded.  Complete history is
+            # served by /api/studio/runs, which is paginated; returning every
+            # run since midnight made this response grow with the user's task
+            # count and could exhaust the web process for large accounts.
+            runs = db.scalars(
+                select(TaskRun)
+                .join(SparkTask)
+                .where(
+                    SparkTask.owner_user_id == user.id,
+                    TaskRun.scheduled_for >= today,
+                )
+                .order_by(TaskRun.scheduled_for.desc(), TaskRun.id.desc())
+                .limit(200)
+            ).all()
             latest = {}
             for run in runs:
                 latest.setdefault(run.task_id, run.status)

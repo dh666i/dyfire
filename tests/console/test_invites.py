@@ -136,6 +136,15 @@ class FailedAttemptLimiterTests(unittest.TestCase):
         self.assertNotIn("one", self.limiter.attempts)
         self.assertIn("two", self.limiter.attempts)
 
+    def test_unique_keys_have_a_hard_memory_bound(self):
+        limiter = FailedAttemptLimiter(max_keys=2, now=lambda: self.now)
+        limiter.record_failure("one")
+        limiter.record_failure("two")
+        limiter.record_failure("three")
+
+        self.assertLessEqual(len(limiter.attempts), 2)
+        self.assertNotIn("one", limiter.attempts)
+
 
 if __name__ == "__main__":
     unittest.main()

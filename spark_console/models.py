@@ -254,6 +254,7 @@ class UserSubscription(Base):
         CheckConstraint("max_accounts > 0", name="ck_subscription_max_accounts"),
         CheckConstraint("max_tasks > 0", name="ck_subscription_max_tasks"),
         CheckConstraint("version > 0", name="ck_subscription_version"),
+        Index("ix_user_subscriptions_valid_window", "valid_from", "valid_until"),
     )
 
     user_id: Mapped[str] = mapped_column(
@@ -336,6 +337,9 @@ class SubscriptionGrant(Base):
 
 class DouyinLoginSession(Base):
     __tablename__ = "douyin_login_sessions"
+    __table_args__ = (
+        Index("ix_douyin_login_sessions_status_expires", "status", "expires_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -437,6 +441,7 @@ class SparkTask(Base):
             sqlite_where=text("enabled = 1"),
             postgresql_where=text("enabled = true"),
         ),
+        Index("ix_spark_tasks_enabled_next_run", "enabled", "next_run_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
@@ -475,6 +480,8 @@ class TaskRun(Base):
         Index("uq_task_scheduled", "task_id", "scheduled_for", unique=True),
         Index("ix_task_runs_status_lease", "status", "lease_until"),
         Index("ix_task_runs_task_retry", "task_id", "retry_after"),
+        Index("ix_task_runs_status_scheduled", "status", "scheduled_for"),
+        Index("ix_task_runs_task_scheduled_status", "task_id", "scheduled_for", "status"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
@@ -560,6 +567,9 @@ class WorkerLock(Base):
 
 class AuditEvent(Base):
     __tablename__ = "audit_events"
+    __table_args__ = (
+        Index("ix_audit_events_created_action", "created_at", "action"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     actor_user_id: Mapped[str | None] = mapped_column(String(36), index=True)

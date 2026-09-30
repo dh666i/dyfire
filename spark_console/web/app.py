@@ -226,6 +226,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # API responses include CSRF tokens and account-specific data.  Keep
+        # them out of browser and intermediary caches even when an individual
+        # route forgets to set its own no-store header.
+        if request.url.path.startswith("/api/"):
+            response.headers.setdefault("Cache-Control", "no-store")
         if request.url.scheme == "https":
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return response

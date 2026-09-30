@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -208,13 +208,43 @@ class TaskService:
             ) is None:
                 raise ValidationError("所选好友不属于当前抖音账号")
 
-        existing_targets = list(self.session.execute(
+        # ``target_key`` is the same canonical identity used by the unique
+        # schedule index.  Query only candidate keys instead of loading every
+        # task for the account and comparing them in Python; large accounts
+        # otherwise turn creation into an O(existing_tasks * new_targets)
+        # operation.  The identity join remains as a compatibility fallback
+        # for rows created before target_key was introduced.
+        candidate_keys = {
+            task_target_key(target, stable_target)
+            for target, stable_target in normalized_targets
+        }
+        matching_keys = set(
+            self.session.scalars(
+                select(SparkTask.target_key).where(
+                    SparkTask.douyin_account_id == account.id,
+                    SparkTask.target_key.in_(candidate_keys),
+                )
+            ).all()
+        )
+        if matching_keys:
+            raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")
+
+        # A small compatibility check handles legacy rows whose key was not
+        # normalised successfully.  It only runs when the indexed lookup is
+        # inconclusive and therefore does not affect the common path.
+        legacy_targets = list(self.session.execute(
             select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
             .outerjoin(SparkTaskTargetIdentity, SparkTaskTargetIdentity.task_id == SparkTask.id)
-            .where(SparkTask.douyin_account_id == account.id)
+            .where(
+                SparkTask.douyin_account_id == account.id,
+                or_(
+                    SparkTask.target_key == "",
+                    SparkTask.target_key.like("legacy:%"),
+                ),
+            )
         ).all())
         if any(
-            self._has_target_conflict(existing_targets, target, stable_target)
+            self._has_target_conflict(legacy_targets, target, stable_target)
             for target, stable_target in normalized_targets
         ):
             raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")

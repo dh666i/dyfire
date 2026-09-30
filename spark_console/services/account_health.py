@@ -110,12 +110,47 @@ def recovered(db, account):
 
 
 def views(db, accounts):
+    account_ids = [account.id for account in accounts]
+    if not account_ids:
+        return {}
+    now = utc_now()
+    health_by_id = {
+        item.account_id: item
+        for item in db.scalars(
+            select(AccountHealth).where(AccountHealth.account_id.in_(account_ids))
+        ).all()
+    }
+    operation_by_id = {
+        item.account_id: item
+        for item in db.scalars(
+            select(AccountOperation).where(
+                AccountOperation.account_id.in_(account_ids),
+                AccountOperation.expires_at > now,
+            )
+        ).all()
+    }
+    relogging_ids = set(
+        db.scalars(
+            select(DouyinLoginSession.account_id)
+            .where(
+                DouyinLoginSession.account_id.in_(account_ids),
+                DouyinLoginSession.slot.is_not(None),
+                DouyinLoginSession.status.in_(
+                    ['queued', 'loading_qr', 'awaiting_scan', 'confirming']
+                ),
+                DouyinLoginSession.expires_at > now,
+            )
+        ).all()
+    )
     result = {}
     for account in accounts:
-        state = 'relogin' if is_relogging(db, account.id) else account.validation_state
-        health = db.get(AccountHealth, account.id)
-        operation = db.get(AccountOperation, account.id)
-        checking = bool(operation and operation.kind == 'health' and operation.expires_at.replace(tzinfo=timezone.utc) > utc_now())
+        state = 'relogin' if account.id in relogging_ids else account.validation_state
+        health = health_by_id.get(account.id)
+        operation = operation_by_id.get(account.id)
+        operation_expires = operation.expires_at
+        if operation_expires is not None and operation_expires.tzinfo is None:
+            operation_expires = operation_expires.replace(tzinfo=timezone.utc)
+        checking = bool(operation and operation.kind == 'health' and operation_expires > now)
         result[account.id] = {'state':state, 'label':('登录异常，待复核' if state == 'invalid' and not health else LABELS.get(state,'待验证')), 'blocked':state in (*BLOCKED,'relogin'),
             'checking':checking,
             'reason':health.reason if health else ('历史失效记录，尚无详细检测依据' if state == 'invalid' else ''),
