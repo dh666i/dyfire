@@ -37,11 +37,17 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; }
 .contact-support-copy p { max-width:620px; margin:0; color:#bca49a; font-size:11px; line-height:1.75; }
 .contact-support-plans { display:flex; flex-wrap:wrap; gap:7px; margin:13px 0 15px; }
 .contact-support-plans span { padding:5px 8px; border:1px solid var(--hairline); border-radius:999px; color:var(--orange-soft); font:10px var(--mono); }
-.contact-qr-frame { display:grid; justify-items:center; gap:6px; flex:0 0 124px; padding:9px; border-radius:10px; background:#fff; box-shadow:0 10px 26px rgba(0,0,0,.2); }
-.contact-qr-frame img { display:block; width:106px; height:106px; object-fit:contain; }
-.contact-qr-frame small { color:#222; font:10px var(--mono); }
-.contact-qr-large { flex-basis:230px; padding:14px; }
-.contact-qr-large img { width:200px; height:200px; }
+.contact-qr-frame { display:grid; justify-items:center; gap:8px; flex:0 1 clamp(168px,22vw,238px); width:min(100%,238px); padding:10px; border:1px solid var(--hairline); border-radius:12px; background:var(--paper-strong); box-shadow:0 10px 26px rgba(0,0,0,.2); }
+.contact-qr-frame img { display:block; width:100%; height:auto; aspect-ratio:1; object-fit:contain; image-rendering:auto; }
+.contact-qr-frame .contact-qr-image { grid-area:1/1; align-self:center; }
+.contact-qr-frame small { grid-area:2/1; color:var(--ink-soft); font:10px var(--mono); white-space:nowrap; }
+.contact-qr-dark { display:none !important; }
+.contact-qr-large { flex-basis:clamp(230px,58vw,320px); width:min(100%,320px); padding:14px; }
+html[data-theme="light"] .contact-qr-frame { background:var(--surface-strong); border-color:rgba(87,59,45,.16); box-shadow:0 10px 26px rgba(36,39,43,.12); }
+html[data-theme="light"] .contact-qr-light { display:block !important; }
+html[data-theme="light"] .contact-qr-dark { display:none !important; }
+html:not([data-theme="light"]) .contact-qr-light { display:none !important; }
+html:not([data-theme="light"]) .contact-qr-dark { display:block !important; }
 .contact-support-modal { display:grid; justify-items:center; gap:15px; padding:20px 28px 28px; text-align:center; }
 .contact-support-modal h3 { margin:0; font-size:17px; }
 .contact-support-modal p { max-width:360px; margin:0; color:var(--muted); font-size:12px; line-height:1.8; }
@@ -68,7 +74,7 @@ html[data-theme="light"] .contact-support-card, html[data-theme="light"] .onboar
 html[data-theme="light"] .contact-support-copy p, html[data-theme="light"] .onboarding-head p, html[data-theme="light"] .onboarding-step p { color:#75655d; }
 html[data-theme="light"] .onboarding-step { background:rgba(255,255,255,.55); border-color:rgba(87,59,45,.13); }
 @media(max-width:700px){ .admin-note-edit-row { align-items:stretch; flex-direction:column; } .workspace-plan-select { width:100%; } .redemption-table { overflow-x:auto; } .redemption-table .table-head, .redemption-table .admin-row { min-width:820px; } }
-@media(max-width:700px){ .contact-support-card { align-items:stretch; flex-direction:column; } .contact-qr-frame { align-self:center; } .contact-support-plans { display:grid; grid-template-columns:1fr; } .onboarding-steps { grid-template-columns:1fr; } .onboarding-step { grid-template-columns:auto 1fr auto; } .onboarding-step p { min-height:0; margin-bottom:0; } .onboarding-step .button { grid-column:auto; align-self:center; width:auto; } .onboarding-guide { padding:16px; } }
+@media(max-width:700px){ .contact-support-card { align-items:stretch; flex-direction:column; } .contact-qr-frame { align-self:center; flex-basis:clamp(190px,65vw,260px); width:min(100%,260px); } .contact-qr-large { flex-basis:clamp(240px,78vw,320px); width:min(100%,320px); } .contact-support-plans { display:grid; grid-template-columns:1fr; } .onboarding-steps { grid-template-columns:1fr; } .onboarding-step { grid-template-columns:auto 1fr auto; } .onboarding-step p { min-height:0; margin-bottom:0; } .onboarding-step .button { grid-column:auto; align-self:center; width:auto; } .onboarding-guide { padding:16px; } }
 body { background:radial-gradient(circle at 92% -8%, rgba(255,83,24,.14), transparent 29%), var(--canvas); }
 body::before { opacity:.035; background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:72px 72px; mask-image:linear-gradient(to bottom,#000,transparent 88%); }
 .sidebar { width:230px; flex-basis:230px; padding:26px 15px 20px; background:rgba(10,7,10,.86); border-right:1px solid var(--hairline); }
