@@ -678,6 +678,21 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             AuditService(db).write(admin.id, "user.admin_note_updated", "user", user.id)
             return {"ok": True, "admin_note": note}
 
+    @router.post("/api/admin/users/{user_id}/role")
+    async def admin_update_user_role(request: Request, user_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            role = str(values.get("role", "")).strip().lower()
+            try:
+                updated = UserService(db, PasswordService(), AuditService(db)).set_role(admin.id, user_id, role)
+            except NotFound as error:
+                return JSONResponse({"detail": str(error)}, status_code=404)
+            except (ValidationError, Conflict) as error:
+                return JSONResponse({"detail": str(error)}, status_code=400)
+            return {"ok": True, "role": updated.role}
+
     @router.post("/api/admin/redemption-codes")
     async def admin_create_redemption_codes(request: Request):
         values = await request.json()

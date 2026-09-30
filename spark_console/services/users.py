@@ -4,7 +4,7 @@ import secrets
 import string
 from datetime import timedelta, timezone
 
-from sqlalchemy import case, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from spark_console.models import DouyinAccount, SparkTask, TaskRun, User, WebSession, utc_now
@@ -121,6 +121,39 @@ class UserService:
         if disabled:
             self.session.query(WebSession).filter(WebSession.user_id == user.id).delete()
         self.audit.write(actor_id, "user.disabled" if disabled else "user.enabled", "user", user.id)
+        return user
+
+    def set_role(self, actor_id: str, user_id: str, role: str) -> User:
+        """Change a user's privilege role with guardrails for admin continuity."""
+        if role not in {"user", "admin"}:
+            raise ValidationError("不支持的用户角色")
+        user = self.session.get(User, user_id)
+        if user is None:
+            raise NotFound("user not found")
+        if user.id == actor_id:
+            raise ValidationError("不能修改当前管理员的角色")
+        if user.role == role:
+            return user
+        if user.role == "admin" and role == "user":
+            admin_count = int(
+                self.session.scalar(
+                    select(func.count(User.id)).where(User.role == "admin")
+                )
+                or 0
+            )
+            if admin_count <= 1:
+                raise Conflict("至少需要保留一名管理员")
+            # End any existing privileged sessions immediately after demotion.
+            self.session.query(WebSession).filter(WebSession.user_id == user.id).delete()
+        previous = user.role
+        user.role = role
+        self.audit.write(
+            actor_id,
+            "user.role_changed",
+            "user",
+            user.id,
+            f"from={previous};to={role}",
+        )
         return user
 
     def delete(self, actor_id: str, user_id: str, confirmation: str) -> None:

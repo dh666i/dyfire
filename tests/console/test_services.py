@@ -107,6 +107,19 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(18, len(temporary))
         self.assertTrue(PasswordService().verify(user.password_hash, temporary))
 
+    def test_admin_can_promote_user_but_last_admin_cannot_be_demoted(self):
+        admin, _ = self.users.create("role-admin", "Temporary-789!", "admin")
+        self.users.set_role(admin.id, self.owner.id, "admin")
+        self.assertEqual("admin", self.owner.role)
+        self.users.set_role(admin.id, self.owner.id, "user")
+        self.assertEqual("user", self.owner.role)
+        with self.assertRaisesRegex(Conflict, "至少需要保留一名管理员"):
+            self.users.set_role("external-actor", admin.id, "user")
+        event = self.session.scalar(
+            select(AuditEvent).where(AuditEvent.action == "user.role_changed")
+        )
+        self.assertIsNotNone(event)
+
     def test_user_cannot_read_or_delete_another_users_task(self):
         task = self.tasks.create(
             self.owner.id, self.account.id, "朋友", "09:00", "今日火花"

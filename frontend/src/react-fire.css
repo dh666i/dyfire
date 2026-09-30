@@ -82,6 +82,12 @@ html[data-theme="light"] .onboarding-step { background:rgba(255,255,255,.55); bo
   .composer-card .form-grid > label { min-width:0; max-width:100%; width:100%; }
   .composer-card input[type="time"], .composer-card select { display:block; min-width:0; max-width:100%; width:100%; }
   .composer-card input[type="time"] { -webkit-appearance:none; appearance:none; }
+  /* Safari's native time control can keep an intrinsic date-time width even
+     when the input itself is constrained. Keep the internal value inside the
+     card so the right edge cannot create horizontal overflow on iPhone. */
+  .composer-card input[type="time"]::-webkit-date-and-time-value { min-width:0; min-inline-size:0; width:100%; text-align:center; }
+  .composer-card input[type="time"]::-webkit-datetime-edit { min-width:0; min-inline-size:0; padding:0; }
+  .composer-card input[type="time"]::-webkit-datetime-edit-fields-wrapper { min-width:0; min-inline-size:0; max-inline-size:100%; width:100%; }
 }
 @media(max-width:700px){ .contact-support-card { align-items:stretch; flex-direction:column; } .contact-qr-frame { align-self:center; flex-basis:clamp(190px,65vw,260px); width:min(100%,260px); } .contact-qr-large { flex-basis:clamp(240px,78vw,320px); width:min(100%,320px); } .contact-support-plans { display:grid; grid-template-columns:1fr; } .onboarding-steps { grid-template-columns:1fr; } .onboarding-step { grid-template-columns:auto 1fr auto; } .onboarding-step p { min-height:0; margin-bottom:0; } .onboarding-step .button { grid-column:auto; align-self:center; width:auto; } .onboarding-guide { padding:16px; } }
 @media(max-width:700px){ .mobile-route-status { display:block; padding:5px 14px 0; color:var(--ink-soft); font:10px var(--mono); } .account-error-actions .button, .scan-recovery-actions .button { flex:1; min-width:130px; } }

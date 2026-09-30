@@ -828,6 +828,24 @@ def build_admin_router(
             AuditService(db).write(admin.id, "user.admin_note_updated", "user", user.id)
         return RedirectResponse("/admin/users", status_code=303)
 
+    @router.post("/admin/users/{user_id}/role")
+    def update_user_role(
+        request: Request,
+        user_id: str,
+        csrf_token: str = Form(default=""),
+        role: str = Form(default="user"),
+    ):
+        with session_scope(engine) as db:
+            admin, record, _context = auth.admin_context(request, db)
+            auth.csrf(record, csrf_token)
+            try:
+                UserService(db, passwords, AuditService(db)).set_role(admin.id, user_id, role.strip().lower())
+            except NotFound as error:
+                raise HTTPException(404, str(error)) from error
+            except (ValidationError, Conflict) as error:
+                raise HTTPException(400, str(error)) from error
+        return RedirectResponse("/admin/users", status_code=303)
+
     @router.post("/admin/users/bulk")
     def bulk_update_users(
         request: Request,

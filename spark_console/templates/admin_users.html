@@ -69,6 +69,17 @@
     </form>
   </div>
 
+  {% if item.id != user.id %}
+  <div class="admin-dialog-section">
+    <div class="admin-section-copy"><strong>账号权限</strong><small>管理员可进入后台并管理客户。降级最后一名管理员会被阻止。</small></div>
+    <form method="post" action="/admin/users/{{ item.id }}/role" class="admin-form-grid" data-confirm="确定将 {{ item.username }} {{ '降为普通用户' if item.role == 'admin' else '升级为管理员' }}吗？" data-confirm-title="确认修改账号权限？">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="role" value="{{ 'user' if item.role == 'admin' else 'admin' }}">
+      <div class="admin-form-actions"><button class="admin-button admin-button-secondary" type="submit">{{ '降为普通用户' if item.role == 'admin' else '升级为管理员' }}</button></div>
+    </form>
+  </div>
+  {% endif %}
+
   {% if item.role != 'admin' %}
   <div class="admin-dialog-section">
     <div class="admin-section-copy"><strong>会员与额度</strong><small>{% if item.valid_until %}当前有效期至 {{ item.valid_until|shanghai_time }}{% else %}当前未开通会员{% endif %}</small></div>
