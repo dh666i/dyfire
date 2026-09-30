@@ -52,7 +52,15 @@ def build_studio_router(engine, auth, cipher):
             user, record = auth.current(request, db)
             accounts = db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)).all()
             tasks = db.scalars(select(SparkTask).where(SparkTask.owner_user_id == user.id)).all()
-            identities = {t.id: db.get(SparkTaskTargetIdentity, t.id) for t in tasks}
+            task_ids = [task.id for task in tasks]
+            identities = {
+                identity.task_id: identity
+                for identity in db.scalars(
+                    select(SparkTaskTargetIdentity).where(
+                        SparkTaskTargetIdentity.task_id.in_(task_ids)
+                    )
+                ).all()
+            } if task_ids else {}
             health = views(db, accounts)
             avatars = task_avatar_map(db, tasks)
             today = datetime.now(ZoneInfo('Asia/Shanghai')).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)

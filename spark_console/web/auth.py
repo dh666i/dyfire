@@ -39,7 +39,10 @@ class WebAuth:
         return user, record
 
     def csrf(self, record: WebSession, supplied: str) -> None:
-        if not supplied or not secrets.compare_digest(record.csrf_token, supplied):
+        # JSON clients can send null, numbers, or objects.  Reject those as a
+        # normal CSRF failure instead of letting compare_digest raise TypeError
+        # and turning an invalid request into a 500 response.
+        if not isinstance(supplied, str) or not supplied or not secrets.compare_digest(record.csrf_token, supplied):
             raise HTTPException(403, "CSRF validation failed")
 
     def user_context(

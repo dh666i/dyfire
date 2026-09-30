@@ -11,7 +11,7 @@ from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, case, delete, func, select
 from sqlalchemy.engine import Engine
 from core.avatars import safe_avatar_url
 
@@ -599,14 +599,23 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             runs = db.scalars(select(TaskRun).join(SparkTask).where(SparkTask.owner_user_id == user.id).order_by(TaskRun.scheduled_for.desc()).limit(5)).all()
             local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
             today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
-            today_runs = db.scalars(
-                select(TaskRun)
+            today_counts = db.execute(
+                select(
+                    func.count(TaskRun.id),
+                    func.sum(case((TaskRun.status == "success", 1), else_=0)),
+                    func.sum(case((TaskRun.status.in_(("failed", "skipped", "submitted_unconfirmed")), 1), else_=0)),
+                    func.sum(case((TaskRun.status == "submitted_unconfirmed", 1), else_=0)),
+                    func.sum(case((TaskRun.status == "failed", 1), else_=0)),
+                )
                 .join(SparkTask)
                 .where(
                     SparkTask.owner_user_id == user.id,
                     TaskRun.scheduled_for >= today_start,
                 )
-            ).all()
+            ).one()
+            today_success, today_attention, today_unconfirmed, today_failed = (
+                int(today_counts[index] or 0) for index in range(1, 5)
+            )
             valid_accounts = sum(item.validation_state == "valid" for item in accounts)
             accounts.sort(key=lambda item: (item.validation_state == 'valid', item.display_name.casefold()))
             account_attention = sum(item.validation_state in ('invalid','temporary','verification') for item in accounts)
@@ -646,15 +655,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 onboarding=onboarding,
                 valid_accounts=valid_accounts,
                 account_attention=account_attention,
-                today_success=sum(run.status == "success" for run in today_runs),
-                today_attention=sum(
-                    run.status in {"failed", "skipped", "submitted_unconfirmed"}
-                    for run in today_runs
-                ),
-                today_unconfirmed=sum(
-                    run.status == "submitted_unconfirmed" for run in today_runs
-                ),
-                today_failed=sum(run.status == "failed" for run in today_runs),
+                today_success=today_success,
+                today_attention=today_attention,
+                today_unconfirmed=today_unconfirmed,
+                today_failed=today_failed,
                 next_task=next_task,
                 **context,
             )

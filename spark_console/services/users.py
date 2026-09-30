@@ -143,8 +143,10 @@ class UserService:
             )
             if admin_count <= 1:
                 raise Conflict("至少需要保留一名管理员")
-            # End any existing privileged sessions immediately after demotion.
-            self.session.query(WebSession).filter(WebSession.user_id == user.id).delete()
+        # A role change must invalidate sessions in both directions. A user
+        # promoted with an existing cookie must authenticate again before the
+        # browser receives administrator privileges.
+        self.session.query(WebSession).filter(WebSession.user_id == user.id).delete()
         previous = user.role
         user.role = role
         self.audit.write(

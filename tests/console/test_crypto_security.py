@@ -1,11 +1,14 @@
 import hashlib
 import unittest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from cryptography.exceptions import InvalidTag
+from fastapi import HTTPException
 
 from spark_console.crypto import CookieCipher
 from spark_console.security import CsrfService, PasswordService, SessionService
+from spark_console.web.auth import WebAuth
 
 
 class CookieCipherTests(unittest.TestCase):
@@ -61,6 +64,15 @@ class SessionTests(unittest.TestCase):
         token = csrf.issue()
         self.assertTrue(csrf.verify(token, token))
         self.assertFalse(csrf.verify(token, token + "x"))
+
+    def test_web_csrf_rejects_non_string_values_as_forbidden(self):
+        auth = WebAuth(SessionService(session_key=b"s" * 32))
+        record = SimpleNamespace(csrf_token="csrf")
+        for supplied in (None, 1, {}, []):
+            with self.subTest(supplied=supplied):
+                with self.assertRaises(HTTPException) as error:
+                    auth.csrf(record, supplied)
+                self.assertEqual(error.exception.status_code, 403)
 
 
 if __name__ == "__main__":

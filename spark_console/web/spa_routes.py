@@ -659,8 +659,17 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             tasks = db.scalars(
                 select(SparkTask).where(SparkTask.owner_user_id == user.id).order_by(SparkTask.send_time, SparkTask.target_name)
             ).all()
-            identities = {t.id: db.get(SparkTaskTargetIdentity, t.id) for t in tasks}
+            task_ids = [task.id for task in tasks]
+            identities = {
+                identity.task_id: identity
+                for identity in db.scalars(
+                    select(SparkTaskTargetIdentity).where(
+                        SparkTaskTargetIdentity.task_id.in_(task_ids)
+                    )
+                ).all()
+            } if task_ids else {}
             profiles = profile_map(db, [a.id for a in accounts])
+            account_health = account_health_views(db, accounts)
             avatars = task_avatar_map(db, tasks)
             runs = db.execute(
                 select(TaskRun, SparkTask).join(SparkTask, TaskRun.task_id == SparkTask.id)
@@ -671,7 +680,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             return {
                 "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at), "admin_note": user.admin_note or ""},
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "is_admin")},
-                "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health_views(db, [a]).get(a.id, {})} for a in accounts],
+                "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health.get(a.id, {})} for a in accounts],
                 "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": identities[t.id].sec_uid if identities[t.id] else "", "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
                 "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
             }
@@ -879,6 +888,15 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
         with session_scope(engine) as db:
             auth.admin_context(request, db)
             rows, pagination = list_group_tasks(db, owner_id, account_id, q=q, status=status, page=page)
+            task_ids = [row.id for row in rows]
+            identities = {
+                identity.task_id: identity.sec_uid
+                for identity in db.scalars(
+                    select(SparkTaskTargetIdentity).where(
+                        SparkTaskTargetIdentity.task_id.in_(task_ids)
+                    )
+                ).all()
+            } if task_ids else {}
             return {
                 "items": [{
                     "id": row.id,
@@ -891,7 +909,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     "owner_id": row.user.id,
                     "message_kind": row.task.message_kind,
                     "message": row.task.message_template,
-                    "target_sec_uid": (db.get(SparkTaskTargetIdentity, row.id).sec_uid if db.get(SparkTaskTargetIdentity, row.id) else ""),
+                    "target_sec_uid": identities.get(row.id, ""),
                 } for row in rows],
                 "pagination": pagination,
             }

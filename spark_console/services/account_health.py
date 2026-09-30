@@ -110,6 +110,7 @@ def recovered(db, account):
 
 
 def views(db, accounts):
+    accounts = list(accounts)
     account_ids = [account.id for account in accounts]
     if not account_ids:
         return {}
@@ -147,7 +148,7 @@ def views(db, accounts):
         state = 'relogin' if account.id in relogging_ids else account.validation_state
         health = health_by_id.get(account.id)
         operation = operation_by_id.get(account.id)
-        operation_expires = operation.expires_at
+        operation_expires = operation.expires_at if operation is not None else None
         if operation_expires is not None and operation_expires.tzinfo is None:
             operation_expires = operation_expires.replace(tzinfo=timezone.utc)
         checking = bool(operation and operation.kind == 'health' and operation_expires > now)

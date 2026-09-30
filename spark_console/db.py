@@ -102,6 +102,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (7, "login_session_mode", _upgrade_sqlite_login_session_mode),
         (8, "user_admin_note", _upgrade_sqlite_user_admin_note),
         (9, "redemption_code_retrieval", _upgrade_sqlite_redemption_code_retrieval),
+        (10, "scale_query_indexes", _upgrade_sqlite_scale_query_indexes),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -178,6 +179,22 @@ def _upgrade_sqlite_redemption_code_retrieval(connection: Connection) -> None:
         "WHERE redeemed_at IS NULL AND revoked_at IS NULL "
         "AND expires_at IS NOT NULL"
     )
+
+
+def _upgrade_sqlite_scale_query_indexes(connection: Connection) -> None:
+    """Add compound indexes used by queue, admin and subscription queries."""
+    indexes = (
+        ("ix_user_subscriptions_valid_window", "user_subscriptions", "valid_from, valid_until"),
+        ("ix_douyin_login_sessions_status_expires", "douyin_login_sessions", "status, expires_at"),
+        ("ix_spark_tasks_enabled_next_run", "spark_tasks", "enabled, next_run_at"),
+        ("ix_task_runs_status_scheduled", "task_runs", "status, scheduled_for"),
+        ("ix_task_runs_task_scheduled_status", "task_runs", "task_id, scheduled_for, status"),
+        ("ix_audit_events_created_action", "audit_events", "created_at, action"),
+    )
+    for name, table, columns in indexes:
+        connection.exec_driver_sql(
+            f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"
+        )
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:
