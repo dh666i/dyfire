@@ -17,6 +17,7 @@ from sqlalchemy.engine import URL, Connection, create_engine
 from sqlalchemy.orm import Session
 
 from spark_console.db import SQLITE_SCHEMA_VERSION
+from spark_console.crypto import CookieCipher
 from spark_console.models import (
     AccountOperation,
     Base,
@@ -24,6 +25,7 @@ from spark_console.models import (
     DouyinLoginAction,
     DouyinLoginSession,
     DouyinLoginInput,
+    DouyinAccount,
     MailDelivery,
     SparkTask,
     TaskRun,
@@ -76,7 +78,9 @@ def _count(connection: Connection, statement) -> int:
     return int(connection.scalar(statement) or 0)
 
 
-def _source_state(connection: Connection) -> tuple[int, dict[str, int], int, int, int]:
+def _source_state(
+    connection: Connection, *, cookie_key: bytes | None = None
+) -> tuple[int, dict[str, int], int, int, int]:
     connection.exec_driver_sql("BEGIN")
     check = connection.exec_driver_sql("PRAGMA integrity_check").scalar()
     if check != "ok":
@@ -109,7 +113,7 @@ def _source_state(connection: Connection) -> tuple[int, dict[str, int], int, int
     active_runs = _count(
         connection,
         select(func.count()).select_from(TaskRun).where(
-            TaskRun.status.in_(("queued", "running", "retrying"))
+            TaskRun.status.in_(("queued", "running", "retrying", "submitted_unconfirmed"))
         ),
     )
     active_logins = _count(
@@ -135,6 +139,17 @@ def _source_state(connection: Connection) -> tuple[int, dict[str, int], int, int
     ))
     if pending_async:
         raise ValueError(f"source has pending asynchronous work: {pending_async}")
+    if cookie_key is not None:
+        cipher = CookieCipher(cookie_key)
+        for encrypted, nonce in connection.execute(
+            select(DouyinAccount.encrypted_cookies, DouyinAccount.cookie_nonce)
+        ):
+            try:
+                cipher.decrypt(bytes(encrypted), bytes(nonce))
+            except Exception as error:
+                raise ValueError(
+                    "source contains an account Cookie that cannot be decrypted with the supplied key"
+                ) from error
     duplicate_active = connection.exec_driver_sql(
         "SELECT scan_id FROM douyin_login_inputs WHERE delivery_status IN ('queued', 'claimed') "
         "GROUP BY scan_id HAVING COUNT(*) > 1"
@@ -325,6 +340,7 @@ def migrate_sqlite_to_postgres(
     *,
     apply: bool = False,
     batch_size: int = DEFAULT_BATCH_SIZE,
+    cookie_key: bytes | None = None,
 ) -> MigrationReport:
     if target.dialect.name != "postgresql":
         raise ValueError("migration target must be PostgreSQL")
@@ -334,7 +350,9 @@ def migrate_sqlite_to_postgres(
     source_engine = readonly_sqlite_engine(source_path)
     try:
         with source_engine.connect() as source:
-            schema_version, counts, active_runs, active_logins, sending_mail = _source_state(source)
+            schema_version, counts, active_runs, active_logins, sending_mail = _source_state(
+                source, cookie_key=cookie_key
+            )
             _assert_idle(active_runs, active_logins, sending_mail)
             if apply:
                 _copy_snapshot(source, target, counts, batch_size=batch_size)

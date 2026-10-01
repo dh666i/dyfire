@@ -186,6 +186,7 @@ def command_migrate_sqlite(args) -> int:
             target,
             apply=args.apply,
             batch_size=args.batch_size,
+            cookie_key=settings.cookie_key_file.read_bytes(),
         )
     finally:
         target.dispose()
