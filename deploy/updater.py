@@ -418,10 +418,12 @@ def main():
                         raise ValueError('不支持的操作')
                 except Exception as error:
                     # Never expose command output or GitHub credentials to the UI.
+                    detail = str(error).strip().replace("\n", " ")[:240]
                     write_state(
                         phase='failed',
                         message='操作未完成，请检查更新服务日志和发行配置',
                         error_code=type(error).__name__.lower(),
+                        error_detail=detail or '未提供详细错误',
                     )
                 finally:
                     request.unlink(missing_ok=True)

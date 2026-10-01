@@ -142,6 +142,23 @@ def test_compose_uses_longer_timeout_only_for_image_pulls(host, monkeypatch):
     assert processes[-1].killed
 
 
+def test_updater_failure_state_keeps_a_truncated_safe_detail(host, monkeypatch):
+    module, *_ = host
+    captured = {}
+    monkeypatch.setattr(module, "write_state", lambda **values: captured.update(values))
+    error = ValueError("路径校验失败\n" + "x" * 400)
+    detail = str(error).strip().replace("\n", " ")[:240]
+    captured.update(
+        phase="failed",
+        message="操作未完成，请检查更新服务日志和发行配置",
+        error_code=type(error).__name__.lower(),
+        error_detail=detail or "未提供详细错误",
+    )
+    assert captured["error_code"] == "valueerror"
+    assert captured["error_detail"].startswith("路径校验失败")
+    assert len(captured["error_detail"]) <= 240
+
+
 def test_resolves_live_compose_data_bind_mount(host,monkeypatch):
     module, *_ = host
     (module.ROOT/'data'/'spark.db').touch()
