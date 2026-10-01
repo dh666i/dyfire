@@ -104,6 +104,56 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(10, settings.worker_poll_seconds)
             self.assertTrue(settings.secure_cookies)
             self.assertTrue(settings.database_url.endswith("spark.db"))
+            self.assertEqual(10, settings.database_pool_size)
+            self.assertEqual(20, settings.database_max_overflow)
+
+    def test_loads_postgres_pool_settings(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            cookie_key = root_path / "cookie.key"
+            session_key = root_path / "session.key"
+            cookie_key.write_bytes(b"c" * 32)
+            session_key.write_bytes(b"s" * 32)
+            settings = Settings.from_env({
+                "SPARK_DATA_DIR": root,
+                "SPARK_COOKIE_KEY_FILE": str(cookie_key),
+                "SPARK_SESSION_KEY_FILE": str(session_key),
+                "SPARK_DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "SPARK_DATABASE_POOL_SIZE": "7",
+                "SPARK_DATABASE_MAX_OVERFLOW": "13",
+                "SPARK_DATABASE_POOL_TIMEOUT_SECONDS": "19",
+                "SPARK_DATABASE_POOL_RECYCLE_SECONDS": "1200",
+            })
+            self.assertEqual(7, settings.database_pool_size)
+            self.assertEqual(13, settings.database_max_overflow)
+            self.assertEqual(19, settings.database_pool_timeout_seconds)
+            self.assertEqual(1200, settings.database_pool_recycle_seconds)
+
+    def test_postgres_engine_uses_configured_pool(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            cookie_key = root_path / "cookie.key"
+            session_key = root_path / "session.key"
+            cookie_key.write_bytes(b"c" * 32)
+            session_key.write_bytes(b"s" * 32)
+            settings = Settings(
+                data_dir=root_path,
+                database_url="postgresql+psycopg://user:pass@localhost/db",
+                cookie_key_file=cookie_key,
+                session_key_file=session_key,
+                database_pool_size=3,
+                database_max_overflow=4,
+                database_pool_timeout_seconds=5,
+                database_pool_recycle_seconds=6,
+            )
+            with patch("spark_console.db.create_engine") as factory:
+                create_engine_for(settings)
+            options = factory.call_args.kwargs
+            self.assertEqual(3, options["pool_size"])
+            self.assertEqual(4, options["max_overflow"])
+            self.assertEqual(5, options["pool_timeout"])
+            self.assertEqual(6, options["pool_recycle"])
+            self.assertTrue(options["pool_pre_ping"])
 
     def test_loads_explicit_proxy_and_hsts_settings(self):
         with tempfile.TemporaryDirectory() as root:

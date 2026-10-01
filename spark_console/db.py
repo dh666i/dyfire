@@ -40,8 +40,18 @@ def _enable_sqlite_wal(cursor) -> None:
 
 
 def create_engine_for(settings: Settings) -> Engine:
+    engine_options = {}
+    if not settings.database_url.startswith("sqlite"):
+        engine_options.update(
+            pool_size=settings.database_pool_size,
+            max_overflow=settings.database_max_overflow,
+            pool_timeout=settings.database_pool_timeout_seconds,
+            pool_recycle=settings.database_pool_recycle_seconds,
+            pool_pre_ping=True,
+        )
     engine = create_engine(
         settings.database_url,
+        **engine_options,
         connect_args={
             "check_same_thread": False,
             "timeout": SQLITE_LOCK_TIMEOUT_SECONDS,

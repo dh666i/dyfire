@@ -52,6 +52,11 @@ class Settings:
     trusted_proxy_cidrs: tuple[str, ...] = ()
     hsts_max_age_seconds: int = 31536000
     hsts_include_subdomains: bool = False
+    # PostgreSQL pool settings. SQLite keeps its existing file/WAL behavior.
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
+    database_pool_timeout_seconds: int = 30
+    database_pool_recycle_seconds: int = 1800
 
     def __post_init__(self) -> None:
         for cidr in self.trusted_proxy_cidrs:
@@ -61,6 +66,14 @@ class Settings:
                 raise ValueError(f"invalid trusted proxy CIDR: {cidr!r}") from error
         if self.hsts_max_age_seconds < 0:
             raise ValueError("HSTS max age must be non-negative")
+        if self.database_pool_size < 1:
+            raise ValueError("database pool size must be positive")
+        if self.database_max_overflow < 0:
+            raise ValueError("database max overflow must be non-negative")
+        if self.database_pool_timeout_seconds < 1:
+            raise ValueError("database pool timeout must be positive")
+        if self.database_pool_recycle_seconds < 0:
+            raise ValueError("database pool recycle must be non-negative")
         validate_shard(self.worker_shard, self.worker_shards)
 
     @classmethod
@@ -111,5 +124,13 @@ class Settings:
             hsts_include_subdomains=_env_bool(
                 environ.get("SPARK_HSTS_INCLUDE_SUBDOMAINS", "false"),
                 name="SPARK_HSTS_INCLUDE_SUBDOMAINS",
+            ),
+            database_pool_size=int(environ.get("SPARK_DATABASE_POOL_SIZE", "10")),
+            database_max_overflow=int(environ.get("SPARK_DATABASE_MAX_OVERFLOW", "20")),
+            database_pool_timeout_seconds=int(
+                environ.get("SPARK_DATABASE_POOL_TIMEOUT_SECONDS", "30")
+            ),
+            database_pool_recycle_seconds=int(
+                environ.get("SPARK_DATABASE_POOL_RECYCLE_SECONDS", "1800")
             ),
         )
