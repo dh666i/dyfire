@@ -16,21 +16,23 @@ def setup(tmp_path, monkeypatch):
     def session(_):
         yield SimpleNamespace(add=lambda value: None)
     class Auth:
+        elevated = True
         def admin_context(self, request, db):
             if request.headers.get('Role') != 'admin':
                 raise HTTPException(404)
-            return SimpleNamespace(id='admin', elevated=True), SimpleNamespace(), {}
+            return SimpleNamespace(id='admin'), SimpleNamespace(), {}
         def csrf(self, record, value):
             if value != 'csrf':
                 raise HTTPException(403)
         def require_elevated(self, record):
-            if not getattr(record, 'elevated', True):
+            if not self.elevated:
                 raise HTTPException(428, '需要重新验证管理员密码')
     monkeypatch.setattr(update_routes, 'session_scope', session)
     monkeypatch.setenv('DYFIRE_UPDATE_DIR', str(tmp_path))
     (tmp_path / 'requests').mkdir()
     app = FastAPI()
-    app.include_router(update_routes.build_update_router(None, Auth()))
+    app.state.test_auth = Auth()
+    app.include_router(update_routes.build_update_router(None, app.state.test_auth))
     return TestClient(app), tmp_path
 
 
@@ -50,6 +52,18 @@ def test_queue_is_exclusive_and_validates_version(setup):
     queued = json.loads((root/'requests/request.json').read_text())
     assert queued['version'] == '0.2.0'
     assert len(queued['operation_id']) == 32
+
+
+def test_install_requires_current_session_step_up(setup):
+    client, root = setup
+    client.app.state.test_auth.elevated = False
+    response = client.post(
+        '/api/admin/updates/install',
+        json={'version': '0.2.0'},
+        headers={'Role': 'admin', 'X-CSRF-Token': 'csrf'},
+    )
+    assert response.status_code == 428
+    assert not (root / 'requests/request.json').exists()
 
 
 def test_web_only_action_is_available(setup):
