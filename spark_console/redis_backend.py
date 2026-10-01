@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,6 +67,16 @@ class RedisStreamMessage:
 
     id: str
     payload: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RedisStreamProbe:
+    """Result of an ephemeral producer/consumer-group round trip."""
+
+    stream: str
+    message_id: str
+    consumer: str
+    acknowledged: bool
 
 
 _RATE_LIMIT_SCRIPT = """
@@ -358,6 +369,53 @@ class RedisBackend:
             raise
         except Exception as error:
             raise RedisOperationError("Redis Stream ack operation failed") from error
+
+    def stream_probe(self) -> RedisStreamProbe:
+        """Exercise an ephemeral Stream producer, consumer, and ack path.
+
+        The probe is deliberately opt-in and uses a random key.  It is useful
+        during a staged Redis rollout because it validates the ACL, stream,
+        consumer-group, and acknowledgement permissions without publishing a
+        real task.  The temporary stream is deleted in a ``finally`` block so
+        repeated health checks cannot accumulate queue data.
+        """
+        token = uuid.uuid4().hex
+        stream = f"preflight-{token}"
+        group = f"preflight-{token}"
+        consumer = f"probe-{token}"
+        payload = {"kind": "dyfire-queue-preflight", "token": token}
+        client = self._require_client()
+        try:
+            message_id = self.stream_enqueue(stream, payload)
+            messages = self.stream_read(stream, group, consumer, count=1)
+            if len(messages) != 1 or messages[0].id != message_id:
+                raise RedisOperationError(
+                    "Redis Stream probe did not receive its published message"
+                )
+            if messages[0].payload != payload:
+                raise RedisOperationError(
+                    "Redis Stream probe payload was changed in transit"
+                )
+            acknowledged = self.stream_ack(stream, group, message_id)
+            if not acknowledged:
+                raise RedisOperationError("Redis Stream probe acknowledgement failed")
+            return RedisStreamProbe(
+                stream=stream,
+                message_id=message_id,
+                consumer=consumer,
+                acknowledged=True,
+            )
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis Stream probe failed") from error
+        finally:
+            try:
+                client.delete(self._stream_key(stream))
+            except Exception as error:
+                raise RedisOperationError(
+                    "Redis Stream probe cleanup failed"
+                ) from error
 
     def stream_reclaim(
         self,

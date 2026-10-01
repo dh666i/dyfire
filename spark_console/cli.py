@@ -17,6 +17,14 @@ from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.models import User
 from spark_console.retention import RetentionPolicy, retain
 from spark_console.data_migration import migrate_sqlite_to_postgres
+from spark_console.backup import (
+    BackupVerificationError,
+    build_manifest,
+    manifest_path,
+    verify_backup,
+    verify_directory,
+    write_manifest,
+)
 from spark_console.security import PasswordService
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -114,6 +122,14 @@ def command_backup(args) -> int:
         temporary.unlink(missing_ok=True)
         raise
     os.chmod(destination, 0o600)
+    # The manifest is published last and acts as the backup's commit marker.
+    # A database without it is never reported as a verified backup.
+    try:
+        write_manifest(destination, build_manifest(destination))
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        manifest_path(destination).unlink(missing_ok=True)
+        raise
     backup_name = re.compile(r"^spark-\d{8}T\d{6}(?:\d{6})?Z\.db$")
     backups = sorted(
         (
@@ -124,10 +140,35 @@ def command_backup(args) -> int:
         key=lambda path: path.name,
         reverse=True,
     )
+    # Keep the newest ``keep`` files as the minimum recovery window.  The
+    # database and its manifest are deleted together so an orphaned payload
+    # can never be mistaken for a verified backup.
     for expired in backups[keep:]:
         expired.unlink()
+        manifest_path(expired).unlink(missing_ok=True)
     print(destination)
     return 0
+
+
+def command_verify_backup(args) -> int:
+    """Verify one backup bundle without opening it for writes."""
+    try:
+        report = verify_backup(args.backup, require_manifest=not args.allow_legacy)
+    except (OSError, sqlite3.Error, BackupVerificationError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False, sort_keys=True))
+        return 1
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+def command_verify_backup_directory(args) -> int:
+    try:
+        report = verify_directory(args.directory)
+    except (OSError, sqlite3.Error, BackupVerificationError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False, sort_keys=True))
+        return 1
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    return 0 if report["ok"] else 1
 
 
 def _retention_as_of(value: str | None) -> datetime | None:
@@ -194,13 +235,42 @@ def command_migrate_sqlite(args) -> int:
     return 0
 
 
+def command_queue_preflight(args) -> int:
+    """Check database claim readiness and optional Redis Stream hand-off."""
+    from spark_console.queue_preflight import run_queue_preflight
+
+    settings = Settings.from_env(os.environ)
+    report = run_queue_preflight(settings, probe_stream=args.probe_stream)
+    print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
+    return 0 if report.passed else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spark-console")
     commands = parser.add_subparsers(required=True)
     admin = commands.add_parser("create-admin"); admin.add_argument("username"); admin.set_defaults(handler=command_create_admin)
     user = commands.add_parser("create-user"); user.add_argument("username"); user.set_defaults(handler=command_create_user)
     legacy = commands.add_parser("import-legacy"); legacy.add_argument("path"); legacy.add_argument("--owner", required=True); legacy.add_argument("--time", default="09:00"); legacy.add_argument("--message", default="今日火花"); legacy.set_defaults(handler=command_import_legacy)
-    backup = commands.add_parser("backup-db"); backup.add_argument("--keep", type=int, default=7); backup.set_defaults(handler=command_backup)
+    backup = commands.add_parser("backup-db")
+    backup.add_argument("--keep", type=int, default=7, help="至少保留的最新备份数量")
+    backup.set_defaults(handler=command_backup)
+    verify = commands.add_parser(
+        "verify-backup",
+        help="只读校验备份数据库及其清单；默认拒绝没有清单的旧文件",
+    )
+    verify.add_argument("backup", help="待校验的备份数据库路径")
+    verify.add_argument(
+        "--allow-legacy",
+        action="store_true",
+        help="仅为迁移旧备份允许缺少清单；报告仍标记为未验证",
+    )
+    verify.set_defaults(handler=command_verify_backup)
+    verify_dir = commands.add_parser(
+        "verify-backups",
+        help="只读校验备份目录中的所有数据库、清单和孤立清单",
+    )
+    verify_dir.add_argument("directory", help="备份目录路径")
+    verify_dir.set_defaults(handler=command_verify_backup_directory)
     retention = commands.add_parser(
         "retention",
         help="清理已过期的终态记录；默认只预览，不删除",
@@ -222,6 +292,16 @@ def build_parser() -> argparse.ArgumentParser:
     migration.add_argument("--apply", action="store_true", help="明确执行导入")
     migration.add_argument("--batch-size", type=int, default=1000)
     migration.set_defaults(handler=command_migrate_sqlite)
+    preflight = commands.add_parser(
+        "queue-preflight",
+        help="检查数据库领取结构；可选地验证一次隔离 Redis Stream",
+    )
+    preflight.add_argument(
+        "--probe-stream",
+        action="store_true",
+        help="写入、读取、确认一个随机临时 Stream，然后删除",
+    )
+    preflight.set_defaults(handler=command_queue_preflight)
     return parser
 
 

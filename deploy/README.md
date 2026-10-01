@@ -16,7 +16,45 @@
 
 仅相同 schema 的版本可以自动更新。包含不兼容迁移的版本必须另行制定迁移方案；此机制不承诺任意版本之间回滚。
 
-更新请求目录由应用写入，其余更新状态及部署目录由主机拥有。网页仅允许管理员提交 check/install，检查 CSRF，已有请求不会重复排队。当前不启用周期性宿主机备份；正式更新仍会在切换前保存可回退快照。
+更新请求目录由应用写入，其余更新状态及部署目录由主机拥有。网页仅允许管理员提交 check/install，检查 CSRF，已有请求不会重复排队。默认不会自动安装或启用周期性宿主机备份；正式更新仍会在切换前保存可回退快照。
+
+如需在确认磁盘空间和恢复目标后启用本机周期备份，可人工安装模板（不会影响
+`www.chichiapi.cn`）：
+
+```bash
+sudo install -m 0644 deploy/dyfire-backup.service deploy/dyfire-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now dyfire-backup.timer
+systemctl list-timers dyfire-backup.timer
+```
+
+模板每天 03:17（最多延迟 15 分钟）调用一次性 `spark-web` Compose 容器，保留最近
+14 个备份。启用前应确认 `.env.console` 指向正式镜像且 `data/backups` 有足够空间。
+关闭 timer：
+
+```bash
+sudo systemctl disable --now dyfire-backup.timer
+```
+
+## 备份清单和校验
+
+`backup-db` 只有在 SQLite 在线备份成功、完整性和外键检查通过后，才会把数据库
+和同名 `.db.manifest.json` 清单原子提交到 `data/backups`。清单包含格式版本、文件
+大小、SHA-256、schema 版本和 SQLite 检查结果，不包含 Cookie 或用户数据。清单缺失、
+被改动、孤立或对应数据库损坏，都不能算作可恢复备份。可单独核验一个备份或整个
+目录：
+
+```bash
+cd /opt/dyfire
+python3 -m spark_console.cli verify-backup data/backups/spark-20261001T120000000000Z.db
+python3 -m spark_console.cli verify-backups data/backups
+```
+
+`verify-backups` 返回非零表示至少一个备份、清单或孤立清单不可信；该命令只读，
+不会删除文件、写入数据库或停止服务。历史旧文件缺少清单时，可用
+`verify-backup --allow-legacy` 做 SQLite 检查和迁移盘点，但结果会明确标记
+`manifest.verified=false`，不可作为正式恢复点。恢复演练仍应使用下文的
+`deploy/recovery_drill.py`，并在演练前先通过清单校验。
 
 ## 反向代理安全配置
 

@@ -96,6 +96,8 @@ def test_redis_primitives_against_service():
         pytest.skip("TEST_REDIS_URL is not configured")
     backend = RedisBackend(RedisBackendConfig(url=url, key_prefix=f"test-{uuid.uuid4().hex}"))
     assert backend.ping()
+    probe = backend.stream_probe()
+    assert probe.acknowledged
     key = uuid.uuid4().hex
     assert backend.allow_rate_limit(key, limit=2, window_seconds=30)
     assert backend.allow_rate_limit(key, limit=2, window_seconds=30)

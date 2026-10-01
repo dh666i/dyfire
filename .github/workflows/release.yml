@@ -35,7 +35,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_scheduler_sql.py tests/console/test_worker_sharding.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_recovery_drill.py tests/console/test_elevation_web.py tests/console/test_password_policy_web.py tests/console/test_spa_bootstrap_perf.py tests/console/test_admin_web.py tests/console/test_services.py tests/console/test_config_db.py tests/console/test_crypto_security.py tests/console/test_retention.py tests/console/test_data_migration.py tests/console/test_postgres_schema.py tests/console/test_redis_backend.py tests/test_deployment_paths.py -q
+      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_scheduler_sql.py tests/console/test_worker_sharding.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_recovery_drill.py tests/console/test_elevation_web.py tests/console/test_password_policy_web.py tests/console/test_spa_bootstrap_perf.py tests/console/test_admin_web.py tests/console/test_services.py tests/console/test_config_db.py tests/console/test_crypto_security.py tests/console/test_retention.py tests/console/test_data_migration.py tests/console/test_postgres_schema.py tests/console/test_redis_backend.py tests/console/test_queue_preflight.py tests/console/test_backup_manifest.py tests/test_deployment_paths.py -q
         env:
           TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/dyfire
           TEST_REDIS_URL: redis://localhost:6379/15

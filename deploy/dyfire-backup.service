@@ -1,0 +1,14 @@
+[Unit]
+Description=Dyfire verified SQLite backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/dyfire
+# The web image contains the same schema and backup CLI as the running app.
+# This short-lived container uses the existing /opt/dyfire/data bind mount and
+# never replaces the running web, worker, auth, or monitor containers.
+ExecStart=/usr/bin/docker compose --project-name douyin-spark-console --env-file /opt/dyfire/.env.console --file /opt/dyfire/compose.console.yml run --rm --no-deps spark-web python -m spark_console.cli backup-db --keep 14
+TimeoutStartSec=15min
+UMask=0077

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Dyfire verified SQLite backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=dyfire-backup.service
+[Install]
+WantedBy=timers.target

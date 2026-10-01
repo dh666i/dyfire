@@ -72,6 +72,22 @@ SPARK_REDIS_URL=redis://redis:6379/0
 docker compose --env-file .env.console -f compose.console.yml --profile redis up -d redis
 ```
 
+切入持久队列前，可以运行只读的队列预检。它会检查数据库任务领取所需的表、字段和 worker 分片配置；Redis 关闭时只报告 `disabled`，不会建立网络连接，也不会改变现有 worker 行为：
+
+```sh
+docker compose --env-file .env.console -f compose.console.yml \
+  exec spark-web python -m spark_console.cli queue-preflight
+```
+
+在隔离 Redis 上验证 ACL、consumer group 和确认权限时，再显式加入 `--probe-stream`。该探针使用随机临时 Stream 发布一条标记消息，读取并确认后删除，不会触碰真实任务队列：
+
+```sh
+docker compose --env-file .env.console -f compose.console.yml \
+  exec spark-web python -m spark_console.cli queue-preflight --probe-stream
+```
+
+探针通过后仍需完成 PostgreSQL 回放、发送幂等键、重复投递、故障降级和 worker 恢复演练，才可以逐步切换真实任务队列。
+
 正式启用前仍需单独完成 Redis 持久化、访问控制、故障降级和队列重复投递演练；不要仅因为 profile 能启动就把它切入生产发送链路。
 
 迁移已有站点时，必须同时保留数据库、cookie.key、session.key。不要对旧站直接执行新站初始化，也不要将新空目录替换已有数据卷。
