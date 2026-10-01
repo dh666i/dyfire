@@ -52,6 +52,7 @@ from spark_console.web.registration_routes import (
     build_registration_router,
     registration_client_key,
 )
+from spark_console.web.request_limits import RequestBodyLimitMiddleware
 from spark_console.web.subscription_routes import build_subscription_router
 
 
@@ -216,6 +217,7 @@ templates.env.filters["run_guidance"] = run_guidance
 
 def create_app(settings: Settings, engine: Engine) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_bytes)
     app.state.settings = settings
     app.state.engine = engine
 

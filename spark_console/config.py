@@ -18,6 +18,7 @@ class Settings:
     auth_poll_seconds: int = 1
     clock_offset_limit_seconds: int = 5
     secure_cookies: bool = True
+    max_request_bytes: int = 2 * 1024 * 1024
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Settings":
@@ -51,4 +52,7 @@ class Settings:
             ),
             secure_cookies=environ.get("SPARK_SECURE_COOKIES", "true").strip().lower()
             not in {"0", "false", "no", "off"},
+            max_request_bytes=int(
+                environ.get("SPARK_MAX_REQUEST_BYTES", str(2 * 1024 * 1024))
+            ),
         )
