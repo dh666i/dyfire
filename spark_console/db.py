@@ -120,6 +120,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (9, "redemption_code_retrieval", _upgrade_sqlite_redemption_code_retrieval),
         (10, "scale_query_indexes", _upgrade_sqlite_scale_query_indexes),
         (11, "account_dispatch_shards", _upgrade_sqlite_account_dispatch_shards),
+        (12, "retention_query_indexes", _upgrade_sqlite_retention_query_indexes),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -207,6 +208,9 @@ def _upgrade_sqlite_scale_query_indexes(connection: Connection) -> None:
         ("ix_task_runs_status_scheduled", "task_runs", "status, scheduled_for"),
         ("ix_task_runs_task_scheduled_status", "task_runs", "task_id, scheduled_for, status"),
         ("ix_audit_events_created_action", "audit_events", "created_at, action"),
+        ("ix_douyin_login_sessions_status_finished", "douyin_login_sessions", "status, finished_at"),
+        ("ix_task_runs_status_finished", "task_runs", "status, finished_at"),
+        ("ix_mail_deliveries_status_updated", "mail_deliveries", "status, updated_at"),
     )
     for name, table, columns in indexes:
         connection.exec_driver_sql(
@@ -238,6 +242,19 @@ def _upgrade_sqlite_account_dispatch_shards(connection: Connection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
         "ON douyin_accounts (dispatch_key)"
     )
+
+
+def _upgrade_sqlite_retention_query_indexes(connection: Connection) -> None:
+    """Index terminal-record timestamps used by bounded retention passes."""
+    indexes = (
+        ("ix_douyin_login_sessions_status_finished", "douyin_login_sessions", "status, finished_at"),
+        ("ix_task_runs_status_finished", "task_runs", "status, finished_at"),
+        ("ix_mail_deliveries_status_updated", "mail_deliveries", "status, updated_at"),
+    )
+    for name, table, columns in indexes:
+        connection.exec_driver_sql(
+            f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"
+        )
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:

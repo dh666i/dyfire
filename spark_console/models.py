@@ -85,6 +85,9 @@ class MailAccountState(Base):
 
 class MailDelivery(Base):
     __tablename__ = 'mail_deliveries'
+    __table_args__ = (
+        Index("ix_mail_deliveries_status_updated", "status", "updated_at"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     event_key: Mapped[str] = mapped_column(String(512), unique=True)
     user_id: Mapped[str | None] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'), index=True)
@@ -355,6 +358,7 @@ class DouyinLoginSession(Base):
     __tablename__ = "douyin_login_sessions"
     __table_args__ = (
         Index("ix_douyin_login_sessions_status_expires", "status", "expires_at"),
+        Index("ix_douyin_login_sessions_status_finished", "status", "finished_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
@@ -498,6 +502,7 @@ class TaskRun(Base):
         Index("ix_task_runs_task_retry", "task_id", "retry_after"),
         Index("ix_task_runs_status_scheduled", "status", "scheduled_for"),
         Index("ix_task_runs_task_scheduled_status", "task_id", "scheduled_for", "status"),
+        Index("ix_task_runs_status_finished", "status", "finished_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)

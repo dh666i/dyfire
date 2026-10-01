@@ -15,6 +15,7 @@ from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.models import User
+from spark_console.retention import RetentionPolicy, retain
 from spark_console.security import PasswordService
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -128,6 +129,46 @@ def command_backup(args) -> int:
     return 0
 
 
+def _retention_as_of(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    candidate = value.strip()
+    if candidate.endswith("Z"):
+        candidate = candidate[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError as error:
+        raise SystemExit("--as-of 必须是 ISO 8601 时间，例如 2026-01-01T00:00:00+00:00") from error
+    if parsed.tzinfo is None:
+        raise SystemExit("--as-of 必须包含时区，例如 +00:00 或 Z")
+    return parsed
+
+
+def command_retention(args) -> int:
+    """Plan (default) or apply bounded retention deletion."""
+    try:
+        policy = RetentionPolicy(
+            runs_days=args.runs_days,
+            sessions_days=args.sessions_days,
+            mail_days=args.mail_days,
+            audit_days=args.audit_days,
+            batch_size=args.batch_size,
+        )
+        as_of = _retention_as_of(args.as_of)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    _settings, engine = runtime()
+    with session_scope(engine) as db:
+        report = retain(
+            db,
+            policy,
+            dry_run=not args.apply,
+            now=as_of,
+        )
+    print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spark-console")
     commands = parser.add_subparsers(required=True)
@@ -135,6 +176,18 @@ def build_parser() -> argparse.ArgumentParser:
     user = commands.add_parser("create-user"); user.add_argument("username"); user.set_defaults(handler=command_create_user)
     legacy = commands.add_parser("import-legacy"); legacy.add_argument("path"); legacy.add_argument("--owner", required=True); legacy.add_argument("--time", default="09:00"); legacy.add_argument("--message", default="今日火花"); legacy.set_defaults(handler=command_import_legacy)
     backup = commands.add_parser("backup-db"); backup.add_argument("--keep", type=int, default=7); backup.set_defaults(handler=command_backup)
+    retention = commands.add_parser(
+        "retention",
+        help="清理已过期的终态记录；默认只预览，不删除",
+    )
+    retention.add_argument("--apply", action="store_true", help="确认执行删除")
+    retention.add_argument("--runs-days", type=int, default=90, help="执行记录保留天数")
+    retention.add_argument("--sessions-days", type=int, default=30, help="登录会话保留天数")
+    retention.add_argument("--mail-days", type=int, default=30, help="邮件记录保留天数")
+    retention.add_argument("--audit-days", type=int, default=365, help="审计记录保留天数")
+    retention.add_argument("--batch-size", type=int, default=500, help="本次每类最多删除的记录数；后续运行继续清理积压")
+    retention.add_argument("--as-of", help="按指定 ISO 8601 时间计算，必须带时区")
+    retention.set_defaults(handler=command_retention)
     return parser
 
 

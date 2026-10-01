@@ -25,6 +25,22 @@ docker compose --env-file .env.console -f compose.console.yml up -d
 docker compose --env-file .env.console -f compose.console.yml exec spark-web python -m spark_console.cli create-admin admin@example.com
 ```
 
+### 数据保留维护
+
+`retention` 命令用于定期清理已过期的历史执行、登录会话、邮件投递和审计记录。默认是 **dry-run**，只输出 JSON 统计，不会删除数据；确认窗口和结果后才加 `--apply`。它会分批执行，并且始终保留执行中的任务、等待重试和“已提交待核实”记录、活跃扫码会话、排队/发送中/结果不确定的邮件，以及未过期的网页会话。
+
+```sh
+# 先预览（默认：执行记录 90 天、会话 30 天、邮件 30 天、审计 365 天）
+docker compose --env-file .env.console -f compose.console.yml exec spark-web \
+  python -m spark_console.cli retention
+
+# 明确确认后执行；每批最多处理 500 条
+docker compose --env-file .env.console -f compose.console.yml exec spark-web \
+  python -m spark_console.cli retention --apply
+```
+
+生产环境建议由宿主机定时任务调用，先保存 dry-run 输出，再在低峰期执行 `--apply`。可使用 `--runs-days`、`--sessions-days`、`--mail-days`、`--audit-days` 和 `--batch-size` 调整窗口；所有参数都有上限，`--as-of` 仅用于可重复的演练且必须带时区。该命令不会删除用户、任务、账号、订阅或兑换码。
+
 使用反向代理提供 HTTPS；默认仅在 127.0.0.1:8899 监听。绑定账号和发送任务需要 auth、worker 服务在线。新部署先创建管理员，再登录；不会预置默认密码。
 
 迁移已有站点时，必须同时保留数据库、cookie.key、session.key。不要对旧站直接执行新站初始化，也不要将新空目录替换已有数据卷。
