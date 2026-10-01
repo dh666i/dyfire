@@ -420,11 +420,11 @@ def install(target, operation_id=''):
     backup.mkdir(parents=True, mode=0o700)
     write_state(phase='stopping', message='等待当前操作结束并停止服务')
     # Generous grace period; all data writers stop before backup.
+    # Pulling can take a long time on a small host. Re-check immediately
+    # before entering the recovery block so a newly active operation is
+    # rejected without running the recovery ``compose up`` path.
+    assert_no_active_operations(data_dir)
     try:
-        # Pulling can take a long time on a small host. Re-check immediately
-        # before stopping services so work that started during the pull is
-        # never interrupted by the update switch.
-        assert_no_active_operations(data_dir)
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
         shutil.copytree(data_dir, backup / 'data')
         shutil.copy2(current_file, backup / 'installed.json')
@@ -504,11 +504,12 @@ def rollback(target='', operation_id=''):
     assert_no_active_operations(data_dir)
     write_state(phase='rollback_pulling', message='正在下载回滚版本', rollback_version=selected['version'], operation_id=operation_id)
     compose(selected['image'], 'pull', *SERVICES)
+    # As with a normal install, do not stop services if a send or login
+    # operation began while the rollback image was downloading. Keep this
+    # outside the recovery block so rejection cannot trigger ``compose up``.
+    assert_no_active_operations(data_dir)
     try:
         write_state(phase='rollback', message='正在切换回滚版本')
-        # As with a normal install, do not stop services if a send or login
-        # operation began while the rollback image was downloading.
-        assert_no_active_operations(data_dir)
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
         compose(selected['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(selected['version'])

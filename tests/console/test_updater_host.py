@@ -122,6 +122,27 @@ def test_rollback_refuses_active_send_or_login_before_stopping(host, monkeypatch
     assert calls == []
 
 
+def test_rollback_rechecks_after_pull_without_recovery_switch(host, monkeypatch):
+    module, _previous, _target, calls = host
+    releases = [
+        {'version': '0.1.9', 'image': module.IMAGE + '@sha256:' + 'c' * 64},
+    ]
+    monkeypatch.setattr(module, 'rollback_versions', lambda _current: releases)
+
+    def pull_then_become_busy(*args):
+        calls.append(args)
+        if args[1] == 'pull':
+            with sqlite3.connect(module.ROOT / 'data/spark.db') as db:
+                db.execute("INSERT INTO task_runs VALUES ('running')")
+
+    monkeypatch.setattr(module, 'compose', pull_then_become_busy)
+    with pytest.raises(ValueError, match='扫码或发送'):
+        module.rollback()
+    # The late guard must reject before stop/up and therefore must not invoke
+    # the recovery branch, which could otherwise restart services needlessly.
+    assert calls == [(releases[0]['image'], 'pull', *module.SERVICES)]
+
+
 def test_release_manifest_must_match_tag_and_digest(host):
     module, *_ = host
     manifest = json.dumps({
