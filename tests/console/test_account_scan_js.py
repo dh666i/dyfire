@@ -35,6 +35,9 @@ class AccountScanJavaScriptTests(unittest.TestCase):
     def test_cancel_during_pending_start_cancels_returned_scan_before_hiding(self):
         self.run_scenario("pending-cancel")
 
+    def test_request_timeout_surfaces_without_leaving_scan_busy(self):
+        self.run_scenario("request-timeout")
+
     def test_cancel_failure_stays_visible_allows_retry_and_resumes_polling(self):
         self.run_scenario("active-cancel-failure")
 

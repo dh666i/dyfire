@@ -14,7 +14,30 @@
   const INTERACTION_FALLBACK_WAIT_MS = 6000;
   const INTERACTION_SETTLE_LOCK_MS = 1500;
   const MAX_BROWSER_TEXT_LENGTH = 256;
+  const REQUEST_TIMEOUT_MS = 15000;
   const csrfToken = root.dataset.csrfToken || "";
+
+  async function request(url, options = {}, timeout = REQUEST_TIMEOUT_MS) {
+    if (typeof AbortController !== "function") return fetch(url, options);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
+    try {
+      return await fetch(url, {...options, signal: controller.signal});
+    } catch (error) {
+      if (timedOut) {
+        const timeoutError = new Error("请求超时，请检查网络后重试");
+        timeoutError.code = "TIMEOUT";
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
 
   const startButton = document.querySelector("#scan-start");
   const reloginButtons = Array.from(document.querySelectorAll("[data-scan-account-id]"));
@@ -446,7 +469,7 @@
   async function pollScan() {
     if (!scanId || closeRequested || cancelPending) return;
     try {
-      const response = await fetch(
+      const response = await request(
         `/accounts/scan/${encodeURIComponent(scanId)}`,
         {cache: "no-store", credentials: "same-origin"},
       );
@@ -499,7 +522,7 @@
     try {
       const body = new URLSearchParams({csrf_token: csrfToken});
       if (targetAccountId) body.set("account_id", targetAccountId);
-      const response = await fetch("/accounts/scan", {
+      const response = await request("/accounts/scan", {
         method: "POST",
         credentials: "same-origin",
         headers: {"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
@@ -564,7 +587,7 @@
     if (closeButton) closeButton.disabled = true;
     showMessage(isRelogin() ? "正在取消重新登录" : "正在取消绑定", 0);
     try {
-      const response = await fetch(
+      const response = await request(
         `/accounts/scan/${encodeURIComponent(scanId)}/cancel`,
         {
           method: "POST",
@@ -687,7 +710,7 @@
     const targetScanId = scanId;
     clickPending = true;
     try {
-      const response = await fetch(
+      const response = await request(
         `/accounts/scan/${encodeURIComponent(targetScanId)}/interact`,
         {
           method: "POST",
@@ -846,7 +869,7 @@
       return;
     }
     try {
-      const response = await fetch(interaction.statusUrl, {
+      const response = await request(interaction.statusUrl, {
         cache: "no-store",
         credentials: "same-origin",
       });
@@ -922,7 +945,7 @@
     );
     let response = null;
     try {
-      response = await fetch(
+      response = await request(
         `/accounts/scan/${encodeURIComponent(targetScanId)}/interact`,
         {
           method: "POST",

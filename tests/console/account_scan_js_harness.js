@@ -301,6 +301,23 @@ async function pendingIntent(controlSelector) {
   assert(timers.size === 0, "polling remained scheduled after cancellation");
 }
 
+async function requestTimeout() {
+  const {elements, timers} = createEnvironment((url, options = {}) => new Promise((resolve, reject) => {
+    assert(options.signal, `request ${url} did not provide an abort signal`);
+    options.signal.addEventListener("abort", () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    }, {once: true});
+  }));
+  const task = elements["#scan-start"].emit("click");
+  await flush();
+  takeTimer(timers, 15000)();
+  await task;
+  assert(elements["#scan-status"].textContent === "请求超时，请检查网络后重试", "scan timeout was not surfaced");
+  assert(elements["#scan-result"].hidden === false, "scan timeout did not show the result state");
+}
+
 async function activeCancelFailure() {
   let cancelAttempt = 0;
   const {elements, timers} = createEnvironment(async (url) => {
@@ -1209,6 +1226,7 @@ async function main() {
   const scenario = process.argv[2];
   if (scenario === "pending-close") await pendingIntent("#scan-close");
   else if (scenario === "pending-cancel") await pendingIntent("#scan-cancel");
+  else if (scenario === "request-timeout") await requestTimeout();
   else if (scenario === "active-cancel-failure") await activeCancelFailure();
   else if (scenario === "pending-start-failure") await pendingStartFailure();
   else if (scenario === "live-view-refresh") await liveViewSkipsUnchangedRevision();
