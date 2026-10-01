@@ -1,4 +1,5 @@
 import hashlib
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -6,15 +7,17 @@ from pathlib import Path
 from urllib.parse import unquote, unquote_plus
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 
 from spark_console.config import Settings
 from spark_console.db import create_schema, session_scope
-from spark_console.models import MailPreference, PasswordReset, User, WebSession, utc_now
+from spark_console.models import MailDelivery, MailPreference, MailSettings, PasswordReset, User, WebSession, utc_now
 from spark_console.security import PasswordService, SessionService
 from spark_console.web.registration_routes import registration_client_key
 from starlette.requests import Request
 from spark_console.web.app import create_app
+from spark_console.crypto import CookieCipher
+from spark_console.services import mail
 
 
 class PasswordPolicyWebTests(unittest.TestCase):
@@ -267,6 +270,35 @@ class PasswordPolicyWebTests(unittest.TestCase):
             user = db.get(User, self.user_id)
             self.assertFalse(user.must_change_password)
             self.assertTrue(self.passwords.verify(user.password_hash, "Recovered-123"))
+
+    def test_new_recovery_code_has_12_hex_characters(self):
+        cipher = CookieCipher(self.settings.cookie_key_file.read_bytes())
+        config = dict(mail.DEFAULTS)
+        config["enabled"] = True
+        encrypted = cipher.encrypt(json.dumps(config).encode())
+        with session_scope(self.engine) as db:
+            user = db.get(User, self.user_id)
+            db.add(MailSettings(
+                id=1,
+                ciphertext=encrypted.ciphertext,
+                nonce=encrypted.nonce,
+            ))
+            db.add(MailPreference(
+                user_id=user.id,
+                email="policy@example.com",
+                verified=True,
+                enabled=True,
+            ))
+        response = self.client.post(
+            "/forgot-password",
+            data={"username": "policy-user", "email": "policy@example.com"},
+        )
+        self.assertEqual(200, response.status_code)
+        with session_scope(self.engine) as db:
+            delivery = db.scalar(select(MailDelivery).where(MailDelivery.event == "reset"))
+            self.assertIsNotNone(delivery)
+            code = delivery.body.split("重置代码：", 1)[1].splitlines()[0]
+            self.assertRegex(code, r"^[0-9A-F]{12}$")
 
 
 if __name__ == "__main__":

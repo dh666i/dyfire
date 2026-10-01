@@ -107,6 +107,21 @@ def test_rollback_selects_the_newest_allowed_release(host, monkeypatch):
     assert module.STATE['phase'] == 'rollback_complete'
 
 
+def test_rollback_refuses_active_send_or_login_before_stopping(host, monkeypatch):
+    module, _previous, _target, calls = host
+    releases = [
+        {'version': '0.1.9', 'image': module.IMAGE + '@sha256:' + 'c' * 64},
+    ]
+    monkeypatch.setattr(module, 'rollback_versions', lambda _current: releases)
+    with sqlite3.connect(module.ROOT / 'data/spark.db') as db:
+        db.execute("INSERT INTO task_runs VALUES ('running')")
+        db.execute("INSERT INTO douyin_login_sessions VALUES ('queued')")
+    with pytest.raises(ValueError, match='扫码或发送'):
+        module.rollback()
+    # A rejected rollback must not pull or stop any service.
+    assert calls == []
+
+
 def test_release_manifest_must_match_tag_and_digest(host):
     module, *_ = host
     manifest = json.dumps({

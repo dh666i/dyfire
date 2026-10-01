@@ -359,6 +359,30 @@ def resolve_data_dir():
     return source
 
 
+def assert_no_active_operations(data_dir):
+    """Refuse an image switch while sending or login recovery is in flight.
+
+    Both install and rollback stop the worker and auth services.  Keeping this
+    guard in one function prevents rollback from accidentally bypassing the
+    same protection as a normal update.  The database is opened read-only so
+    the updater cannot mutate production task, account, or login state while
+    it is deciding whether a switch is safe.
+    """
+    import sqlite3
+
+    database = Path(data_dir) / 'spark.db'
+    with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as db:
+        active = db.execute(
+            "SELECT count(*) FROM task_runs WHERE status='running'"
+        ).fetchone()[0]
+        active += db.execute(
+            "SELECT count(*) FROM douyin_login_sessions "
+            "WHERE status NOT IN ('succeeded','failed','expired','cancelled')"
+        ).fetchone()[0]
+    if active:
+        raise ValueError('当前仍有扫码或发送操作，请完成后再更新')
+
+
 def ready(expected):
     for _ in range(45):
         write_state()
@@ -389,13 +413,7 @@ def install(target, operation_id=''):
     required = sum(p.stat().st_size for p in data_dir.rglob('*') if p.is_file())
     if shutil.disk_usage(ROOT).free < required + 2 * 1024**3:
         raise ValueError('备份空间不足，请清理磁盘后重试')
-    import sqlite3
-    database = data_dir / 'spark.db'
-    with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as db:
-        active = db.execute("SELECT count(*) FROM task_runs WHERE status='running'").fetchone()[0]
-        active += db.execute("SELECT count(*) FROM douyin_login_sessions WHERE status NOT IN ('succeeded','failed','expired','cancelled')").fetchone()[0]
-    if active:
-        raise ValueError('当前仍有扫码或发送操作，请完成后再更新')
+    assert_no_active_operations(data_dir)
     write_state(phase='pulling', message='正在下载版本', operation_id=operation_id)
     compose(release['image'], 'pull', *SERVICES)
     backup = ROOT / 'backups' / time.strftime('%Y%m%d-%H%M%S')
@@ -403,6 +421,10 @@ def install(target, operation_id=''):
     write_state(phase='stopping', message='等待当前操作结束并停止服务')
     # Generous grace period; all data writers stop before backup.
     try:
+        # Pulling can take a long time on a small host. Re-check immediately
+        # before stopping services so work that started during the pull is
+        # never interrupted by the update switch.
+        assert_no_active_operations(data_dir)
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
         shutil.copytree(data_dir, backup / 'data')
         shutil.copy2(current_file, backup / 'installed.json')
@@ -478,10 +500,15 @@ def rollback(target='', operation_id=''):
     if (current.get('schema') != selected.get('schema', 1)
             or not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', current.get('image', ''))):
         raise ValueError('当前安装记录不是本仓库的固定镜像')
+    data_dir = resolve_data_dir()
+    assert_no_active_operations(data_dir)
     write_state(phase='rollback_pulling', message='正在下载回滚版本', rollback_version=selected['version'], operation_id=operation_id)
     compose(selected['image'], 'pull', *SERVICES)
     try:
         write_state(phase='rollback', message='正在切换回滚版本')
+        # As with a normal install, do not stop services if a send or login
+        # operation began while the rollback image was downloading.
+        assert_no_active_operations(data_dir)
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
         compose(selected['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(selected['version'])

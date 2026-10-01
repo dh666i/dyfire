@@ -39,7 +39,11 @@ def build_password_recovery_router(engine,auth,cipher,passwords,page):
                 pref=db.get(MailPreference,user.id) if user else None
                 reset=db.get(PasswordReset,user.id) if user else None
                 if pref and pref.verified and pref.email==email.strip() and (not reset or aware(reset.created_at)<now-timedelta(minutes=1)):
-                    code=secrets.token_hex(4).upper()
+                    # A 12-character hexadecimal code gives 48 bits of
+                    # entropy while remaining easy to copy from email.  The
+                    # reset verifier intentionally accepts legacy 8-character
+                    # rows already issued before this change until they expire.
+                    code=secrets.token_hex(6).upper()
                     digest=hashlib.sha256((user.id+code).encode()).hexdigest()
                     db.merge(PasswordReset(user_id=user.id,digest=digest,created_at=now,expires_at=now+timedelta(minutes=10),attempts=0))
                     db.execute(update(MailDelivery).where(MailDelivery.user_id==user.id,MailDelivery.event=='reset',MailDelivery.status=='queued').values(status='cancelled'))
