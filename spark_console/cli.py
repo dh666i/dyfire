@@ -96,11 +96,17 @@ def command_backup(args) -> int:
     stale_temporary_name = re.compile(
         r"^spark-\d{8}T\d{12}Z\.db\.tmp$"
     )
+    stale_manifest_name = re.compile(
+        r"^spark-\d{8}T\d{12}Z\.db\.manifest\.json\.tmp$"
+    )
     stale_before = datetime.now(timezone.utc).timestamp() - 24 * 3600
     for stale in backup_dir.iterdir():
         if (
             stale.is_file()
-            and stale_temporary_name.fullmatch(stale.name)
+            and (
+                stale_temporary_name.fullmatch(stale.name)
+                or stale_manifest_name.fullmatch(stale.name)
+            )
             and stale.stat().st_mtime < stale_before
         ):
             stale.unlink()
