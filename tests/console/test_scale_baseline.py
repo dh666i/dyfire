@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -379,6 +380,51 @@ def test_customer_sql_count_does_not_grow_with_task_count(scale_fixture: ScaleFi
                 event.remove(fixture.engine, "before_cursor_execute", listener)
         assert select_counts[0] == select_counts[1]
         print("customer query count: %s tasks=1/9 SELECTs=%s" % (path, select_counts))
+
+
+def test_concurrent_read_only_workspaces_preserve_customer_isolation(
+    scale_fixture: ScaleFixture,
+):
+    """Exercise a small concurrent read burst without touching production data."""
+    fixture = scale_fixture
+    writes, listener = _count_writes(fixture.engine)
+    started = time.perf_counter()
+
+    def request(index: int):
+        token = fixture.customer_token if index % 2 == 0 else fixture.small_customer_token
+        with _client(fixture, token) as client:
+            workspace = client.get("/api/studio")
+            runs = client.get("/api/studio/runs", params={"page": 1})
+            bootstrap = client.get("/api/app/bootstrap")
+            return workspace, runs, bootstrap
+
+    try:
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            responses = list(pool.map(request, range(36)))
+    finally:
+        event.remove(fixture.engine, "before_cursor_execute", listener)
+
+    elapsed = time.perf_counter() - started
+    assert len(responses) == 36
+    assert all(response.status_code == 200 for group in responses for response in group), [
+        response.text for group in responses for response in group
+        if response.status_code != 200
+    ]
+    for index, (workspace, runs, bootstrap) in enumerate(responses):
+        expected_account = (
+            fixture.customer_account_id
+            if index % 2 == 0
+            else None
+        )
+        assert workspace.json()["accounts"]
+        if expected_account:
+            assert {item["id"] for item in workspace.json()["accounts"]} == {expected_account}
+        else:
+            assert all(item["id"] != fixture.customer_account_id for item in workspace.json()["accounts"])
+        assert runs.json()["total"] in {RUNS_PER_TASK, RUNS_PER_TASK * TASKS_PER_ACCOUNT}
+        assert bootstrap.json()["csrf"]
+    assert writes == []
+    print("concurrent read burst: requests=%d workers=12 elapsed=%.3fs" % (len(responses) * 3, elapsed))
 
 
 def test_customer_owner_isolation_and_read_preserves_bound_account_state(
