@@ -156,7 +156,10 @@ class DirectoryTests(unittest.TestCase):
             db.get(User, self.owner).role = 'admin'
         page = self.client.get('/api/admin/bootstrap?q=真实昵称')
         self.assertEqual(200, page.status_code)
-        groups = page.json()['groups']
+        self.assertEqual([], page.json()['groups'])
+        group_page = self.client.get('/api/admin/task-groups?q=真实昵称&status=disabled')
+        self.assertEqual(200, group_page.status_code)
+        groups = group_page.json()['items']
         self.assertEqual(1, len(groups))
         self.assertEqual('真实昵称', groups[0]['nickname'])
         self.assertNotIn('Friend 0', page.text)

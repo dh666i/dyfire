@@ -802,6 +802,16 @@ class AdminWebTests(unittest.TestCase):
         self.assertIsNone(row["expires_at"])
         self.assertEqual(1, codes.json()["pagination"]["total"])
 
+    def test_admin_bootstrap_defers_mail_settings_to_dedicated_endpoint(self):
+        bootstrap = self.real_client.get("/api/admin/bootstrap")
+        self.assertEqual(200, bootstrap.status_code, bootstrap.text)
+        self.assertEqual({}, bootstrap.json()["mail"])
+
+        mail = self.real_client.get("/api/admin/mail")
+        self.assertEqual(200, mail.status_code, mail.text)
+        self.assertFalse(mail.json()["enabled"])
+        self.assertIn("deliveries", mail.json())
+
     def test_react_admin_run_workbench_read_model_and_retry_security(self):
         from zoneinfo import ZoneInfo
 
