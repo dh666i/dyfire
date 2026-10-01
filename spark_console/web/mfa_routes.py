@@ -237,41 +237,6 @@ def build_mfa_router(
                 "recovery_codes_remaining": len(recovery_codes),
             }
 
-    @router.post("/api/auth/mfa/totp/recovery-codes/consume")
-    async def recovery_code_consume(request: Request):
-        """Consume a recovery code for a future MFA challenge flow.
-
-        This endpoint is deliberately separate from login: enabling recovery
-        storage must not silently alter existing sessions or authentication.
-        """
-        values = await _json(request)
-        with session_scope(engine) as db:
-            user, record = _admin(request, db)
-            auth.csrf(record, values.get("csrf_token", ""))
-            credential = db.get(AdminTotpCredential, user.id)
-            if credential is None or not credential.enabled:
-                raise HTTPException(409, "请先启用管理员验证器")
-            key = f"totp-recovery-consume:{user.id}:{registration_client_key(request)}"
-            if not limiter.allow(key):
-                raise HTTPException(429, "验证尝试过多，请稍后再试")
-            if not consume_recovery_code(db, user.id, values.get("code")):
-                limiter.record_failure(key)
-                AuditService(db).write(user.id, "auth.totp_recovery_code_failed", "user", user.id)
-                return JSONResponse(
-                    {"ok": False, "detail": "恢复码无效或已使用"}, status_code=403
-                )
-            limiter.clear(key)
-            AuditService(db).write(user.id, "auth.totp_recovery_code_used", "user", user.id)
-            remaining = len(
-                db.scalars(
-                    select(AdminTotpRecoveryCode.id).where(
-                        AdminTotpRecoveryCode.user_id == user.id,
-                        AdminTotpRecoveryCode.used_at.is_(None),
-                    )
-                ).all()
-            )
-            return {"ok": True, "recovery_codes_remaining": remaining}
-
     @router.post("/api/auth/mfa/totp/disable")
     async def totp_disable(request: Request):
         values = await _json(request)
@@ -303,15 +268,33 @@ def build_mfa_router(
                 totp_key = f"totp:{user.id}:{registration_client_key(request)}"
                 if not limiter.allow(totp_key):
                     raise HTTPException(429, "验证尝试过多，请稍后再试")
-                counter = verify_code(secret, values.get("code"), last_used_counter=credential.last_used_counter)
+                supplied_code = values.get("code")
+                counter = verify_code(
+                    secret,
+                    supplied_code,
+                    last_used_counter=credential.last_used_counter,
+                )
+                recovery_used = False
                 if counter is None:
+                    recovery_used = consume_recovery_code(
+                        db, user.id, values.get("recovery_code") or supplied_code
+                    )
+                if counter is None and not recovery_used:
                     limiter.record_failure(totp_key)
                     AuditService(db).write(user.id, "auth.totp_disable_failed", "user", user.id)
                     return JSONResponse(
                         {"ok": False, "detail": "需要有效的管理员验证码"}, status_code=403
                     )
                 limiter.clear(totp_key)
-                credential.last_used_counter = counter
+                if counter is not None:
+                    credential.last_used_counter = counter
+                if recovery_used:
+                    AuditService(db).write(
+                        user.id,
+                        "auth.totp_recovery_code_used",
+                        "user",
+                        user.id,
+                    )
             db.delete(credential)
             db.query(AdminTotpRecoveryCode).filter(
                 AdminTotpRecoveryCode.user_id == user.id

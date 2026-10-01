@@ -14,7 +14,6 @@ from spark_console.mfa import (
     CODE_DIGITS,
     RECOVERY_CODE_COUNT,
     TIME_STEP_SECONDS,
-    consume_recovery_code,
     generate_recovery_codes,
     provisioning_uri,
     recovery_code_matches,
@@ -203,17 +202,12 @@ class TotpEnrollmentWebTests(unittest.TestCase):
         self.assertEqual(RECOVERY_CODE_COUNT, len(issued))
         self.assertEqual(RECOVERY_CODE_COUNT, self.client.get("/api/auth/mfa/totp").json()["recovery_codes_remaining"])
         used = self.client.post(
-            "/api/auth/mfa/totp/recovery-codes/consume",
-            json={"csrf_token": bootstrap["csrf"], "code": issued[0]},
+            "/api/auth/mfa/totp/disable",
+            json={"csrf_token": bootstrap["csrf"], "password": "AdminPass-123", "recovery_code": issued[0]},
         )
         self.assertEqual(200, used.status_code, used.text)
-        self.assertEqual(RECOVERY_CODE_COUNT - 1, used.json()["recovery_codes_remaining"])
-        replay = self.client.post(
-            "/api/auth/mfa/totp/recovery-codes/consume",
-            json={"csrf_token": bootstrap["csrf"], "code": issued[0]},
-        )
-        self.assertEqual(403, replay.status_code)
-        self.assertEqual(RECOVERY_CODE_COUNT - 1, self.client.get("/api/auth/mfa/totp").json()["recovery_codes_remaining"])
+        self.assertFalse(used.json()["enabled"])
+        self.assertEqual(0, self.client.get("/api/auth/mfa/totp").json()["recovery_codes_remaining"])
 
     def test_regenerate_requires_password_and_totp_and_invalidates_old_codes(self):
         bootstrap = self._bootstrap()
@@ -224,13 +218,12 @@ class TotpEnrollmentWebTests(unittest.TestCase):
         secret = base64.b32decode(setup["secret"] + "=" * ((8 - len(setup["secret"]) % 8) % 8))
         module = __import__("spark_console.mfa", fromlist=["_code"])
         counter = int(time.time() // TIME_STEP_SECONDS)
-        self.assertEqual(
-            200,
-            self.client.post(
-                "/api/auth/mfa/totp/confirm",
-                json={"csrf_token": bootstrap["csrf"], "code": module._code(secret, counter)},
-            ).status_code,
+        confirmed = self.client.post(
+            "/api/auth/mfa/totp/confirm",
+            json={"csrf_token": bootstrap["csrf"], "code": module._code(secret, counter)},
         )
+        self.assertEqual(200, confirmed.status_code)
+        old_code_value = confirmed.json()["recovery_codes"][0]
         first_codes = self.client.post(
             "/api/auth/mfa/totp/recovery-codes/regenerate",
             json={"csrf_token": bootstrap["csrf"], "password": "bad", "code": module._code(secret, counter + 1)},
@@ -243,11 +236,16 @@ class TotpEnrollmentWebTests(unittest.TestCase):
         self.assertEqual(200, rotated.status_code, rotated.text)
         new_codes = rotated.json()["recovery_codes"]
         self.assertEqual(RECOVERY_CODE_COUNT, len(new_codes))
-        old = self.client.post(
-            "/api/auth/mfa/totp/recovery-codes/consume",
-            json={"csrf_token": bootstrap["csrf"], "code": new_codes[0]},
+        old_code = self.client.post(
+            "/api/auth/mfa/totp/disable",
+            json={"csrf_token": bootstrap["csrf"], "password": "AdminPass-123", "recovery_code": old_code_value},
         )
-        self.assertEqual(200, old.status_code)
+        self.assertEqual(403, old_code.status_code)
+        disabled = self.client.post(
+            "/api/auth/mfa/totp/disable",
+            json={"csrf_token": bootstrap["csrf"], "password": "AdminPass-123", "recovery_code": new_codes[0]},
+        )
+        self.assertEqual(200, disabled.status_code)
 
     def test_invalid_confirmation_is_audited_and_does_not_enable(self):
         bootstrap = self._bootstrap()
