@@ -1,6 +1,6 @@
 # Dyfire 全站专业化审计与扩容路线图
 
-审计基线：`main` 分支，版本 `0.3.8`。本文区分已经在代码中完成的改进、当前仍存在的限制，以及达到大规模商用前必须验收的工作。它不是容量承诺；在完成压测和故障演练前，不应对外宣称系统支持几十万用户。
+审计基线：`main` 分支，版本 `0.3.9`。本文区分已经在代码中完成的改进、当前仍存在的限制，以及达到大规模商用前必须验收的工作。它不是容量承诺；在完成压测和故障演练前，不应对外宣称系统支持几十万用户。
 
 ## 已完成的近期改进
 
@@ -21,6 +21,7 @@
 - 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存（使用部署的 `session.key`，轮换该密钥会同时使网页会话和 TOTP 密文失效，需重新 enrollment），setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；默认不会改变登录、现有 WebSession、密码 step-up、抖音 Cookie 或任务执行。启用 MFA 强制策略前，必须补管理界面、恢复码/丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
 - `SPARK_REQUIRE_ADMIN_STEP_UP=true` 时，后台写接口统一要求 step-up；前端会在 428 响应后请求密码并重试原操作。生产部署该开关前应确认管理员已使用包含验证面板的前端版本。
 - `queue-preflight` CLI 会只读检查数据库领取表、字段和 worker 分片配置；在显式传入 `--probe-stream` 时，才对 Redis 使用随机临时 Stream 做发布、消费、确认和清理。它不接管生产任务，也不改变默认数据库领取路径，可作为 PostgreSQL/Redis 分阶段切换前的运维门禁。
+- Compose 提供默认关闭的 `postgres` 隔离 profile，带 PostgreSQL 16 健康检查和持久卷；它只用于迁移回放、schema/claim 预检，默认 SQLite 服务不会自动连接或切换。
 - 已提供默认 dry-run 的 retention CLI，可分批清理终态执行、登录会话、邮件和审计记录，并保护活跃/待核实数据。
 - `deploy/recovery_drill.py` 提供隔离恢复演练：源备份只读，全新副本执行表集合、内容指纹、SQLite 完整性、外键、schema migration 和可选 Cookie 解密校验；默认删除临时副本，失败不会留下未验证数据库。
 - 移动端时间输入已设置单列布局、`min-width: 0` 和 `box-sizing`，应在真机和常见浏览器再次核验。

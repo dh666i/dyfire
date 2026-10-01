@@ -72,6 +72,18 @@ SPARK_REDIS_URL=redis://redis:6379/0
 docker compose --env-file .env.console -f compose.console.yml --profile redis up -d redis
 ```
 
+PostgreSQL 也提供默认关闭的隔离 profile，用于迁移回放和 schema/claim 预检。它不会自动改变现有 SQLite 服务：
+
+```sh
+docker compose --env-file .env.console -f compose.console.yml --profile postgres up -d postgres
+SPARK_DATABASE_URL=postgresql+psycopg://dyfire:change-me-in-isolation@postgres:5432/dyfire \
+  docker compose --env-file .env.console -f compose.console.yml --profile postgres run --rm --no-deps \
+  spark-web python -m spark_console.cli migrate-sqlite-postgres /data/spark.db \
+  --target 'postgresql+psycopg://dyfire:change-me-in-isolation@postgres:5432/dyfire'
+```
+
+迁移命令默认只读预检；只有完成备份、回放、Cookie 解密和任务计划一致性核验后才允许显式 `--apply`。不要把这个 profile 直接接到线上发送服务。
+
 切入持久队列前，可以运行只读的队列预检。它会检查数据库任务领取所需的表、字段和 worker 分片配置；Redis 关闭时只报告 `disabled`，不会建立网络连接，也不会改变现有 worker 行为：
 
 ```sh

@@ -22,6 +22,28 @@ x-common: &common
     options: {max-size: 10m, max-file: "3"}
 
 services:
+  # Optional PostgreSQL target for isolated migration/replay drills. It is
+  # never started by the default compose invocation and is not wired into the
+  # production SQLite services automatically.
+  postgres:
+    image: postgres:16-alpine
+    profiles: [postgres]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SPARK_POSTGRES_DB:-dyfire}
+      POSTGRES_USER: ${SPARK_POSTGRES_USER:-dyfire}
+      POSTGRES_PASSWORD: ${SPARK_POSTGRES_PASSWORD:-change-me-in-isolation}
+    networks: [spark-private]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    mem_limit: 512m
+    cpus: 0.50
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
   # Optional preparation service. It is never started by the default compose
   # invocation; enable it explicitly with --profile redis after setting
   # SPARK_REDIS_ENABLED=true and SPARK_REDIS_URL=redis://redis:6379/0.
@@ -120,6 +142,7 @@ services:
 volumes:
   spark-data:
   redis-data:
+  postgres-data:
 networks:
   spark-private:
     driver: bridge
