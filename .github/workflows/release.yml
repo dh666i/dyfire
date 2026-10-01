@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_password_policy_web.py tests/console/test_spa_bootstrap_perf.py tests/console/test_admin_web.py tests/console/test_services.py tests/console/test_config_db.py tests/console/test_crypto_security.py tests/test_deployment_paths.py -q
+      - run: python -m pytest tests/console/test_release_updates.py tests/console/test_scheduler_sql.py tests/console/test_studio_api.py tests/console/test_updater_host.py tests/console/test_password_policy_web.py tests/console/test_spa_bootstrap_perf.py tests/console/test_admin_web.py tests/console/test_services.py tests/console/test_config_db.py tests/console/test_crypto_security.py tests/test_deployment_paths.py -q
       - name: Validate version
         id: version
         shell: python

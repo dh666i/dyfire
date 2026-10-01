@@ -154,25 +154,21 @@ def _close_superseded_retries(session: Session, now_utc: datetime) -> None:
         )
 
 
-def claim_next_due_task(
-    session: Session, now: datetime, worker_id: str
-) -> TaskRun | None:
-    now_utc = _utc(now)
-    _close_superseded_retries(session, now_utc)
-    from spark_console.health_retry import queue_blocked_tasks
-    queue_blocked_tasks(session, now_utc)
-    _protect_expired_submissions(session, now_utc)
-    from spark_console.health_retry import claim as claim_health_retry
-    recovery = claim_health_retry(session, now_utc, worker_id)
-    if recovery is not None:
-        return recovery
-    reclaimed = _reclaim_expired_run(session, now_utc, worker_id)
-    if reclaimed is not None:
-        return reclaimed
+def _due_task_statement(now_utc: datetime):
+    """Build the ordered query for the next scheduler-eligible task.
 
+    Keeping this query separate lets PostgreSQL add a row-level claim lock
+    without changing the eligibility or fairness rules used by SQLite.
+    """
     recent_task = aliased(SparkTask)
-    last_owner_dispatch = select(func.max(TaskRun.started_at)).join(recent_task,TaskRun.task_id==recent_task.id).where(recent_task.owner_user_id==SparkTask.owner_user_id).correlate(SparkTask).scalar_subquery()
-    task = session.scalar(
+    last_owner_dispatch = (
+        select(func.max(TaskRun.started_at))
+        .join(recent_task, TaskRun.task_id == recent_task.id)
+        .where(recent_task.owner_user_id == SparkTask.owner_user_id)
+        .correlate(SparkTask)
+        .scalar_subquery()
+    )
+    return (
         select(SparkTask)
         .join(User, User.id == SparkTask.owner_user_id)
         .join(
@@ -196,17 +192,71 @@ def claim_next_due_task(
                 ),
             ),
             SparkTask.enabled.is_(True),
-            DouyinAccount.validation_state.not_in(('temporary', 'verification', 'invalid')),
-            ~exists().where(AccountOperation.account_id == DouyinAccount.id, AccountOperation.expires_at > now_utc),
-            ~exists().where(DouyinLoginSession.account_id == DouyinAccount.id, DouyinLoginSession.slot.is_not(None),
-                DouyinLoginSession.status.in_(('queued','loading_qr','awaiting_scan','confirming')), DouyinLoginSession.expires_at > now_utc),
+            DouyinAccount.validation_state.not_in(
+                ("temporary", "verification", "invalid")
+            ),
+            ~exists().where(
+                AccountOperation.account_id == DouyinAccount.id,
+                AccountOperation.expires_at > now_utc,
+            ),
+            ~exists().where(
+                DouyinLoginSession.account_id == DouyinAccount.id,
+                DouyinLoginSession.slot.is_not(None),
+                DouyinLoginSession.status.in_(
+                    ("queued", "loading_qr", "awaiting_scan", "confirming")
+                ),
+                DouyinLoginSession.expires_at > now_utc,
+            ),
             SparkTask.douyin_account_id.is_not(None),
             SparkTask.next_run_at.is_not(None),
             SparkTask.next_run_at <= now_utc,
         )
-        .order_by(SparkTask.next_run_at, func.coalesce(last_owner_dispatch,datetime(1970,1,1,tzinfo=timezone.utc)), SparkTask.id)
+        .order_by(
+            SparkTask.next_run_at,
+            func.coalesce(
+                last_owner_dispatch,
+                datetime(1970, 1, 1, tzinfo=timezone.utc),
+            ),
+            SparkTask.id,
+        )
         .limit(1)
     )
+
+
+def _apply_due_task_claim_lock(statement, dialect_name: str):
+    """Use PostgreSQL's non-blocking row claim while preserving SQLite SQL.
+
+    ``OF SparkTask`` is intentional: a scheduler worker claims one task row,
+    and should not lock the joined user, account, or subscription rows.  The
+    lock is held until the surrounding session commits after ``TaskRun`` is
+    inserted and ``next_run_at`` is advanced.
+    """
+    if dialect_name == "postgresql":
+        return statement.with_for_update(of=SparkTask, skip_locked=True)
+    return statement
+
+
+def claim_next_due_task(
+    session: Session, now: datetime, worker_id: str, *, shard: int = 0, shards: int = 1
+) -> TaskRun | None:
+    now_utc = _utc(now)
+    _close_superseded_retries(session, now_utc)
+    from spark_console.health_retry import queue_blocked_tasks
+    queue_blocked_tasks(session, now_utc)
+    _protect_expired_submissions(session, now_utc)
+    from spark_console.health_retry import claim as claim_health_retry
+    recovery = claim_health_retry(session, now_utc, worker_id)
+    if recovery is not None:
+        return recovery
+    reclaimed = _reclaim_expired_run(session, now_utc, worker_id)
+    if reclaimed is not None:
+        return reclaimed
+
+    due_task = _apply_due_task_claim_lock(
+        _due_task_statement(now_utc),
+        session.get_bind().dialect.name,
+    )
+    task = session.scalar(due_task)
     if task is None:
         return None
     scheduled_for = _utc(task.next_run_at)
