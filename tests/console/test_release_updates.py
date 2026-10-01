@@ -19,10 +19,13 @@ def setup(tmp_path, monkeypatch):
         def admin_context(self, request, db):
             if request.headers.get('Role') != 'admin':
                 raise HTTPException(404)
-            return SimpleNamespace(id='admin'), None, {}
+            return SimpleNamespace(id='admin', elevated=True), SimpleNamespace(), {}
         def csrf(self, record, value):
             if value != 'csrf':
                 raise HTTPException(403)
+        def require_elevated(self, record):
+            if not getattr(record, 'elevated', True):
+                raise HTTPException(428, '需要重新验证管理员密码')
     monkeypatch.setattr(update_routes, 'session_scope', session)
     monkeypatch.setenv('DYFIRE_UPDATE_DIR', str(tmp_path))
     (tmp_path / 'requests').mkdir()
