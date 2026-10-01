@@ -154,18 +154,61 @@ function mockApi(path, options={}) {
   return Promise.resolve({ok:true, message:'预览模式：操作已模拟'});
 }
 
+async function fetchWithTimeout(path, options={}, timeoutMs) {
+  // A stalled proxy or backend must resolve into an actionable UI error. The
+  // caller's AbortSignal is still honoured so route changes can cancel stale
+  // reads without turning them into timeout messages.
+  if (typeof AbortController !== 'function') return fetch(path, options);
+  const externalSignal = options.signal;
+  const controller = new AbortController();
+  let timedOut = false;
+  const forwardAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', forwardAbort, {once:true});
+  }
+  const timer = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(path, {...options, signal:controller.signal});
+  } catch (error) {
+    if (timedOut) {
+      const timeoutError = new Error(`请求超时（${Math.round(timeoutMs / 1000)} 秒），请检查网络后重试`);
+      timeoutError.code = 'TIMEOUT';
+      timeoutError.status = 408;
+      throw timeoutError;
+    }
+    if (error?.name === 'AbortError') throw error;
+    const networkError = new Error('网络连接失败，请检查网络后重试');
+    networkError.code = 'NETWORK_ERROR';
+    networkError.cause = error;
+    throw networkError;
+  } finally {
+    window.clearTimeout(timer);
+    externalSignal?.removeEventListener?.('abort', forwardAbort);
+  }
+}
+
 async function api(path, options={}) {
   if (previewRequested) return mockApi(path, options);
-  const {__stepUpRetry, ...fetchOptions} = options;
+  const {__stepUpRetry, timeoutMs: requestedTimeout, ...fetchOptions} = options;
+  const method = String(fetchOptions.method || 'GET').toUpperCase();
+  const requestTimeout = Number.isFinite(Number(requestedTimeout))
+    ? Math.max(1000, Number(requestedTimeout))
+    : (method === 'GET' ? 15000 : 25000);
   let response;
   try {
-    response = await fetch(path, {credentials:'same-origin', cache:'no-store', ...fetchOptions});
+    response = await fetchWithTimeout(path, {credentials:'same-origin', cache:'no-store', ...fetchOptions}, requestTimeout);
   } catch (error) {
-    if (import.meta.env.DEV) return mockApi(path, options);
+    // Vite's local proxy commonly has no backend during UI-only development;
+    // preserve that existing preview fallback while surfacing real timeouts.
+    if (import.meta.env.DEV && error?.code !== 'TIMEOUT') return mockApi(path, options);
     throw error;
   }
   if (response.status === 401) { window.location.assign('/login'); throw new Error('登录状态已过期'); }
-  const type = response.headers.get('content-type') || '';
+  const type = response.headers?.get?.('content-type') || '';
   const value = type.includes('application/json') ? await response.json() : await response.text();
   if (!response.ok) {
     // Vite returns a 5xx response when its local API proxy cannot reach the
@@ -177,7 +220,7 @@ async function api(path, options={}) {
     if (response.status === 428 && !__stepUpRetry && fetchOptions.method && fetchOptions.method !== 'GET') {
       const password = window.prompt('此管理员操作需要重新验证密码：');
       if (password) {
-        const bootstrap = await fetch('/api/auth/bootstrap', {credentials:'same-origin', cache:'no-store'});
+        const bootstrap = await fetchWithTimeout('/api/auth/bootstrap', {credentials:'same-origin', cache:'no-store'}, 15000);
         const authState = await bootstrap.json();
         await api('/api/auth/elevate', {
           method:'POST',
@@ -751,7 +794,7 @@ function Admin({data,onRefresh}) {
     else if(rawSection==='operations')setOperationsTab(requestedView==='diagnostics'||requestedView==='audit'?requestedView:'server');
   },[rawSection,requestedView]);
   useEffect(()=>{
-    if(baseSection==='users'&&userWorkspaceTab==='customers') api(`/api/admin/bootstrap?q=${encodeURIComponent(query)}&status=${encodeURIComponent(userStatusFilter)}&page=${usersPagination?.page||1}`).then(v=>{setUsers(v.users||[]);setUsersPagination(v.usersPagination||null)}).catch(()=>{});
+    if(baseSection==='users'&&userWorkspaceTab==='customers') api(`/api/admin/bootstrap?q=${encodeURIComponent(query)}&status=${encodeURIComponent(userStatusFilter)}&page=${usersPagination?.page||1}`).then(v=>{setUsers(v.users||[]);setUsersPagination(v.usersPagination||null)}).catch(e=>setFeedback(e.message));
     if(baseSection==='users'&&userWorkspaceTab==='subscriptions') api(`/api/admin/subscriptions?q=${encodeURIComponent(query)}&status=${encodeURIComponent(subscriptionStatusFilter)}&page=${subscriptionsPagination?.page||1}`).then(v=>{setSubscriptions(v.items||[]);setSubscriptionsPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
     if(baseSection==='users'&&userWorkspaceTab==='tasks'&&!isTaskGroup) api(`/api/admin/task-groups?q=${encodeURIComponent(query)}&status=${encodeURIComponent(taskStatusFilter)}&page=${taskGroupsPagination?.page||1}`).then(v=>{setTaskGroups(v.items||[]);setTaskGroupsPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
     if(baseSection==='operations'&&operationsTab==='audit') api(`/api/admin/audit?q=${encodeURIComponent(auditQuery)}&page=${auditPagination?.page||1}`).then(v=>{setAuditRows(v.items||[]);setAuditPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
