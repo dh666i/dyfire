@@ -19,6 +19,9 @@ from spark_console.services.tasks import TaskService
 from spark_console.web.membership import membership_summary
 
 
+STUDIO_BOOTSTRAP_PAGE_SIZE = 100
+
+
 class Target(BaseModel):
     name: str = Field(min_length=1, max_length=256)
     sec_uid: str = Field(default='', max_length=256)
@@ -50,8 +53,34 @@ def build_studio_router(engine, auth, cipher):
     def bootstrap(request: Request):
         with session_scope(engine) as db:
             user, record = auth.current(request, db)
-            accounts = db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)).all()
-            tasks = db.scalars(select(SparkTask).where(SparkTask.owner_user_id == user.id)).all()
+            accounts = db.scalars(
+                select(DouyinAccount)
+                .where(DouyinAccount.owner_user_id == user.id)
+                .order_by(DouyinAccount.created_at.desc(), DouyinAccount.id)
+                .limit(STUDIO_BOOTSTRAP_PAGE_SIZE)
+            ).all()
+            tasks = db.scalars(
+                select(SparkTask)
+                .where(SparkTask.owner_user_id == user.id)
+                .order_by(SparkTask.send_time, SparkTask.target_name, SparkTask.id)
+                .limit(STUDIO_BOOTSTRAP_PAGE_SIZE)
+            ).all()
+            account_total = int(
+                db.scalar(
+                    select(func.count(DouyinAccount.id)).where(
+                        DouyinAccount.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
+            task_total = int(
+                db.scalar(
+                    select(func.count(SparkTask.id)).where(
+                        SparkTask.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
             task_ids = [task.id for task in tasks]
             identities = {
                 identity.task_id: identity
@@ -83,6 +112,9 @@ def build_studio_router(engine, auth, cipher):
                 latest.setdefault(run.task_id, run.status)
             membership = membership_summary(db, user)
             return {'user': {'id': user.id, 'name': user.username, 'role': user.role}, 'csrf': record.csrf_token,
+                    'resource_limits': {'page_size': STUDIO_BOOTSTRAP_PAGE_SIZE, 'accounts_total': account_total,
+                                        'tasks_total': task_total, 'accounts_truncated': account_total > len(accounts),
+                                        'tasks_truncated': task_total > len(tasks)},
                     'accounts': [{'id': a.id, 'name': a.display_name, 'health': health[a.id]} for a in accounts],
                     'tasks': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id, 'sec_uid': (identity.sec_uid if (identity := identities.get(t.id)) else ''),
                                'time': t.send_time, 'kind': '续火花表情' if t.message_kind == 'douyin_sticker' else '文字消息',

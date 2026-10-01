@@ -58,6 +58,7 @@ from spark_console.web.app import run_view_status, run_guidance, shanghai_time, 
 # proportional to their complete task history. The dedicated tasks endpoint
 # below loads additional rows only when the task workspace asks for them.
 APP_BOOTSTRAP_PAGE_SIZE = 100
+WORKSPACE_LIST_PAGE_SIZE = 100
 
 
 def _task_payload(db, tasks):
@@ -828,11 +829,33 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             if user is None:
                 return JSONResponse({"detail": "用户不存在"}, status_code=404)
             accounts = db.scalars(
-                select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id).order_by(DouyinAccount.created_at.desc())
+                select(DouyinAccount)
+                .where(DouyinAccount.owner_user_id == user.id)
+                .order_by(DouyinAccount.created_at.desc(), DouyinAccount.id)
+                .limit(WORKSPACE_LIST_PAGE_SIZE)
             ).all()
             tasks = db.scalars(
-                select(SparkTask).where(SparkTask.owner_user_id == user.id).order_by(SparkTask.send_time, SparkTask.target_name)
+                select(SparkTask)
+                .where(SparkTask.owner_user_id == user.id)
+                .order_by(SparkTask.send_time, SparkTask.target_name, SparkTask.id)
+                .limit(WORKSPACE_LIST_PAGE_SIZE)
             ).all()
+            account_total = int(
+                db.scalar(
+                    select(func.count(DouyinAccount.id)).where(
+                        DouyinAccount.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
+            task_total = int(
+                db.scalar(
+                    select(func.count(SparkTask.id)).where(
+                        SparkTask.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
             task_ids = [task.id for task in tasks]
             identities = {
                 identity.task_id: identity
@@ -854,6 +877,13 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             return {
                 "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at), "admin_note": user.admin_note or ""},
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "is_admin")},
+                "resource_limits": {
+                    "page_size": WORKSPACE_LIST_PAGE_SIZE,
+                    "accounts_total": account_total,
+                    "tasks_total": task_total,
+                    "accounts_truncated": account_total > len(accounts),
+                    "tasks_truncated": task_total > len(tasks),
+                },
                 "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health.get(a.id, {})} for a in accounts],
                 "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": (identity.sec_uid if (identity := identities.get(t.id)) else ""), "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
                 "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
