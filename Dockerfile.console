@@ -16,14 +16,20 @@ WORKDIR /app
 COPY requirements.txt requirements-console.txt ./
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
-    && python3 -m venv /opt/venv \
-    && pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r requirements.txt -r requirements-console.txt \
-    && python -m playwright install --with-deps --only-shell chromium \
-    && useradd --create-home --uid 10001 --user-group spark \
-    && chmod -R a+rX /ms-playwright \
-    && rm -rf /var/lib/apt/lists/*
+USER root
+RUN set -eux; \
+    if [ ! -x /opt/venv/bin/python ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+      && python3 -m venv /opt/venv \
+      && pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r requirements.txt -r requirements-console.txt \
+      && python -m playwright install --with-deps --only-shell chromium; \
+    else \
+      /opt/venv/bin/pip install --no-cache-dir --index-url "$PIP_INDEX_URL" -r requirements.txt -r requirements-console.txt; \
+    fi; \
+    if ! id spark >/dev/null 2>&1; then useradd --create-home --uid 10001 --user-group spark; fi; \
+    chmod -R a+rX /ms-playwright; \
+    rm -rf /var/lib/apt/lists/*
 COPY --chown=spark:spark LICENSE /app/LICENSE
 COPY --chown=spark:spark VERSION /app/VERSION
 COPY --from=frontend --chown=spark:spark /frontend/dist /app/frontend/dist
