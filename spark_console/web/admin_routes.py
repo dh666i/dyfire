@@ -262,18 +262,19 @@ def _list_redemption_codes(
 
 def _worker_summary(db: Session) -> dict[str, object]:
     now = datetime.now(timezone.utc)
-    lock = db.get(WorkerLock, 1)
-    online = bool(
-        lock is not None
-        and lock.worker_id
-        and lock.lease_until is not None
-        and _aware(lock.lease_until) > now
-    )
+    locks = db.scalars(select(WorkerLock).order_by(WorkerLock.id)).all()
+    active = [
+        lock for lock in locks
+        if lock.worker_id and lock.lease_until and _aware(lock.lease_until) > now
+    ]
+    online = bool(active)
+    latest = max((_aware(lock.lease_until) for lock in active), default=None)
     return {
         "online": online,
         "status": "online" if online else "offline",
-        "worker_id": lock.worker_id if lock else None,
-        "lease_until": lock.lease_until if lock else None,
+        "worker_id": active[0].worker_id if len(active) == 1 else None,
+        "lease_until": latest,
+        "active_shards": [lock.id - 1 for lock in active],
     }
 
 

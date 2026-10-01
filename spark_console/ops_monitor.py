@@ -499,14 +499,18 @@ def _auth_service(settings: Settings, now: datetime) -> dict[str, Any]:
 
 
 def _worker_service(db: Session, now: datetime) -> dict[str, Any]:
-    lock = db.get(WorkerLock, 1)
-    lease_until = _aware(lock.lease_until) if lock and lock.lease_until else None
-    healthy = bool(lock and lock.worker_id and lease_until and lease_until > now)
+    locks = db.scalars(select(WorkerLock).order_by(WorkerLock.id)).all()
+    active = [
+        lock for lock in locks
+        if lock.worker_id and lock.lease_until and _aware(lock.lease_until) > now
+    ]
+    lease_until = max((_aware(lock.lease_until) for lock in active), default=None)
+    healthy = bool(active)
     return {
         "status": "healthy" if healthy else "offline",
         "label": "续火执行器",
         "detail": (
-            "数据库租约正常，未执行发送功能探测"
+            f"{len(active)} 个分片租约正常，未执行发送功能探测"
             if healthy
             else "当前没有有效执行租约"
         ),
@@ -514,6 +518,7 @@ def _worker_service(db: Session, now: datetime) -> dict[str, Any]:
         "lease_remaining_seconds": (
             max(0, int((lease_until - now).total_seconds())) if lease_until else None
         ),
+        "active_shards": [lock.id - 1 for lock in active],
     }
 
 
