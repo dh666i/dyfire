@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -108,6 +109,49 @@ def test_redis_primitives_against_service():
     assert backend.rate_limit_count(failure_key) == 1
     assert backend.clear_rate_limit(failure_key)
     assert backend.rate_limit_count(failure_key) == 0
+
+    # Admission and reservation share one Lua transaction, so many workers
+    # racing for a small failed-attempt budget can only enter the password
+    # verification path up to that budget. Reservations do not become failed
+    # attempts until committed.
+    concurrent_key = uuid.uuid4().hex
+    with ThreadPoolExecutor(max_workers=24) as executor:
+        reservations = list(
+            executor.map(
+                lambda _index: backend.reserve_failed_attempt(
+                    concurrent_key, limit=4, window_seconds=30
+                ),
+                range(24),
+            )
+        )
+    accepted = [token for token in reservations if token is not None]
+    assert len(accepted) == 4
+    assert backend.rate_limit_count(concurrent_key) == 0
+    for token in accepted:
+        assert backend.commit_failed_attempt(
+            concurrent_key, token, window_seconds=30
+        ) >= 1
+    assert backend.rate_limit_count(concurrent_key) == 4
+    assert backend.reserve_failed_attempt(
+        concurrent_key, limit=4, window_seconds=30
+    ) is None
+    assert backend.clear_rate_limit(concurrent_key)
+    assert backend.rate_limit_count(concurrent_key) == 0
+
+    # A successful credential check releases its own reservation and resets
+    # the prior failure window without leaving a pending slot behind.
+    success_key = uuid.uuid4().hex
+    success_reservation = backend.reserve_failed_attempt(
+        success_key, limit=2, window_seconds=30
+    )
+    assert success_reservation
+    assert backend.release_failed_attempt(
+        success_key, success_reservation, clear_failures=True
+    )
+    assert backend.rate_limit_count(success_key) == 0
+    assert backend.reserve_failed_attempt(
+        success_key, limit=2, window_seconds=30
+    )
     assert backend.claim_idempotency(key, "result", ttl_seconds=30)
     assert not backend.claim_idempotency(key, "other", ttl_seconds=30)
     assert backend.get_idempotency(key) == "result"

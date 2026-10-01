@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from math import ceil
@@ -82,33 +83,74 @@ class RedisRateLimiter:
         self.window = window
         self.window_seconds = window_seconds
         self.namespace = namespace
+        # A request calls allow() before authentication and then calls either
+        # record_failure() or clear(). Context-local storage keeps the Redis
+        # reservation tied to that request when several workers handle the
+        # same client key concurrently.
+        self._reservations: ContextVar[dict[str, str]] = ContextVar(
+            f"redis_rate_limit_reservations_{id(self)}", default={}
+        )
 
     def _key(self, key: str) -> str:
         return f"{self.namespace}:{key}"
 
     def allow(self, key: str) -> bool:
         try:
-            return self.backend.rate_limit_count(self._key(key)) < self.limit
+            token = self.backend.reserve_failed_attempt(
+                self._key(key),
+                limit=self.limit,
+                window_seconds=self.window_seconds,
+            )
+            if token is None:
+                return False
+            reservations = dict(self._reservations.get())
+            reservations[key] = token
+            self._reservations.set(reservations)
+            return True
         except Exception:
             return False
 
     def record_failure(self, key: str) -> None:
+        token = self._reservations.get().get(key)
         try:
-            self.backend.record_rate_limit_failure(
-                self._key(key), window_seconds=self.window_seconds
-            )
+            if token is not None:
+                self.backend.commit_failed_attempt(
+                    self._key(key), token, window_seconds=self.window_seconds
+                )
+            else:
+                # Preserve compatibility for callers that record a failure
+                # without a preceding allow() call.
+                self.backend.record_rate_limit_failure(
+                    self._key(key), window_seconds=self.window_seconds
+                )
         except Exception:
             # A failed write must not disable a limit that is already being
             # enforced; the next request remains fail-closed in ``allow``.
             return None
+        finally:
+            if token is not None:
+                reservations = dict(self._reservations.get())
+                reservations.pop(key, None)
+                self._reservations.set(reservations)
 
     def clear(self, key: str) -> None:
+        token = self._reservations.get().get(key)
         try:
-            self.backend.clear_rate_limit(self._key(key))
+            if token is not None:
+                self.backend.release_failed_attempt(
+                    self._key(key), token, clear_failures=True
+                )
+            else:
+                self.backend.clear_rate_limit(self._key(key))
         except Exception:
             # A reset failure must not disable the limiter. The next attempt
             # remains protected by the existing Redis counter.
             return None
+        finally:
+            if token is not None:
+                reservations = dict(self._reservations.get())
+                reservations.pop(key, None)
+                self._reservations.set(reservations)
 
 
 class RedisRequestLimiter:

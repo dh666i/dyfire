@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -96,6 +97,49 @@ end
 return current
 """
 
+_FAILED_ATTEMPT_RESERVE_SCRIPT = """
+local failures = tonumber(redis.call('GET', KEYS[1]) or '0')
+local pending = tonumber(redis.call('GET', KEYS[2]) or '0')
+local limit = tonumber(ARGV[1])
+if failures + pending >= limit then
+  return 0
+end
+redis.call('INCR', KEYS[2])
+redis.call('PEXPIRE', KEYS[2], ARGV[2])
+redis.call('SET', KEYS[3], '1', 'PX', ARGV[2])
+return 1
+"""
+
+_FAILED_ATTEMPT_COMMIT_SCRIPT = """
+if redis.call('GET', KEYS[3]) ~= '1' then
+  return 0
+end
+redis.call('DEL', KEYS[3])
+local pending = redis.call('DECR', KEYS[2])
+if pending <= 0 then
+  redis.call('DEL', KEYS[2])
+end
+local failures = redis.call('INCR', KEYS[1])
+if failures == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return failures
+"""
+
+_FAILED_ATTEMPT_RELEASE_SCRIPT = """
+if redis.call('GET', KEYS[3]) == '1' then
+  redis.call('DEL', KEYS[3])
+  local pending = redis.call('DECR', KEYS[2])
+  if pending <= 0 then
+    redis.call('DEL', KEYS[2])
+  end
+end
+if ARGV[1] == '1' then
+  redis.call('DEL', KEYS[1])
+end
+return 1
+"""
+
 
 class RedisBackend:
     """Lazy Redis client with explicit, atomic building blocks.
@@ -167,6 +211,21 @@ class RedisBackend:
             raise ValueError("Redis namespace and key contain unsupported characters")
         return f"{self._config.key_prefix}:{namespace}:{value}"
 
+    def _rate_keys(self, key: str, token: str | None = None) -> tuple[str, ...]:
+        """Build rate keys with a shared Redis Cluster hash tag."""
+        if not _KEY_COMPONENT.fullmatch(key):
+            raise ValueError("Redis namespace and key contain unsupported characters")
+        hash_tag = f"{{{key}}}"
+        keys = (
+            f"{self._config.key_prefix}:{hash_tag}:rate",
+            f"{self._config.key_prefix}:{hash_tag}:rate-pending",
+        )
+        if token is not None:
+            if not _KEY_COMPONENT.fullmatch(token):
+                raise ValueError("Redis namespace and key contain unsupported characters")
+            keys += (f"{self._config.key_prefix}:{hash_tag}:rate-reservation:{token}",)
+        return keys
+
     def ping(self) -> bool:
         """Check connectivity; only explicit Redis configurations connect."""
         try:
@@ -186,7 +245,7 @@ class RedisBackend:
                 client.eval(
                     _RATE_LIMIT_SCRIPT,
                     1,
-                    self._key("rate", key),
+                    self._rate_keys(key)[0],
                     int(window_seconds * 1000),
                 )
             )
@@ -202,7 +261,7 @@ class RedisBackend:
         disabled backends still fail before any client is initialized.
         """
         try:
-            return bool(self._require_client().delete(self._key("rate", key)))
+            return bool(self._require_client().delete(self._rate_keys(key)[0]))
         except RedisBackendError:
             raise
         except Exception as error:
@@ -213,7 +272,7 @@ class RedisBackend:
         try:
             return int(
                 self._require_client().eval(
-                    _RATE_LIMIT_COUNT_SCRIPT, 1, self._key("rate", key)
+                    _RATE_LIMIT_COUNT_SCRIPT, 1, self._rate_keys(key)[0]
                 )
             )
         except RedisBackendError:
@@ -230,7 +289,7 @@ class RedisBackend:
                 self._require_client().eval(
                     _RATE_LIMIT_SCRIPT,
                     1,
-                    self._key("rate", key),
+                    self._rate_keys(key)[0],
                     int(window_seconds * 1000),
                 )
             )
@@ -238,6 +297,80 @@ class RedisBackend:
             raise
         except Exception as error:
             raise RedisOperationError("Redis rate-limit failure record failed") from error
+
+    def reserve_failed_attempt(
+        self,
+        key: str,
+        *,
+        limit: int,
+        window_seconds: int,
+        reservation_seconds: int | None = None,
+    ) -> str | None:
+        """Reserve one failure slot atomically and return its release token.
+
+        Failed-attempt limiting has a two-step HTTP lifecycle: an admission
+        check precedes password verification, then the request either commits
+        a failure or releases the slot on success. Keeping the reservation in
+        Redis makes that lifecycle safe across workers while preserving the
+        existing failure-only semantics.
+        """
+        if limit < 1 or window_seconds < 1:
+            raise ValueError("rate limit and window must be positive")
+        ttl_seconds = reservation_seconds or window_seconds
+        if ttl_seconds < 1:
+            raise ValueError("reservation TTL must be positive")
+        token = secrets.token_hex(16)
+        try:
+            accepted = self._require_client().eval(
+                _FAILED_ATTEMPT_RESERVE_SCRIPT,
+                3,
+                *self._rate_keys(key, token),
+                int(limit),
+                int(ttl_seconds * 1000),
+            )
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis rate-limit reservation failed") from error
+        return token if int(accepted) == 1 else None
+
+    def commit_failed_attempt(
+        self, key: str, token: str, *, window_seconds: int
+    ) -> int:
+        """Commit a previously reserved failure and return its count."""
+        if window_seconds < 1:
+            raise ValueError("rate-limit window must be positive")
+        try:
+            return int(
+                self._require_client().eval(
+                    _FAILED_ATTEMPT_COMMIT_SCRIPT,
+                    3,
+                    *self._rate_keys(key, token),
+                    int(window_seconds * 1000),
+                )
+            )
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis rate-limit commit failed") from error
+
+    def release_failed_attempt(
+        self, key: str, token: str, *, clear_failures: bool = False
+    ) -> bool:
+        """Release one reservation, optionally clearing committed failures."""
+        try:
+            return bool(
+                self._require_client().eval(
+                    _FAILED_ATTEMPT_RELEASE_SCRIPT,
+                    3,
+                    *self._rate_keys(key, token),
+                    "1" if clear_failures else "0",
+                )
+            )
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis rate-limit release failed") from error
 
     def claim_idempotency(self, key: str, value: str, *, ttl_seconds: int) -> bool:
         """Store an idempotency result only if ``key`` is currently absent."""
