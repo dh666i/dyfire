@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -146,15 +146,26 @@ class TaskService:
             raise ValidationError("请至少选择一位目标好友")
         return [(target, stable_target) for target, stable_target in result]
 
-    def _active_schedule_targets(
+    def _active_schedule_conflict(
         self,
         account_id: str,
         send_time: str,
+        target_name: str,
+        target_sec_uid: str | None,
         *,
         exclude_task_id: str | None = None,
-    ) -> list[tuple[str, str | None]]:
+    ) -> bool:
+        """Check one schedule identity without materialising the account queue.
+
+        This is deliberately expressed as an existence query.  The previous
+        implementation loaded every active task for an account/time slot and
+        compared them in Python, so editing or re-enabling one task became
+        proportional to the user's complete task backlog.
+        """
+        normalized_name = normalize_target_name(target_name)
+        stable_target = normalize_target_identity(target_sec_uid)
         statement = (
-            select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
+            select(SparkTask.id)
             .outerjoin(
                 SparkTaskTargetIdentity,
                 SparkTaskTargetIdentity.task_id == SparkTask.id,
@@ -167,7 +178,25 @@ class TaskService:
         )
         if exclude_task_id is not None:
             statement = statement.where(SparkTask.id != exclude_task_id)
-        return list(self.session.execute(statement).all())
+        if stable_target:
+            # A stable identity conflicts only with itself.  Legacy/manual
+            # rows without a binding still conflict by display name.
+            statement = statement.where(
+                or_(
+                    SparkTaskTargetIdentity.sec_uid == stable_target,
+                    and_(
+                        SparkTaskTargetIdentity.sec_uid.is_(None),
+                        func.lower(SparkTask.target_name) == normalized_name,
+                    ),
+                )
+            )
+        else:
+            # Manual targets retain the historical display-name conflict rule,
+            # including rows that already carry a stable identity.
+            statement = statement.where(
+                func.lower(SparkTask.target_name) == normalized_name
+            )
+        return self.session.scalar(statement.limit(1)) is not None
 
     @staticmethod
     def _has_target_conflict(
@@ -265,6 +294,14 @@ class TaskService:
                     SparkTask.target_key == "",
                     SparkTask.target_key.like("legacy:%"),
                 ),
+                or_(
+                    func.lower(SparkTask.target_name).in_(candidate_names),
+                    SparkTaskTargetIdentity.sec_uid.in_({
+                        stable_target
+                        for _target, stable_target in normalized_targets
+                        if stable_target
+                    }),
+                ),
             )
         ).all())
         if any(
@@ -323,11 +360,12 @@ class TaskService:
                 raise ValidationError("抖音账号登录状态已失效，请先重新登录")
             binding = self.session.get(SparkTaskTargetIdentity, task.id)
             stable_target = binding.sec_uid if binding is not None else ""
-            existing_targets = self._active_schedule_targets(
-                account.id, task.send_time, exclude_task_id=task.id
-            )
-            if self._has_target_conflict(
-                existing_targets, task.target_name, stable_target
+            if self._active_schedule_conflict(
+                account.id,
+                task.send_time,
+                task.target_name,
+                stable_target,
+                exclude_task_id=task.id,
             ):
                 raise Conflict("相同账号、好友和时间的启用任务已存在")
             enabled_target_key = task_target_key(task.target_name, stable_target)
@@ -423,10 +461,13 @@ class TaskService:
             and old_canonical_key == new_canonical_key
         )
         if task.enabled and not schedule_identity_unchanged:
-            existing_targets = self._active_schedule_targets(
-                account.id, send_time, exclude_task_id=task.id
-            )
-            if self._has_target_conflict(existing_targets, target, stable_target):
+            if self._active_schedule_conflict(
+                account.id,
+                send_time,
+                target,
+                stable_target,
+                exclude_task_id=task.id,
+            ):
                 raise Conflict("相同账号、好友和时间的启用任务已存在")
 
         local_now = datetime.now(ZoneInfo("Asia/Shanghai"))

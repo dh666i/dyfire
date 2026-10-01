@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
 from sqlalchemy import select
@@ -10,6 +10,9 @@ from sqlalchemy.orm import Session
 from spark_console.models import User, WebSession
 from spark_console.security import SessionService
 from spark_console.web.membership import membership_summary
+
+
+STEP_UP_LIFETIME = timedelta(minutes=15)
 
 
 def _aware(value: datetime) -> datetime:
@@ -44,6 +47,27 @@ class WebAuth:
         # and turning an invalid request into a 500 response.
         if not isinstance(supplied, str) or not supplied or not secrets.compare_digest(record.csrf_token, supplied):
             raise HTTPException(403, "CSRF validation failed")
+
+    @staticmethod
+    def is_elevated(record: WebSession, now: datetime | None = None) -> bool:
+        """Return whether this browser session recently passed step-up auth.
+
+        The marker is deliberately attached to one session.  Elevating one
+        browser must never grant privilege to a user's other sessions.
+        """
+        elevated_until = record.elevated_until
+        if elevated_until is None:
+            return False
+        current = now or datetime.now(timezone.utc)
+        return _aware(elevated_until) > current
+
+    @classmethod
+    def require_elevated(
+        cls, record: WebSession, now: datetime | None = None
+    ) -> None:
+        """Require a recent password step-up for a sensitive admin action."""
+        if not cls.is_elevated(record, now=now):
+            raise HTTPException(428, "需要重新验证管理员密码")
 
     def user_context(
         self, request: Request, db: Session

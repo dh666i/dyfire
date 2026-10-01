@@ -60,6 +60,7 @@ from spark_console.web.request_limits import RequestBodyLimitMiddleware
 from spark_console.web.proxy_headers import TrustedProxyMiddleware
 from spark_console.web.request_context import RequestCorrelationMiddleware
 from spark_console.web.subscription_routes import build_subscription_router
+from spark_console.web.elevation_routes import build_elevation_router
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -284,9 +285,14 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 'csrf': record.csrf_token,
                 'username': user.username,
                 'must_change_password': bool(user.must_change_password),
+                'is_admin': user.role == 'admin',
+                'elevated': auth.is_elevated(record),
+                'elevated_until': record.elevated_until.isoformat() if record.elevated_until else None,
             }
     registration_limiter = FailedAttemptLimiter()
     login_limiter = FailedAttemptLimiter()
+    elevation_limiter = FailedAttemptLimiter(limit=5)
+    app.include_router(build_elevation_router(engine, auth, passwords, elevation_limiter))
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
     from spark_console.web.studio_routes import build_studio_router
     app.include_router(build_studio_router(engine, auth, cipher))

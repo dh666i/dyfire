@@ -413,6 +413,61 @@ class ServiceTests(unittest.TestCase):
                 target_sec_uid="stable-a",
             )
 
+    def test_schedule_conflict_checks_do_not_load_all_active_tasks(self):
+        """Editing/enabling stays bounded when an account has a large queue."""
+        self.session.add_all(
+            [
+                DouyinContactIdentity(
+                    account_id=self.account.id,
+                    sec_uid="bounded-a",
+                    nickname="好友甲",
+                ),
+                DouyinContactIdentity(
+                    account_id=self.account.id,
+                    sec_uid="bounded-b",
+                    nickname="好友乙",
+                ),
+            ]
+        )
+        self.session.flush()
+        first = self.tasks.create(
+            self.owner.id,
+            self.account.id,
+            "好友甲",
+            "09:00",
+            "今日火花",
+            target_sec_uid="bounded-a",
+        )
+        second = self.tasks.create(
+            self.owner.id,
+            self.account.id,
+            "好友乙",
+            "10:00",
+            "今日火花",
+            target_sec_uid="bounded-b",
+        )
+        # The old implementation materialised every task sharing the
+        # account/time slot and compared them in Python.  A large account must
+        # use the indexed existence query instead.
+        with patch.object(
+            self.tasks,
+            "_has_target_conflict",
+            side_effect=AssertionError("unbounded schedule read"),
+        ):
+            self.tasks.update_owned(
+                self.owner.id,
+                second.id,
+                self.account.id,
+                "好友乙",
+                "09:00",
+                "更新后的消息",
+                target_sec_uid="bounded-b",
+            )
+            self.tasks.set_enabled_owned(self.owner.id, second.id, False)
+            self.tasks.set_enabled_owned(self.owner.id, second.id, True)
+        self.assertEqual("09:00", second.send_time)
+        self.assertTrue(second.enabled)
+
     def test_target_name_accepts_256_characters_and_rejects_257(self):
         accepted = "友" * 256
         task = self.tasks.create(
