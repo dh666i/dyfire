@@ -233,8 +233,10 @@ def _snapshot(engine):
         for table in [*Base.metadata.sorted_tables, data_migration.SCHEMA_HISTORY]:
             records = []
             for row in connection.execute(select(table)):
+                record = data_migration._normalize_record(table, dict(row._mapping))
                 values = []
-                for value in row:
+                for column in table.columns:
+                    value = record[column.name]
                     if isinstance(value, datetime):
                         value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
                     elif isinstance(value, (bytearray, memoryview)):

@@ -35,6 +35,11 @@ from spark_console.models import (
 CURRENT_SQLITE_SCHEMA_VERSION = SQLITE_SCHEMA_VERSION
 DEFAULT_BATCH_SIZE = 1000
 MAX_BATCH_SIZE = 10000
+# Python's datetime cannot represent year 10000.  A PostgreSQL timestamptz
+# read in an east-of-UTC session can cross that boundary when a source uses
+# datetime.max as an "unlimited" expiry.  This UTC ceiling remains effectively
+# permanent while staying representable in every supported application zone.
+MAX_SAFE_UTC_DATETIME = datetime(9999, 12, 30, 23, 59, 59, 999999, tzinfo=timezone.utc)
 SCHEMA_HISTORY = Table(
     "schema_migrations",
     MetaData(),
@@ -315,11 +320,12 @@ def _normalize_record(table, record: dict[str, Any]) -> dict[str, Any]:
         value = record.get(column.name)
         if value is None or not isinstance(column.type, DateTime) or not isinstance(value, datetime):
             continue
-        record[column.name] = (
+        normalized = (
             value.replace(tzinfo=timezone.utc)
             if value.tzinfo is None
             else value.astimezone(timezone.utc)
         )
+        record[column.name] = min(normalized, MAX_SAFE_UTC_DATETIME)
     return record
 
 
