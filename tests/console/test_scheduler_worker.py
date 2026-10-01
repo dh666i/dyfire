@@ -24,6 +24,8 @@ from spark_console.models import (
     WorkerLock,
 )
 from spark_console.scheduler import (
+    MAX_SUBMISSION_PROTECTION_SCAN,
+    MAX_SUPERSEDED_RETRY_SCAN,
     _close_superseded_retries,
     _protect_expired_submissions,
     claim_next_due_task,
@@ -223,6 +225,59 @@ class SchedulerTests(unittest.TestCase):
 
         engine.dispose()
 
+    def test_submission_protection_processes_a_bounded_batch(self):
+        """A large crash backlog is drained over polls instead of one huge update."""
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        with Session(engine) as session:
+            user = User(username="submission-batch-owner", password_hash="hash", role="admin")
+            session.add(user)
+            session.flush()
+            account = DouyinAccount(
+                owner_user_id=user.id,
+                display_name="main",
+                encrypted_cookies=b"x",
+                cookie_nonce=b"n",
+            )
+            session.add(account)
+            session.flush()
+            for index in range(MAX_SUBMISSION_PROTECTION_SCAN + 1):
+                task = SparkTask(
+                    owner_user_id=user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"submission-batch-{index}",
+                    send_time="09:00",
+                    message_template="x",
+                    enabled=True,
+                )
+                session.add(task)
+                session.flush()
+                session.add(
+                    TaskRun(
+                        task_id=task.id,
+                        scheduled_for=now - timedelta(minutes=index + 1),
+                        status="running",
+                        stage="submitted",
+                        submitted_at=now - timedelta(minutes=index + 1),
+                        started_at=now - timedelta(minutes=index + 2),
+                        lease_until=now - timedelta(minutes=index + 3),
+                    )
+                )
+            session.commit()
+
+            _protect_expired_submissions(session, now)
+            session.flush()
+            protected = session.query(TaskRun).filter(TaskRun.status == "submitted_unconfirmed").count()
+            pending = session.query(TaskRun).filter(TaskRun.status == "running").count()
+            self.assertEqual(MAX_SUBMISSION_PROTECTION_SCAN, protected)
+            self.assertEqual(1, pending)
+
+            _protect_expired_submissions(session, now)
+            session.flush()
+            self.assertEqual(0, session.query(TaskRun).filter(TaskRun.status == "running").count())
+        engine.dispose()
+
     def test_sharded_superseded_retry_cleanup_does_not_update_another_shard(self):
         engine = create_engine("sqlite:///:memory:")
         create_schema(engine)
@@ -336,6 +391,66 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual("retry_superseded", old_retry.error_code)
         self.assertIsNone(old_retry.retry_after)
         session.close(); engine.dispose()
+
+    def test_superseded_retry_cleanup_processes_a_bounded_batch(self):
+        """Cleanup must not materialize an outage-sized retry backlog."""
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        with Session(engine) as session:
+            user = User(username="retry-batch-owner", password_hash="hash", role="admin")
+            session.add(user)
+            session.flush()
+            account = DouyinAccount(
+                owner_user_id=user.id,
+                display_name="main",
+                encrypted_cookies=b"x",
+                cookie_nonce=b"n",
+            )
+            session.add(account)
+            session.flush()
+            for index in range(MAX_SUPERSEDED_RETRY_SCAN + 1):
+                task = SparkTask(
+                    owner_user_id=user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"retry-batch-{index}",
+                    send_time="09:00",
+                    message_template="x",
+                    enabled=True,
+                )
+                session.add(task)
+                session.flush()
+                session.add_all(
+                    [
+                        TaskRun(
+                            task_id=task.id,
+                            scheduled_for=now - timedelta(days=2, minutes=index),
+                            status="retrying",
+                            stage="selecting_target",
+                            retry_after=now - timedelta(minutes=1),
+                        ),
+                        TaskRun(
+                            task_id=task.id,
+                            scheduled_for=now - timedelta(days=1, minutes=index),
+                            status="success",
+                            stage="complete",
+                            finished_at=now - timedelta(hours=1),
+                        ),
+                    ]
+                )
+            session.commit()
+
+            _close_superseded_retries(session, now)
+            session.flush()
+            closed = session.query(TaskRun).filter(TaskRun.error_code == "retry_superseded").count()
+            pending = session.query(TaskRun).filter(TaskRun.status == "retrying").count()
+            self.assertEqual(MAX_SUPERSEDED_RETRY_SCAN, closed)
+            self.assertEqual(1, pending)
+
+            _close_superseded_retries(session, now)
+            session.flush()
+            self.assertEqual(0, session.query(TaskRun).filter(TaskRun.status == "retrying").count())
+        engine.dispose()
 
     def test_expired_unsubmitted_run_is_reclaimed_without_creating_duplicate(self):
         engine = create_engine("sqlite:///:memory:")

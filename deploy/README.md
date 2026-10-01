@@ -25,3 +25,25 @@
 应用只会对直连 HTTPS 或已信任代理报告的 HTTPS 响应发送 HSTS。确认所有子域名都支持 HTTPS 后，才设置 `SPARK_HSTS_INCLUDE_SUBDOMAINS=true`；默认关闭该选项以免误锁定尚未迁移的子域名。
 
 安装 `dyfire-updater.service` 后，让 `/opt/dyfire/updates` 同时作为 Web 容器的只读状态目录和请求目录的宿主路径。完整更新前会检查正在运行的容器确实把 `/opt/dyfire` 下的数据目录绑定到 `/data`，避免误用旧卷路径。
+
+## 恢复演练
+
+备份文件不能只看文件存在或 SQLite 的单次完整性检查。可以在不接触线上数据库的情况下运行隔离恢复演练：
+
+```bash
+cd /opt/dyfire
+python3 deploy/recovery_drill.py \
+  data/backups/spark-20261001T120000000000Z.db \
+  --cookie-key secrets/cookie.key
+```
+
+命令以只读方式打开源备份，在临时目录创建全新副本，然后验证表集合、逐表内容指纹、SQLite 完整性、外键和 schema migration。提供 `--cookie-key` 后还会逐个验证现有账号 Cookie 可以解密；报告只包含数量和哈希，不输出 Cookie。默认副本在命令结束时删除；需要人工抽查时显式指定一个全新的 `--output` 路径：
+
+```bash
+python3 deploy/recovery_drill.py \
+  data/backups/spark-20261001T120000000000Z.db \
+  --cookie-key secrets/cookie.key \
+  --output /var/tmp/dyfire-recovery-check/restored.db
+```
+
+演练不会停止服务、写入源备份、覆盖 `/opt/dyfire/data/spark.db` 或自动回放任务。生产更新失败时更新器只恢复镜像并保留新的执行记录，这是为了避免恢复旧数据库造成重复发送；数据库恢复必须先在隔离目录完成本演练，再按人工审批和 RPO/RTO 流程执行。

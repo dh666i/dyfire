@@ -17,6 +17,7 @@
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
 - 已提供默认 dry-run 的 retention CLI，可分批清理终态执行、登录会话、邮件和审计记录，并保护活跃/待核实数据。
+- `deploy/recovery_drill.py` 提供隔离恢复演练：源备份只读，全新副本执行表集合、内容指纹、SQLite 完整性、外键、schema migration 和可选 Cookie 解密校验；默认删除临时副本，失败不会留下未验证数据库。
 - 移动端时间输入已设置单列布局、`min-width: 0` 和 `box-sizing`，应在真机和常见浏览器再次核验。
 
 ## P0：上线前必须解决

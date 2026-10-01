@@ -21,6 +21,12 @@ from spark_console.worker_sharding import validate_shard
 
 
 RUN_LEASE = timedelta(minutes=20)
+# Scheduler maintenance runs once per poll.  Keep each cleanup pass bounded so
+# a backlog created during an outage cannot turn one worker iteration into an
+# unbounded read or write transaction.  Rows left after the cap are handled by
+# the next poll.
+MAX_SUBMISSION_PROTECTION_SCAN = 100
+MAX_SUPERSEDED_RETRY_SCAN = 100
 
 
 def _utc(value: datetime) -> datetime:
@@ -56,13 +62,15 @@ def _protect_expired_submissions(
 ) -> None:
     """Never resend a run that crossed the submit boundary before a crash."""
     shard, shards = validate_shard(shard, shards)
-    statement = update(TaskRun).where(
+    candidate_statement = select(TaskRun.id).where(
         TaskRun.status == "running",
         or_(
             TaskRun.submitted_at.is_not(None),
             TaskRun.stage == "submitted",
         ),
         _expired_lease(now_utc),
+    ).order_by(TaskRun.lease_until, TaskRun.started_at, TaskRun.id).limit(
+        MAX_SUBMISSION_PROTECTION_SCAN
     )
     if shards > 1:
         owned_run_ids = (
@@ -82,9 +90,22 @@ def _protect_expired_submissions(
                 )
             )
         )
-        statement = statement.where(TaskRun.id.in_(owned_run_ids))
+        candidate_statement = candidate_statement.where(TaskRun.id.in_(owned_run_ids))
+    if session.get_bind().dialect.name == "postgresql":
+        candidate_statement = candidate_statement.with_for_update(skip_locked=True)
+    candidate_ids = list(session.scalars(candidate_statement))
+    if not candidate_ids:
+        return
     session.execute(
-        statement.values(
+        update(TaskRun).where(
+            TaskRun.id.in_(candidate_ids),
+            TaskRun.status == "running",
+            or_(
+                TaskRun.submitted_at.is_not(None),
+                TaskRun.stage == "submitted",
+            ),
+            _expired_lease(now_utc),
+        ).values(
             status="submitted_unconfirmed",
             stage="submitted",
             finished_at=now_utc,
@@ -184,7 +205,9 @@ def _close_superseded_retries(
             )
         )
     retrying = session.scalars(
-        statement.order_by(TaskRun.scheduled_for, TaskRun.id)
+        statement.order_by(TaskRun.scheduled_for, TaskRun.id).limit(
+            MAX_SUPERSEDED_RETRY_SCAN
+        )
     ).all()
     for run in retrying:
         later = session.scalar(
