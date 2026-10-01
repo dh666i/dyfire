@@ -681,7 +681,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at), "admin_note": user.admin_note or ""},
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "is_admin")},
                 "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health.get(a.id, {})} for a in accounts],
-                "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": identities[t.id].sec_uid if identities[t.id] else "", "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
+                "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": (identity.sec_uid if (identity := identities.get(t.id)) else ""), "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
                 "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
             }
 
