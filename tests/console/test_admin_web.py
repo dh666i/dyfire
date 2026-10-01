@@ -409,6 +409,80 @@ class AdminWebTests(unittest.TestCase):
         self.assertEqual(1, customer["today_success"])
         self.assertEqual(1, customer["today_failed"])
 
+    def test_customer_workbench_tolerates_legacy_tasks_without_identity_rows(self):
+        response = self.real_client.get(
+            f"/api/admin/users/{self.customer.id}/workspace"
+        )
+        self.assertEqual(200, response.status_code, response.text)
+        task = next(
+            item for item in response.json()["tasks"] if item["id"] == self.enabled_task_id
+        )
+        self.assertEqual("", task["sec_uid"])
+        self.assertEqual("no-store", response.headers["cache-control"])
+
+    def test_role_changes_revoke_existing_sessions_in_both_directions(self):
+        promotion = self.real_client.post(
+            f"/api/admin/users/{self.customer.id}/role",
+            json={"csrf_token": self.admin_csrf, "role": "admin"},
+        )
+        self.assertEqual(200, promotion.status_code, promotion.text)
+        self.assertEqual("admin", promotion.json()["role"])
+        with Session(self.engine) as db:
+            self.assertEqual("admin", db.get(User, self.customer.id).role)
+            self.assertIsNone(
+                db.scalar(select(WebSession).where(WebSession.user_id == self.customer.id))
+            )
+
+        # The cookie issued before promotion must not gain admin access or stay
+        # valid after the role change.
+        self.real_client.cookies.set("spark_session", self.customer_token)
+        self.assertEqual(401, self.real_client.get("/api/auth/bootstrap").status_code)
+        self.real_client.cookies.set("spark_session", self.admin_token)
+
+        # Issue a fresh session while promoted, then demote the user and make
+        # sure that newly-issued administrator sessions are revoked as well.
+        session_service = SessionService(self.settings.session_key_file.read_bytes())
+        promoted_token, promoted_session = session_service.create_record(self.customer.id)
+        with session_scope(self.engine) as db:
+            db.add(promoted_session)
+        demotion = self.real_client.post(
+            f"/api/admin/users/{self.customer.id}/role",
+            json={"csrf_token": self.admin_csrf, "role": "user"},
+        )
+        self.assertEqual(200, demotion.status_code, demotion.text)
+        self.assertEqual("user", demotion.json()["role"])
+        with Session(self.engine) as db:
+            self.assertEqual("user", db.get(User, self.customer.id).role)
+            self.assertIsNone(
+                db.scalar(select(WebSession).where(WebSession.user_id == self.customer.id))
+            )
+            events = db.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.action == "user.role_changed",
+                    AuditEvent.resource_id == self.customer.id,
+                )
+            ).all()
+            self.assertEqual(2, len(events))
+
+        self.real_client.cookies.set("spark_session", promoted_token)
+        self.assertEqual(401, self.real_client.get("/api/auth/bootstrap").status_code)
+        self.real_client.cookies.set("spark_session", self.admin_token)
+
+    def test_role_route_rejects_self_demotion_and_keeps_last_admin(self):
+        invalid_csrf = self.real_client.post(
+            f"/api/admin/users/{self.customer.id}/role",
+            json={"csrf_token": None, "role": "admin"},
+        )
+        self.assertEqual(403, invalid_csrf.status_code)
+        response = self.real_client.post(
+            f"/api/admin/users/{self.admin.id}/role",
+            json={"csrf_token": self.admin_csrf, "role": "user"},
+        )
+        self.assertEqual(400, response.status_code, response.text)
+        with Session(self.engine) as db:
+            self.assertEqual("admin", db.get(User, self.admin.id).role)
+            self.assertEqual(1, db.query(User).filter(User.role == "admin").count())
+
     def test_reset_password_requires_csrf_revokes_sessions_and_audits(self):
         rejected = self.client.post(
             f"/admin/users/{self.customer.id}/reset-password", data={}
@@ -694,7 +768,7 @@ class AdminWebTests(unittest.TestCase):
                 ))
             )
 
-    def test_admin_bootstrap_returns_full_redemption_code_and_redemption_date(self):
+    def test_admin_bootstrap_defers_redemption_codes_to_paginated_endpoint(self):
         created = self.real_client.post(
             "/api/admin/redemption-codes",
             json={
@@ -711,13 +785,22 @@ class AdminWebTests(unittest.TestCase):
 
         bootstrap = self.real_client.get("/api/admin/bootstrap")
         self.assertEqual(200, bootstrap.status_code, bootstrap.text)
+        # Codes are credentials and must not be included in every admin page
+        # bootstrap response. They are loaded only by the codes workbench.
+        self.assertEqual([], bootstrap.json()["redemptionCodes"])
+
+        codes = self.real_client.get(
+            "/api/admin/redemption-codes", params={"q": plaintext}
+        )
+        self.assertEqual(200, codes.status_code, codes.text)
         row = next(
-            item for item in bootstrap.json()["redemptionCodes"]
+            item for item in codes.json()["items"]
             if item["code"] == plaintext
         )
         self.assertEqual("待兑换", row["status"])
         self.assertIsNone(row["redeemed_at"])
         self.assertIsNone(row["expires_at"])
+        self.assertEqual(1, codes.json()["pagination"]["total"])
 
     def test_react_admin_run_workbench_read_model_and_retry_security(self):
         from zoneinfo import ZoneInfo

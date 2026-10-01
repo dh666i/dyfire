@@ -56,6 +56,7 @@ class RequestBodyLimitMiddleware:
 
         total = 0
         too_large = False
+        response_started = False
 
         async def limited_receive() -> Message:
             nonlocal total, too_large
@@ -72,8 +73,12 @@ class RequestBodyLimitMiddleware:
             return message
 
         async def guarded_send(message: Message) -> None:
-            if not too_large:
-                await send(message)
+            nonlocal response_started
+            if too_large:
+                return
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
 
         try:
             await self.app(scope, limited_receive, guarded_send)
@@ -83,5 +88,5 @@ class RequestBodyLimitMiddleware:
             # unrelated application errors continue through normal handling.
             if not too_large:
                 raise
-        if too_large:
+        if too_large and not response_started:
             await self._too_large(send)

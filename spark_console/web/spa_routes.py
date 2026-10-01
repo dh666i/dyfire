@@ -4,13 +4,14 @@ The existing command and automation endpoints remain the source of truth.  These
 small read models keep the browser shell independent from the legacy templates
 without duplicating any task or account mutation logic.
 """
+import math
 from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 
 from spark_console.db import session_scope
 from spark_console.models import (
@@ -35,7 +36,12 @@ from spark_console.services.audits import AuditService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.users import UserService
 from spark_console.security import PasswordService
-from spark_console.services.subscriptions import SubscriptionService, pricing_plans, task_limit_label
+from spark_console.services.subscriptions import (
+    NEVER_EXPIRES_AT,
+    SubscriptionService,
+    pricing_plans,
+    task_limit_label,
+)
 from spark_console.web.membership import membership_summary
 from spark_console.web.auth import WebAuth
 from spark_console.web.admin_queries import admin_stats, list_audit_events, list_runs, list_subscriptions, list_users
@@ -255,14 +261,6 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             groups, pagination = list_task_groups(db, q=q, status="", page=1)
             subscriptions, subscriptions_page = list_subscriptions(db, page=1)
             audit_rows, audit_page = list_audit_events(db, page=1)
-            redemption_codes = db.scalars(
-                select(RedemptionCode).order_by(RedemptionCode.created_at.desc()).limit(50)
-            ).all()
-            redeemed_user_ids = {item.redeemed_by_user_id for item in redemption_codes if item.redeemed_by_user_id}
-            redeemed_users = {
-                item.id: item.username
-                for item in db.scalars(select(User).where(User.id.in_(redeemed_user_ids))).all()
-            } if redeemed_user_ids else {}
             invite_codes = db.scalars(
                 select(InviteCode).order_by(InviteCode.created_at.desc()).limit(50)
             ).all()
@@ -356,23 +354,10 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     }
                     for item in subscriptions
                 ],
-                "redemptionCodes": [
-                    {
-                        "id": item.id,
-                        "code": item.code,
-                        "status": "已兑换" if item.redeemed_at else "已撤销" if item.revoked_at else "待兑换",
-                        "username": redeemed_users.get(item.redeemed_by_user_id),
-                        "duration_days": item.duration_days,
-                        "max_accounts": item.max_accounts,
-                        "max_tasks": item.max_tasks,
-                        "task_limit_label": task_limit_label(item.max_tasks),
-                        "created_at": _date_value(item.created_at),
-                        "redeemed_at": _date_value(item.redeemed_at),
-                        "redeemed_by_user_id": item.redeemed_by_user_id,
-                        "expires_at": _date_value(item.expires_at) if item.redeemed_at else None,
-                    }
-                    for item in redemption_codes
-                ],
+                # Redemption codes are loaded by the dedicated codes screen.
+                # Keeping plaintext codes out of the global bootstrap prevents
+                # every admin page load from exposing all active credentials.
+                "redemptionCodes": [],
                 "plans": pricing_plans(),
                 "invites": [
                     {
@@ -399,6 +384,101 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "pageSize": user_pagination["page_size"],
                 "total": user_pagination["total"],
                 "usersPagination": user_pagination,
+            }
+
+    @router.get("/api/admin/redemption-codes")
+    def admin_redemption_codes(
+        request: Request,
+        q: str = Query("", max_length=100),
+        status: str = Query("", max_length=24),
+        page: int = Query(1, ge=1),
+    ):
+        """Load redemption codes only when an administrator opens that screen."""
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            now = datetime.now(timezone.utc)
+            criteria = []
+            query = q.strip()
+            if query:
+                pattern = f"%{query}%"
+                criteria.append(
+                    or_(
+                        RedemptionCode.id.ilike(pattern),
+                        RedemptionCode.code.ilike(pattern),
+                        User.username.ilike(pattern),
+                    )
+                )
+            if status in {"active", "valid", "available"}:
+                criteria.extend(
+                    [RedemptionCode.redeemed_at.is_(None), RedemptionCode.revoked_at.is_(None)]
+                )
+            elif status in {"used", "redeemed"}:
+                criteria.append(RedemptionCode.redeemed_at.is_not(None))
+            elif status == "revoked":
+                criteria.append(RedemptionCode.revoked_at.is_not(None))
+            elif status == "expired":
+                criteria.extend(
+                    [
+                        RedemptionCode.redeemed_at.is_not(None),
+                        RedemptionCode.revoked_at.is_(None),
+                        RedemptionCode.expires_at < NEVER_EXPIRES_AT,
+                        RedemptionCode.expires_at <= now,
+                    ]
+                )
+            base = (
+                select(RedemptionCode, User.username)
+                .outerjoin(User, RedemptionCode.redeemed_by_user_id == User.id)
+                .where(*criteria)
+            )
+            total = db.scalar(
+                select(func.count()).select_from(base.order_by(None).subquery())
+            ) or 0
+            page_size = 20
+            pages = max(1, math.ceil(total / page_size))
+            current_page = min(page, pages)
+            rows = db.execute(
+                base.order_by(RedemptionCode.created_at.desc(), RedemptionCode.id.desc())
+                .offset((current_page - 1) * page_size)
+                .limit(page_size)
+            ).all()
+
+            def status_label(code):
+                if code.redeemed_at is not None:
+                    return "已兑换"
+                if code.revoked_at is not None:
+                    return "已撤销"
+                expires_at = _aware(code.expires_at)
+                if expires_at is not None and expires_at < NEVER_EXPIRES_AT and expires_at <= now:
+                    return "已过期"
+                return "待兑换"
+
+            return {
+                "items": [
+                    {
+                        "id": item.id,
+                        "code": item.code,
+                        "status": status_label(item),
+                        "username": username,
+                        "duration_days": item.duration_days,
+                        "max_accounts": item.max_accounts,
+                        "max_tasks": item.max_tasks,
+                        "task_limit_label": task_limit_label(item.max_tasks),
+                        "created_at": _date_value(item.created_at),
+                        "redeemed_at": _date_value(item.redeemed_at),
+                        "redeemed_by_user_id": item.redeemed_by_user_id,
+                        "expires_at": _date_value(item.expires_at) if item.redeemed_at else None,
+                    }
+                    for item, username in rows
+                ],
+                "pagination": {
+                    "page": current_page,
+                    "page_size": page_size,
+                    "total": total,
+                    "pages": pages,
+                    "has_previous": current_page > 1,
+                    "has_prev": current_page > 1,
+                    "has_next": current_page < pages,
+                },
             }
 
     @router.get("/api/admin/subscriptions")
