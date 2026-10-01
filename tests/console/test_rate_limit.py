@@ -24,6 +24,15 @@ class FakeRedisBackend:
         self.counts[key] = self.counts.get(key, 0) + 1
         return self.counts[key] <= limit
 
+    def rate_limit_count(self, key):
+        self.calls.append(("count", key))
+        return self.counts.get(key, 0)
+
+    def record_rate_limit_failure(self, key, *, window_seconds):
+        self.calls.append(("failure", key, window_seconds))
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return self.counts[key]
+
     def clear_rate_limit(self, key):
         self.calls.append(("clear", key))
         self.counts.pop(key, None)
@@ -54,11 +63,13 @@ def test_enabled_backend_uses_shared_counter_and_clears_after_success():
     )
     assert isinstance(limiter, RedisRateLimiter)
     assert limiter.allow("client")
+    limiter.record_failure("client")
     assert limiter.allow("client")
+    limiter.record_failure("client")
     assert not limiter.allow("client")
     limiter.clear("client")
     assert limiter.allow("client")
-    assert backend.calls[0] == ("allow", "login:client", 2, 30)
+    assert backend.calls[0] == ("count", "login:client")
     assert ("clear", "login:client") in backend.calls
 
 
@@ -73,7 +84,7 @@ def test_scan_style_limiter_keeps_endpoint_specific_limits():
 
 def test_enabled_backend_errors_fail_closed_without_local_fallback():
     class Broken(FakeRedisBackend):
-        def allow_rate_limit(self, *args, **kwargs):
+        def rate_limit_count(self, *args, **kwargs):
             raise RuntimeError("redis unavailable")
 
     limiter = build_rate_limiter(Broken(), namespace="login")

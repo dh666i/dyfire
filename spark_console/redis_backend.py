@@ -88,6 +88,14 @@ end
 return current
 """
 
+_RATE_LIMIT_COUNT_SCRIPT = """
+local current = redis.call('GET', KEYS[1])
+if not current then
+  return 0
+end
+return current
+"""
+
 
 class RedisBackend:
     """Lazy Redis client with explicit, atomic building blocks.
@@ -199,6 +207,37 @@ class RedisBackend:
             raise
         except Exception as error:
             raise RedisOperationError("Redis rate-limit reset failed") from error
+
+    def rate_limit_count(self, key: str) -> int:
+        """Read a fixed-window counter without consuming a token."""
+        try:
+            return int(
+                self._require_client().eval(
+                    _RATE_LIMIT_COUNT_SCRIPT, 1, self._key("rate", key)
+                )
+            )
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis rate-limit read failed") from error
+
+    def record_rate_limit_failure(self, key: str, *, window_seconds: int) -> int:
+        """Atomically record one failed attempt and return the new count."""
+        if window_seconds < 1:
+            raise ValueError("rate-limit window must be positive")
+        try:
+            return int(
+                self._require_client().eval(
+                    _RATE_LIMIT_SCRIPT,
+                    1,
+                    self._key("rate", key),
+                    int(window_seconds * 1000),
+                )
+            )
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis rate-limit failure record failed") from error
 
     def claim_idempotency(self, key: str, value: str, *, ttl_seconds: int) -> bool:
         """Store an idempotency result only if ``key`` is currently absent."""

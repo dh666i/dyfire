@@ -102,6 +102,12 @@ def test_redis_primitives_against_service():
     assert backend.allow_rate_limit(key, limit=2, window_seconds=30)
     assert backend.allow_rate_limit(key, limit=2, window_seconds=30)
     assert not backend.allow_rate_limit(key, limit=2, window_seconds=30)
+    failure_key = uuid.uuid4().hex
+    assert backend.rate_limit_count(failure_key) == 0
+    assert backend.record_rate_limit_failure(failure_key, window_seconds=30) == 1
+    assert backend.rate_limit_count(failure_key) == 1
+    assert backend.clear_rate_limit(failure_key)
+    assert backend.rate_limit_count(failure_key) == 0
     assert backend.claim_idempotency(key, "result", ttl_seconds=30)
     assert not backend.claim_idempotency(key, "other", ttl_seconds=30)
     assert backend.get_idempotency(key) == "result"

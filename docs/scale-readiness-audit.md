@@ -18,7 +18,7 @@
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
 - 管理员提供当前浏览器会话范围的 15 分钟密码 step-up 接口 `/api/auth/elevate`，失败尝试审计并限流；高风险后台动作仍需逐项接入并完成 UI 引导后再强制启用。
-- 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存（使用部署的 `session.key`，轮换该密钥会同时使网页会话和 TOTP 密文失效，需重新 enrollment），setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；默认不会改变登录、现有 WebSession、密码 step-up、抖音 Cookie 或任务执行。启用 MFA 强制策略前，必须补管理界面、恢复码/丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
+- 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存（使用部署的 `session.key`，轮换该密钥会同时使网页会话和 TOTP 密文失效，需重新 enrollment），setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；确认后生成 10 个一次性恢复码，只保存带独立盐的 PBKDF2-SHA256 校验值，支持查看剩余数量、双重验证后轮换和单次消费；恢复码明文只在生成/轮换响应中返回。默认不会改变登录、现有 WebSession、密码 step-up、抖音 Cookie 或任务执行。启用 MFA 强制策略前，仍需把恢复码接入未登录挑战、完善丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
 - `SPARK_REQUIRE_ADMIN_STEP_UP=true` 时，后台写接口统一要求 step-up；前端会在 428 响应后请求密码并重试原操作。生产部署该开关前应确认管理员已使用包含验证面板的前端版本。
 - `queue-preflight` CLI 会只读检查数据库领取表、字段和 worker 分片配置；在显式传入 `--probe-stream` 时，才对 Redis 使用随机临时 Stream 做发布、消费、确认和清理。它不接管生产任务，也不改变默认数据库领取路径，可作为 PostgreSQL/Redis 分阶段切换前的运维门禁。
 - Compose 提供默认关闭的 `postgres` 隔离 profile，带 PostgreSQL 16 健康检查和持久卷；它只用于迁移回放、schema/claim 预检，默认 SQLite 服务不会自动连接或切换。

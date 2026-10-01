@@ -12,8 +12,6 @@ import hmac
 import secrets
 import time
 from urllib.parse import quote
-from sqlalchemy import select
-
 
 
 TIME_STEP_SECONDS = 30
@@ -154,6 +152,7 @@ def consume_recovery_code(db, user_id: str, value: object, *, now=None) -> bool:
     row lock plus the used-at update ensures a concurrent retry cannot consume
     the same code twice.
     """
+    from sqlalchemy import select
     from spark_console.models import AdminTotpRecoveryCode, utc_now
 
     normalized = normalize_recovery_code(value)

@@ -93,6 +93,6 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_redis_backend.py tests/console/test_queue_preflight.py tests/console/test_backup_manifest.py -q -s
+      - run: python -m pytest tests/console/test_redis_backend.py tests/console/test_queue_preflight.py tests/console/test_backup_manifest.py tests/console/test_rate_limit.py -q -s
         env:
           TEST_REDIS_URL: redis://localhost:6379/15

@@ -49,11 +49,9 @@ class FailedAttemptLimiter:
 class RedisRateLimiter:
     """Redis-backed fixed-window limiter with the local limiter interface.
 
-    ``FailedAttemptLimiter`` records only failed attempts. Redis' atomic
-    primitive consumes a token during ``allow`` instead, which is preferable
-    for a shared public endpoint: every process sees the same bound and a
-    successful authentication clears the window. ``record_failure`` remains
-    a compatibility no-op for callers that use the failure-only interface.
+    ``FailedAttemptLimiter`` records only failed attempts. Redis mirrors that
+    behavior by reading the shared counter during ``allow`` and incrementing
+    it only from ``record_failure``. Successful authentication clears it.
 
     Redis errors fail closed. Falling back to an in-process counter after an
     explicitly enabled Redis backend would make a multi-worker deployment
@@ -90,20 +88,19 @@ class RedisRateLimiter:
 
     def allow(self, key: str) -> bool:
         try:
-            return bool(
-                self.backend.allow_rate_limit(
-                    self._key(key),
-                    limit=self.limit,
-                    window_seconds=self.window_seconds,
-                )
-            )
+            return self.backend.rate_limit_count(self._key(key)) < self.limit
         except Exception:
             return False
 
     def record_failure(self, key: str) -> None:
-        # Redis counts the request atomically in ``allow``. Keep this method so
-        # authentication routes can use one interface in both modes.
-        return None
+        try:
+            self.backend.record_rate_limit_failure(
+                self._key(key), window_seconds=self.window_seconds
+            )
+        except Exception:
+            # A failed write must not disable a limit that is already being
+            # enforced; the next request remains fail-closed in ``allow``.
+            return None
 
     def clear(self, key: str) -> None:
         try:
