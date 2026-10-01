@@ -69,6 +69,27 @@ def test_settings_load_optional_redis_configuration():
         )
 
 
+def test_stream_validation_happens_before_a_disabled_backend_can_connect():
+    backend = RedisBackend.disabled()
+    with pytest.raises(ValueError, match="payload"):
+        backend.stream_enqueue("jobs", ["not", "an", "object"])
+    with pytest.raises(ValueError, match="count"):
+        backend.stream_read("jobs", "workers", "worker-a", count=0)
+    with pytest.raises(ValueError, match="group and consumer"):
+        backend.stream_read("jobs", "bad group", "worker-a")
+    with pytest.raises(ValueError, match="idle"):
+        backend.stream_reclaim(
+            "jobs", "workers", "worker-a", min_idle_seconds=0
+        )
+
+
+def test_stream_member_rejects_malformed_payloads():
+    with pytest.raises(ValueError, match="no payload"):
+        RedisBackend._stream_member(("1-0", {}))
+    with pytest.raises(ValueError, match="JSON object"):
+        RedisBackend._stream_member(("1-0", {"payload": "[]"}))
+
+
 def test_redis_primitives_against_service():
     url = os.environ.get("TEST_REDIS_URL")
     if not url:
@@ -89,3 +110,32 @@ def test_redis_primitives_against_service():
     assert backend.dequeue(queue) == {"id": 2}
     assert backend.dequeue(queue) == {"id": 3}
     assert backend.dequeue(queue) is None
+
+    # Streams keep entries pending until the consumer acknowledges them.  A
+    # different consumer can reclaim an abandoned entry after its lease has
+    # expired, which is the recovery primitive required by a durable queue.
+    stream = uuid.uuid4().hex
+    message_id = backend.stream_enqueue(stream, {"run_id": "run-1", "attempt": 1})
+    first = backend.stream_read(stream, "workers", "worker-a", count=1)
+    assert len(first) == 1
+    assert first[0].id == message_id
+    assert first[0].payload == {"run_id": "run-1", "attempt": 1}
+    assert backend.stream_read(stream, "workers", "worker-b", count=1) == []
+    # The one-second lease is intentionally short so this CI-only integration
+    # check remains deterministic without relying on Redis internals.
+    import time
+
+    time.sleep(1.05)
+    recovered = backend.stream_reclaim(
+        stream,
+        "workers",
+        "worker-b",
+        min_idle_seconds=1,
+        count=1,
+    )
+    assert [item.id for item in recovered] == [message_id]
+    assert recovered[0].payload == {"run_id": "run-1", "attempt": 1}
+    assert backend.stream_ack(stream, "workers", message_id)
+    assert backend.stream_reclaim(
+        stream, "workers", "worker-c", min_idle_seconds=1, count=1
+    ) == []

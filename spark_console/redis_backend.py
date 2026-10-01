@@ -7,7 +7,12 @@ primitives while migrating one concern at a time:
 
 * ``allow_rate_limit`` uses one Lua script for an atomic fixed-window counter;
 * ``claim_idempotency`` stores a value only once with a TTL;
-* ``enqueue``/``dequeue`` provide a bounded, inspectable queue hand-off.
+* ``enqueue``/``dequeue`` provide a bounded, inspectable queue hand-off;
+* ``stream_enqueue``/``stream_read``/``stream_ack``/``stream_reclaim`` provide
+  a durable Redis Streams hand-off with consumer-group recovery.  The latter
+  is the primitive intended for a future persistent task queue: a worker must
+  explicitly acknowledge a message, and another worker can reclaim messages
+  whose lease has expired.
 
 The import of redis-py is lazy so the default SQLite installation can start
 without a Redis server and without importing an optional network client.
@@ -53,6 +58,14 @@ class RedisBackendConfig:
             raise ValueError("Redis timeouts must be positive")
         if self.max_connections < 1:
             raise ValueError("Redis max connections must be positive")
+
+
+@dataclass(frozen=True)
+class RedisStreamMessage:
+    """One decoded Redis Stream entry held by a consumer until it is acked."""
+
+    id: str
+    payload: dict[str, Any]
 
 
 _RATE_LIMIT_SCRIPT = """
@@ -233,3 +246,158 @@ class RedisBackend:
             raise
         except Exception as error:
             raise RedisOperationError("Redis dequeue operation failed") from error
+
+    def _stream_key(self, stream: str) -> str:
+        return self._key("stream", stream)
+
+    @staticmethod
+    def _stream_member(value: Any) -> RedisStreamMessage:
+        """Decode one redis-py ``(id, fields)`` entry defensively."""
+        try:
+            message_id, fields = value
+            raw_payload = fields.get("payload")
+        except (AttributeError, TypeError, ValueError) as error:
+            raise ValueError("invalid Redis Stream entry") from error
+        if raw_payload is None:
+            raise ValueError("Redis Stream entry has no payload")
+        payload = json.loads(raw_payload)
+        if not isinstance(payload, dict):
+            raise ValueError("Redis Stream payload must be a JSON object")
+        return RedisStreamMessage(id=str(message_id), payload=payload)
+
+    def _ensure_stream_group(
+        self, client: Any, stream: str, group: str, *, start_id: str = "0-0"
+    ) -> None:
+        key = self._stream_key(stream)
+        try:
+            client.xgroup_create(key, group, id=start_id, mkstream=True)
+        except Exception as error:
+            # Creating the same group is an idempotent operation.  Do not hide
+            # connection or ACL failures behind the BUSYGROUP compatibility
+            # path.
+            if "BUSYGROUP" not in str(error).upper():
+                raise
+
+    def stream_enqueue(
+        self,
+        stream: str,
+        payload: dict[str, Any],
+        *,
+        max_items: int = 0,
+    ) -> str:
+        """Append a JSON object to a durable consumer-group stream.
+
+        ``max_items`` is an exact trim bound (``0`` means no trim).  Trimming
+        must be chosen with care: entries still pending in a consumer group
+        should not be removed before their processing lease is resolved.
+        """
+        if max_items < 0:
+            raise ValueError("max_items cannot be negative")
+        if not isinstance(payload, dict):
+            raise ValueError("stream payload must be a JSON object")
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        try:
+            kwargs = {"maxlen": max_items, "approximate": False} if max_items else {}
+            return str(self._require_client().xadd(self._stream_key(stream), {"payload": encoded}, **kwargs))
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis Stream enqueue operation failed") from error
+
+    def stream_read(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        *,
+        count: int = 1,
+        block_seconds: int = 0,
+        start_id: str = ">",
+    ) -> list[RedisStreamMessage]:
+        """Read new or pending entries for a consumer group.
+
+        ``start_id='>'`` reads entries never delivered to any consumer.  A
+        caller recovering its own pending entries can pass ``'0'``; entries
+        owned by another dead consumer should use :meth:`stream_reclaim`.
+        Group creation starts at ``start_id`` (default ``0-0``), so creating a
+        group before producers publish cannot lose messages.
+        """
+        if count < 1:
+            raise ValueError("stream read count must be positive")
+        if block_seconds < 0:
+            raise ValueError("stream block timeout cannot be negative")
+        if not _KEY_COMPONENT.fullmatch(group) or not _KEY_COMPONENT.fullmatch(consumer):
+            raise ValueError("stream group and consumer contain unsupported characters")
+        try:
+            client = self._require_client()
+            self._ensure_stream_group(client, stream, group)
+            block_ms = int(block_seconds * 1000) if block_seconds else None
+            entries = client.xreadgroup(
+                group,
+                consumer,
+                {self._stream_key(stream): start_id},
+                count=count,
+                block=block_ms,
+            )
+            messages: list[RedisStreamMessage] = []
+            for _stream_name, values in entries or []:
+                messages.extend(self._stream_member(value) for value in values)
+            return messages
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis Stream read operation failed") from error
+
+    def stream_ack(self, stream: str, group: str, message_id: str) -> bool:
+        """Acknowledge one successfully processed Stream entry."""
+        if not _KEY_COMPONENT.fullmatch(group) or not _KEY_COMPONENT.fullmatch(message_id):
+            raise ValueError("stream group and message id contain unsupported characters")
+        try:
+            return bool(self._require_client().xack(self._stream_key(stream), group, message_id))
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis Stream ack operation failed") from error
+
+    def stream_reclaim(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        *,
+        min_idle_seconds: int,
+        count: int = 10,
+    ) -> list[RedisStreamMessage]:
+        """Claim another consumer's idle pending entries for recovery.
+
+        Redis keeps an entry pending until ``stream_ack``.  The caller should
+        make processing idempotent before acknowledging a reclaimed entry;
+        reclaiming is deliberately at-least-once and can produce duplicates.
+        """
+        if min_idle_seconds < 1:
+            raise ValueError("minimum stream idle time must be positive")
+        if count < 1:
+            raise ValueError("stream reclaim count must be positive")
+        if not _KEY_COMPONENT.fullmatch(group) or not _KEY_COMPONENT.fullmatch(consumer):
+            raise ValueError("stream group and consumer contain unsupported characters")
+        try:
+            client = self._require_client()
+            self._ensure_stream_group(client, stream, group)
+            pending = client.xpending_range(
+                self._stream_key(stream), group, min="-", max="+", count=count
+            )
+            ids = [str(item["message_id"]) for item in pending]
+            if not ids:
+                return []
+            claimed = client.xclaim(
+                self._stream_key(stream),
+                group,
+                consumer,
+                min_idle_time=int(min_idle_seconds * 1000),
+                message_ids=ids,
+            )
+            return [self._stream_member(value) for value in claimed or []]
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis Stream reclaim operation failed") from error
