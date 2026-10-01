@@ -75,10 +75,11 @@ def create_schema(engine: Engine) -> None:
     if "dispatch_key" not in account_columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE douyin_accounts ADD COLUMN dispatch_key BIGINT"))
-            connection.execute(text(
-                "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
-                "ON douyin_accounts (dispatch_key)"
-            ))
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
+            "ON douyin_accounts (dispatch_key)"
+        ))
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
             session.add(WorkerLock(id=1))
