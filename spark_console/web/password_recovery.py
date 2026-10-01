@@ -15,10 +15,20 @@ from spark_console.services.audits import AuditService
 from spark_console.services.users import validate_registration_password
 
 
-def build_password_recovery_router(engine,auth,cipher,passwords,page):
+def build_password_recovery_router(engine,auth,cipher,passwords,page,redis_backend=None):
     router=APIRouter();limiter=OrderedDict();lock=threading.Lock()
+    distributed = bool(redis_backend is not None and redis_backend.enabled)
     def allowed(request):
         key=request.client.host if request.client else 'unknown';now=time.monotonic()
+        if distributed:
+            try:
+                return bool(redis_backend.allow_rate_limit(
+                    f"password-recovery:{key}", limit=10, window_seconds=600
+                ))
+            except Exception:
+                # Explicitly enabled Redis must fail closed. A local fallback
+                # would make a multi-worker deployment bypass the shared limit.
+                return False
         with lock:
             values=[v for v in limiter.get(key,[]) if now-v<600]
             if len(values)>=10:return False

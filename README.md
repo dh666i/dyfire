@@ -59,7 +59,7 @@ python -m spark_console.cli migrate-sqlite-postgres /data/spark.db \
 
 ### 可选 Redis 预备层
 
-当前 Web、登录和发送任务仍以数据库为唯一事实来源，默认不会连接 Redis。Redis 适配器只提供后续分布式限流、幂等和队列迁移所需的原子原语，未接入现有发送路径，因此保持 `SPARK_REDIS_ENABLED=false` 即可继续使用现有 SQLite 部署。需要在隔离环境验证时，可在 `.env.console` 设置：
+当前 Web、登录和发送任务仍以数据库为唯一事实来源，默认不会连接 Redis。保持 `SPARK_REDIS_ENABLED=false` 即可继续使用现有 SQLite 部署；此时登录、注册、管理员验证、MFA、扫码和密码找回继续使用进程内限流，且不会发起 Redis 连接。显式启用并配置 Redis 后，上述认证和扫码限流会改用跨进程原子固定窗口计数器，Redis 故障时请求会拒绝而不会悄悄退回本地计数器。发送任务仍未切换到 Redis 队列。需要在隔离环境验证时，可在 `.env.console` 设置：
 
 ```sh
 SPARK_REDIS_ENABLED=true

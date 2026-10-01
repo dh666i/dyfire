@@ -18,6 +18,8 @@ from spark_console.services.scan_sessions import (
     browser_view_revision,
 )
 from spark_console.services.subscriptions import SubscriptionService
+from spark_console.redis_backend import RedisBackend
+from spark_console.rate_limit import RedisRequestLimiter
 from spark_console.web.auth import WebAuth
 
 
@@ -65,9 +67,17 @@ def build_account_scan_router(
     auth: WebAuth,
     cipher: CookieCipher,
     limiter: ScanRequestLimiter | None = None,
+    redis_backend: RedisBackend | None = None,
 ) -> APIRouter:
     router = APIRouter()
-    request_limiter = limiter or ScanRequestLimiter()
+    if limiter is not None:
+        request_limiter = limiter
+    elif redis_backend is not None and redis_backend.enabled:
+        request_limiter = RedisRequestLimiter(
+            redis_backend, namespace="scan", window_seconds=60
+        )
+    else:
+        request_limiter = ScanRequestLimiter()
 
     def limited(user_id: str, action: str, limit: int) -> JSONResponse | None:
         if request_limiter.allow(f"{user_id}:{action}", limit):

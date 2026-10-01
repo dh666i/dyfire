@@ -936,6 +936,7 @@ function AdminTotpPanel({csrf}) {
   const [password,setPassword]=useState('');
   const [code,setCode]=useState('');
   const [pending,setPending]=useState(null);
+  const [issuedCodes,setIssuedCodes]=useState([]);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const refresh=async()=>{
@@ -957,9 +958,22 @@ function AdminTotpPanel({csrf}) {
     try {
       const value=await api('/api/auth/mfa/totp/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf,code})});
       if(!value?.ok)throw new Error(value?.detail||'验证码无效');
-      setPending(null);setCode('');setNotice('验证器已启用。当前阶段不会改变登录流程。');await refresh();
+      setPending(null);setCode('');setIssuedCodes(value.recovery_codes||[]);setNotice('验证器已启用。请立即保存这组恢复码；它们只会显示这一次。');await refresh();
     } catch(error) { setNotice(error.message); }
     finally { setBusy(false); }
+  };
+  const regenerate=async()=>{
+    setBusy(true);setNotice('正在轮换恢复码…');
+    try {
+      const value=await api('/api/auth/mfa/totp/recovery-codes/regenerate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf,password,code})});
+      if(!value?.ok)throw new Error(value?.detail||'恢复码轮换失败');
+      setIssuedCodes(value.recovery_codes||[]);setPassword('');setCode('');setNotice('恢复码已轮换。旧恢复码已全部失效，请立即保存新的一组。');await refresh();
+    } catch(error) { setNotice(error.message); }
+    finally { setBusy(false); }
+  };
+  const copyRecoveryCode=async value=>{
+    try { await navigator.clipboard.writeText(value); setNotice('恢复码已复制，请保存在密码管理器中。'); }
+    catch { setNotice('复制失败，请手动选择恢复码。'); }
   };
   const disable=async()=>{
     if(!window.confirm(state?.enabled?'停用管理员验证器？':'取消尚未完成的验证器设置？'))return;
@@ -971,7 +985,7 @@ function AdminTotpPanel({csrf}) {
     } catch(error) { setNotice(error.message); }
     finally { setBusy(false); }
   };
-  return <Card className="admin-totp-panel"><div className="section-head"><div><span className="eyebrow">ADMIN SECURITY</span><h2>管理员验证器</h2></div><Badge tone={state?.enabled?'good':state?.pending?'warn':'neutral'}>{state?.enabled?'已配置':state?.pending?'待确认':state?'未配置':'读取中'}</Badge></div><p className="muted-copy">可在 Google Authenticator、Microsoft Authenticator 或兼容应用中添加 TOTP。当前只保存配置，不会要求登录验证码。</p>{!state?.configured&&!pending&&<div className="form-grid"><label>当前管理员密码<input className="input" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label><Button variant="quiet" disabled={busy||!password} onClick={setup}>{busy?'请稍候…':'开始设置验证器'}</Button></div>}{pending&&<div className="form-stack"><label>一次性设置密钥<input className="input" readOnly value={pending.secret} onFocus={event=>event.target.select()} aria-label="一次性 TOTP 设置密钥"/></label><small className="muted-copy">请在离开页面前将密钥手动添加到验证器；此密钥之后不会再次显示。</small><label>验证器当前 6 位验证码<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={event=>setCode(event.target.value)}/></label><div className="setting-actions"><Button disabled={busy||code.trim().length!==6} onClick={confirm}>{busy?'正在确认…':'确认并启用'}</Button><Button variant="quiet" disabled={busy} onClick={disable}>取消设置</Button></div></div>}{state?.enabled&&<div className="form-stack"><label>当前 6 位验证码<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={event=>setCode(event.target.value)}/></label><label>当前管理员密码<input className="input" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label><Button variant="danger" disabled={busy||code.trim().length!==6||!password} onClick={disable}>验证后停用</Button></div>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}</Card>;
+  return <Card className="admin-totp-panel"><div className="section-head"><div><span className="eyebrow">ADMIN SECURITY</span><h2>管理员验证器</h2></div><Badge tone={state?.enabled?'good':state?.pending?'warn':'neutral'}>{state?.enabled?'已配置':state?.pending?'待确认':state?'未配置':'读取中'}</Badge></div><p className="muted-copy">可在 Google Authenticator、Microsoft Authenticator 或兼容应用中添加 TOTP。当前只保存配置，不会要求登录验证码。</p>{!state?.configured&&!pending&&<div className="form-grid"><label>当前管理员密码<input className="input" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label><Button variant="quiet" disabled={busy||!password} onClick={setup}>{busy?'请稍候…':'开始设置验证器'}</Button></div>}{pending&&<div className="form-stack"><label>一次性设置密钥<input className="input" readOnly value={pending.secret} onFocus={event=>event.target.select()} aria-label="一次性 TOTP 设置密钥"/></label><small className="muted-copy">请在离开页面前将密钥手动添加到验证器；此密钥之后不会再次显示。</small><label>验证器当前 6 位验证码<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={event=>setCode(event.target.value)}/></label><div className="setting-actions"><Button disabled={busy||code.trim().length!==6} onClick={confirm}>{busy?'正在确认…':'确认并启用'}</Button><Button variant="quiet" disabled={busy} onClick={disable}>取消设置</Button></div></div>}{state?.enabled&&<div className="form-stack"><div className="mfa-recovery-status"><b>恢复码</b><span>剩余 {state.recovery_codes_remaining??0} / 10 个。每个恢复码只能使用一次。</span></div><label>当前 6 位验证码<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={event=>setCode(event.target.value)}/></label><label>当前管理员密码<input className="input" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label><div className="setting-actions"><Button variant="quiet" disabled={busy||code.trim().length!==6||!password} onClick={regenerate}>轮换恢复码</Button><Button variant="danger" disabled={busy||code.trim().length!==6||!password} onClick={disable}>验证后停用</Button></div></div>}{issuedCodes.length>0&&<div className="mfa-recovery-issued"><b>请现在保存恢复码</b><small>关闭或刷新页面后不会再次显示。轮换会立即使上一组恢复码失效。</small>{issuedCodes.map(value=><div key={value}><code>{value}</code><Button variant="quiet" onClick={()=>copyRecoveryCode(value)}>复制</Button></div>)}</div>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}</Card>;
 }
 function MailAdmin({data,onSaved}) {
   const config=data.mail||{};

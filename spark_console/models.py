@@ -299,6 +299,32 @@ class AdminTotpCredential(Base):
     )
 
 
+class AdminTotpRecoveryCode(Base):
+    """One-time administrator recovery verifier.
+
+    Only a salted verifier is persisted.  The printable code is returned at
+    issuance time and cannot be reconstructed from this row later.
+    """
+
+    __tablename__ = "admin_totp_recovery_codes"
+    __table_args__ = (
+        Index(
+            "ix_admin_totp_recovery_codes_user_used",
+            "user_id",
+            "used_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    code_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    salt: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class UserSubscription(Base):
     __tablename__ = "user_subscriptions"
     __table_args__ = (

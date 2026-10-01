@@ -12,11 +12,15 @@ from spark_console.crypto import CookieCipher, SecretCipher
 from spark_console.db import create_schema, session_scope
 from spark_console.mfa import (
     CODE_DIGITS,
+    RECOVERY_CODE_COUNT,
     TIME_STEP_SECONDS,
+    consume_recovery_code,
+    generate_recovery_codes,
     provisioning_uri,
+    recovery_code_matches,
     verify_code,
 )
-from spark_console.models import AdminTotpCredential, User
+from spark_console.models import AdminTotpCredential, AdminTotpRecoveryCode, User
 from spark_console.security import PasswordService
 from spark_console.web.app import create_app
 
@@ -73,6 +77,19 @@ class TotpTests(unittest.TestCase):
         for value in (None, "", "12345", "1234567", "abcdef", 123456):
             with self.subTest(value=value):
                 self.assertIsNone(verify_code(self.SECRET, value, now=0))
+
+    def test_recovery_codes_are_formatted_and_salted(self):
+        codes = generate_recovery_codes()
+        self.assertEqual(RECOVERY_CODE_COUNT, len(codes))
+        displays = [item[0] for item in codes]
+        self.assertEqual(RECOVERY_CODE_COUNT, len(set(displays)))
+        for display, salt, digest in codes:
+            self.assertRegex(display, r"^[0-9A-F]{4}(?:-[0-9A-F]{4}){3}$")
+            self.assertEqual(16, len(salt))
+            self.assertEqual(64, len(digest))
+            self.assertTrue(recovery_code_matches(display, digest, salt))
+            self.assertTrue(recovery_code_matches(display.replace("-", ""), digest, salt))
+            self.assertFalse(recovery_code_matches("0" * 19, digest, salt))
 
     def test_totp_secret_cipher_has_a_distinct_authenticated_data_boundary(self):
         secret_cipher = SecretCipher(b"k" * 32)
@@ -160,6 +177,77 @@ class TotpEnrollmentWebTests(unittest.TestCase):
             self.assertTrue(credential.enabled)
             self.assertNotEqual(credential.ciphertext, secret)
             self.assertIsNotNone(credential.last_used_counter)
+            recovery = db.scalars(
+                select(AdminTotpRecoveryCode).where(
+                    AdminTotpRecoveryCode.user_id == self.admin_id
+                )
+            ).all()
+            self.assertEqual(RECOVERY_CODE_COUNT, len(recovery))
+            self.assertTrue(all(item.used_at is None for item in recovery))
+
+    def test_recovery_codes_are_issued_once_and_consumed(self):
+        bootstrap = self._bootstrap()
+        setup = self.client.post(
+            "/api/auth/mfa/totp/setup",
+            json={"csrf_token": bootstrap["csrf"], "password": "AdminPass-123"},
+        ).json()
+        secret = base64.b32decode(setup["secret"] + "=" * ((8 - len(setup["secret"]) % 8) % 8))
+        module = __import__("spark_console.mfa", fromlist=["_code"])
+        code = module._code(secret, int(time.time() // TIME_STEP_SECONDS))
+        confirmed = self.client.post(
+            "/api/auth/mfa/totp/confirm",
+            json={"csrf_token": bootstrap["csrf"], "code": code},
+        )
+        self.assertEqual(200, confirmed.status_code, confirmed.text)
+        issued = confirmed.json()["recovery_codes"]
+        self.assertEqual(RECOVERY_CODE_COUNT, len(issued))
+        self.assertEqual(RECOVERY_CODE_COUNT, self.client.get("/api/auth/mfa/totp").json()["recovery_codes_remaining"])
+        used = self.client.post(
+            "/api/auth/mfa/totp/recovery-codes/consume",
+            json={"csrf_token": bootstrap["csrf"], "code": issued[0]},
+        )
+        self.assertEqual(200, used.status_code, used.text)
+        self.assertEqual(RECOVERY_CODE_COUNT - 1, used.json()["recovery_codes_remaining"])
+        replay = self.client.post(
+            "/api/auth/mfa/totp/recovery-codes/consume",
+            json={"csrf_token": bootstrap["csrf"], "code": issued[0]},
+        )
+        self.assertEqual(403, replay.status_code)
+        self.assertEqual(RECOVERY_CODE_COUNT - 1, self.client.get("/api/auth/mfa/totp").json()["recovery_codes_remaining"])
+
+    def test_regenerate_requires_password_and_totp_and_invalidates_old_codes(self):
+        bootstrap = self._bootstrap()
+        setup = self.client.post(
+            "/api/auth/mfa/totp/setup",
+            json={"csrf_token": bootstrap["csrf"], "password": "AdminPass-123"},
+        ).json()
+        secret = base64.b32decode(setup["secret"] + "=" * ((8 - len(setup["secret"]) % 8) % 8))
+        module = __import__("spark_console.mfa", fromlist=["_code"])
+        counter = int(time.time() // TIME_STEP_SECONDS)
+        self.assertEqual(
+            200,
+            self.client.post(
+                "/api/auth/mfa/totp/confirm",
+                json={"csrf_token": bootstrap["csrf"], "code": module._code(secret, counter)},
+            ).status_code,
+        )
+        first_codes = self.client.post(
+            "/api/auth/mfa/totp/recovery-codes/regenerate",
+            json={"csrf_token": bootstrap["csrf"], "password": "bad", "code": module._code(secret, counter + 1)},
+        )
+        self.assertEqual(403, first_codes.status_code)
+        rotated = self.client.post(
+            "/api/auth/mfa/totp/recovery-codes/regenerate",
+            json={"csrf_token": bootstrap["csrf"], "password": "AdminPass-123", "code": module._code(secret, counter + 1)},
+        )
+        self.assertEqual(200, rotated.status_code, rotated.text)
+        new_codes = rotated.json()["recovery_codes"]
+        self.assertEqual(RECOVERY_CODE_COUNT, len(new_codes))
+        old = self.client.post(
+            "/api/auth/mfa/totp/recovery-codes/consume",
+            json={"csrf_token": bootstrap["csrf"], "code": new_codes[0]},
+        )
+        self.assertEqual(200, old.status_code)
 
     def test_invalid_confirmation_is_audited_and_does_not_enable(self):
         bootstrap = self._bootstrap()

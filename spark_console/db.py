@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 15
+SQLITE_SCHEMA_VERSION = 16
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -190,6 +190,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (13, "account_queue_query_indexes", _upgrade_sqlite_account_queue_query_indexes),
         (14, "admin_totp_credentials", _upgrade_sqlite_admin_totp_credentials),
         (15, "audit_request_context", _upgrade_sqlite_audit_request_context),
+        (16, "admin_totp_recovery_codes", _upgrade_sqlite_admin_totp_recovery_codes),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -384,6 +385,32 @@ def _upgrade_sqlite_audit_request_context(connection: Connection) -> None:
     connection.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
         "ON audit_events (request_id)"
+    )
+
+
+def _upgrade_sqlite_admin_totp_recovery_codes(connection: Connection) -> None:
+    """Verify the additive one-time recovery-code table exists."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(admin_totp_recovery_codes)"
+        ).fetchall()
+    }
+    required = {
+        "id",
+        "user_id",
+        "code_digest",
+        "salt",
+        "used_at",
+        "created_at",
+    }
+    if not required <= columns:
+        raise RuntimeError(
+            "admin_totp_recovery_codes schema is incomplete; refusing to start"
+        )
+    connection.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_admin_totp_recovery_codes_user_used "
+        "ON admin_totp_recovery_codes (user_id, used_at)"
     )
 
 

@@ -12,11 +12,17 @@ import hmac
 import secrets
 import time
 from urllib.parse import quote
+from sqlalchemy import select
+
 
 
 TIME_STEP_SECONDS = 30
 CODE_DIGITS = 6
 SECRET_BYTES = 20
+RECOVERY_CODE_COUNT = 10
+RECOVERY_CODE_BYTES = 8
+RECOVERY_CODE_DIGITS = RECOVERY_CODE_BYTES * 2
+RECOVERY_KDF_ITERATIONS = 120_000
 
 
 def generate_secret() -> bytes:
@@ -88,3 +94,81 @@ def provisioning_uri(secret: bytes, *, username: str, issuer: str = "Dyfire") ->
         + quote(issuer, safe="")
         + f"&algorithm=SHA1&digits={CODE_DIGITS}&period={TIME_STEP_SECONDS}"
     )
+
+
+def normalize_recovery_code(value: object) -> str | None:
+    """Normalize a printable recovery code without accepting extra data."""
+    if not isinstance(value, str):
+        return None
+    normalized = "".join(value.split()).replace("-", "").upper()
+    if len(normalized) != RECOVERY_CODE_DIGITS:
+        return None
+    if any(character not in "0123456789ABCDEF" for character in normalized):
+        return None
+    return normalized
+
+
+def _format_recovery_code(normalized: str) -> str:
+    return "-".join(
+        normalized[index : index + 4]
+        for index in range(0, RECOVERY_CODE_DIGITS, 4)
+    )
+
+
+def _recovery_digest(normalized: str, salt: bytes) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        normalized.encode("ascii"),
+        salt,
+        RECOVERY_KDF_ITERATIONS,
+    ).hex()
+
+
+def generate_recovery_codes(count: int = RECOVERY_CODE_COUNT) -> list[tuple[str, bytes, str]]:
+    """Return ``(display, salt, digest)`` tuples for one recovery set."""
+    if count <= 0 or count > 20:
+        raise ValueError("recovery code count must be between 1 and 20")
+    normalized_codes: set[str] = set()
+    result: list[tuple[str, bytes, str]] = []
+    while len(result) < count:
+        normalized = secrets.token_hex(RECOVERY_CODE_BYTES).upper()
+        if normalized in normalized_codes:
+            continue
+        normalized_codes.add(normalized)
+        salt = secrets.token_bytes(16)
+        result.append((_format_recovery_code(normalized), salt, _recovery_digest(normalized, salt)))
+    return result
+
+
+def recovery_code_matches(value: object, digest: str, salt: bytes) -> bool:
+    normalized = normalize_recovery_code(value)
+    if normalized is None or not isinstance(digest, str) or not isinstance(salt, bytes):
+        return False
+    return hmac.compare_digest(_recovery_digest(normalized, salt), digest)
+
+
+def consume_recovery_code(db, user_id: str, value: object, *, now=None) -> bool:
+    """Atomically consume one unused recovery code for ``user_id``.
+
+    Callers must invoke this inside the existing request transaction.  The
+    row lock plus the used-at update ensures a concurrent retry cannot consume
+    the same code twice.
+    """
+    from spark_console.models import AdminTotpRecoveryCode, utc_now
+
+    normalized = normalize_recovery_code(value)
+    if normalized is None:
+        return False
+    rows = db.scalars(
+        select(AdminTotpRecoveryCode)
+        .where(
+            AdminTotpRecoveryCode.user_id == user_id,
+            AdminTotpRecoveryCode.used_at.is_(None),
+        )
+        .with_for_update()
+    ).all()
+    for row in rows:
+        if hmac.compare_digest(_recovery_digest(normalized, row.salt), row.code_digest):
+            row.used_at = now or utc_now()
+            return True
+    return False

@@ -597,6 +597,7 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual((13, "account_queue_query_indexes"), migrations[12][:2])
         self.assertEqual((14, "admin_totp_credentials"), migrations[13][:2])
         self.assertEqual((15, "audit_request_context"), migrations[14][:2])
+        self.assertEqual((16, "admin_totp_recovery_codes"), migrations[15][:2])
         self.assertTrue(all(row[2] is not None for row in migrations))
 
     def test_scale_query_migration_installs_all_expected_indexes(self):
@@ -748,7 +749,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((15, "audit_request_context"), migrations[-1])
+            self.assertEqual((16, "admin_totp_recovery_codes"), migrations[-1])
         finally:
             engine.dispose()
 

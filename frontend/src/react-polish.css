@@ -784,6 +784,13 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .admin-editor-form { gap: 14px; }
 .admin-editor-form .edit-target { padding: 2px 0 15px; }
 .admin-editor-form .setting-actions { position: sticky; bottom: -1px; z-index: 2; margin: 4px -2px -2px; padding: 12px 2px 2px; background: var(--surface-strong); border-top: 1px solid var(--line); }
+.mfa-recovery-status { display:grid; gap:4px; padding:12px; border:1px solid var(--line); background:color-mix(in srgb,var(--surface) 78%,transparent); }
+.mfa-recovery-status b { font-size:12px; }
+.mfa-recovery-status span, .mfa-recovery-issued small { color:var(--muted); font-size:10px; line-height:1.5; }
+.mfa-recovery-issued { display:grid; gap:8px; margin-top:16px; padding:13px; border:1px solid color-mix(in srgb,var(--accent) 48%,var(--line)); background:color-mix(in srgb,var(--accent) 8%,transparent); }
+.mfa-recovery-issued > b { font-size:12px; }
+.mfa-recovery-issued > div { display:flex; align-items:center; justify-content:space-between; gap:8px; border-top:1px solid var(--line); padding-top:6px; }
+.mfa-recovery-issued code { font:500 12px var(--mono); letter-spacing:.06em; }
 .admin-insights-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr); gap:12px; margin-bottom:16px; }
 .admin-trend-card, .admin-alert-card { min-width:0; }
 .admin-trend-card .section-head h2, .admin-alert-card .section-head h2 { margin-top:5px; }

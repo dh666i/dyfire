@@ -32,7 +32,8 @@ from spark_console.models import (
     WebSession,
     utc_now,
 )
-from spark_console.rate_limit import FailedAttemptLimiter
+from spark_console.rate_limit import build_rate_limiter
+from spark_console.redis_backend import RedisBackend
 from spark_console.security import PasswordService, SessionService
 from spark_console.services.accounts import AccountReloginActive, AccountService
 from spark_console.services.audits import AuditService
@@ -242,6 +243,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     app.add_middleware(RequestCorrelationMiddleware)
     app.state.settings = settings
     app.state.engine = engine
+    # Redis is lazy: constructing this adapter validates configuration but
+    # does not open a socket.  All limiters below fall back to the existing
+    # process-local implementations unless Redis was explicitly enabled.
+    redis_backend = RedisBackend.from_settings(settings)
+    app.state.redis_backend = redis_backend
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -322,9 +328,13 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 'elevated': auth.is_elevated(record),
                 'elevated_until': record.elevated_until.isoformat() if record.elevated_until else None,
             }
-    registration_limiter = FailedAttemptLimiter()
-    login_limiter = FailedAttemptLimiter()
-    elevation_limiter = FailedAttemptLimiter(limit=5)
+    registration_limiter = build_rate_limiter(
+        redis_backend, namespace="registration"
+    )
+    login_limiter = build_rate_limiter(redis_backend, namespace="login")
+    elevation_limiter = build_rate_limiter(
+        redis_backend, limit=5, namespace="elevation"
+    )
     app.include_router(build_elevation_router(engine, auth, passwords, elevation_limiter))
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
     # TOTP enrollment is available for administrators but is not consulted by
@@ -334,7 +344,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             engine,
             auth,
             passwords,
-            FailedAttemptLimiter(limit=5),
+            build_rate_limiter(redis_backend, limit=5, namespace="mfa"),
             SecretCipher(settings.session_key_file.read_bytes()),
         )
     )
@@ -457,7 +467,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             engine, passwords, registration_limiter, auth, page, cipher
         )
     )
-    app.include_router(build_account_scan_router(engine, auth, cipher))
+    app.include_router(
+        build_account_scan_router(
+            engine, auth, cipher, redis_backend=redis_backend
+        )
+    )
     app.include_router(build_directory_router(engine, auth, cipher))
     app.include_router(build_health_router(engine, auth))
     from spark_console.web.mail_routes import build_mail_router
@@ -467,7 +481,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     from spark_console.web.product_routes import build_product_router
     app.include_router(build_product_router(engine, auth, page))
     from spark_console.web.password_recovery import build_password_recovery_router
-    app.include_router(build_password_recovery_router(engine,auth,cipher,passwords,page))
+    app.include_router(
+        build_password_recovery_router(
+            engine, auth, cipher, passwords, page, redis_backend=redis_backend
+        )
+    )
     app.include_router(
         build_subscription_router(engine, auth, page, render_admin)
     )

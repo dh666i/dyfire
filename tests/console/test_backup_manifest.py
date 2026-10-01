@@ -17,7 +17,7 @@ from spark_console.backup import (
 def _database(path: Path) -> None:
     with sqlite3.connect(path) as db:
         db.execute("create table schema_migrations (version integer primary key, name text)")
-        db.execute("insert into schema_migrations values (15, 'audit_request_context')")
+        db.execute("insert into schema_migrations values (16, 'admin_totp_recovery_codes')")
         db.execute("create table users (id text primary key)")
         db.execute("insert into users values ('owner')")
 
@@ -30,7 +30,7 @@ def test_backup_manifest_round_trip_and_tamper_detection(tmp_path):
     report = verify_backup(database)
     assert report["ok"] is True
     assert report["manifest"]["verified"] is True
-    assert report["sqlite"]["schema"] == 15
+    assert report["sqlite"]["schema"] == 16
 
     with database.open("ab") as stream:
         stream.write(b"tampered")

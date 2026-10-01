@@ -216,6 +216,7 @@ def _source(tmp_path: Path, *, populated: bool = True):
             # migration fixture keeps it empty while still requiring the
             # destination schema to include it.
             "admin_totp_credentials": [],
+            "admin_totp_recovery_codes": [],
         }
         assert set(records) | {"worker_lock"} == set(Base.metadata.tables)
         with engine.begin() as connection:

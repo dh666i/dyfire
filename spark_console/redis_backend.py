@@ -1,9 +1,10 @@
 """Optional Redis primitives for a future distributed deployment.
 
 The application currently uses SQLite/PostgreSQL for its source of truth.  A
-``RedisBackend`` is therefore never constructed by the existing web, auth, or
-worker paths.  Callers that opt in explicitly can use these small atomic
-primitives while migrating one concern at a time:
+``RedisBackend`` is constructed by the web app only when the deployment opts
+in explicitly.  The default SQLite deployment keeps the adapter disabled;
+an enabled deployment can use these small atomic primitives while migrating
+one concern at a time:
 
 * ``allow_rate_limit`` uses one Lua script for an atomic fixed-window counter;
 * ``claim_idempotency`` stores a value only once with a TTL;
@@ -168,12 +169,7 @@ class RedisBackend:
             raise RedisOperationError("Redis ping failed") from error
 
     def allow_rate_limit(self, key: str, *, limit: int, window_seconds: int) -> bool:
-        """Atomically consume a fixed-window token.
-
-        This method is intentionally not wired into HTTP routes yet.  A
-        future rollout can select it for one endpoint while retaining the
-        existing process-local limiter as the default behavior.
-        """
+        """Atomically consume a fixed-window token."""
         if limit < 1 or window_seconds < 1:
             raise ValueError("rate limit and window must be positive")
         client = self._require_client()
@@ -189,6 +185,20 @@ class RedisBackend:
         except Exception as error:
             raise RedisOperationError("Redis rate-limit operation failed") from error
         return current <= limit
+
+    def clear_rate_limit(self, key: str) -> bool:
+        """Clear a fixed-window counter after a successful authentication.
+
+        Clearing is deliberately a separate operation from ``allow``.  The
+        caller may use a successful login to reset a failed-attempt window;
+        disabled backends still fail before any client is initialized.
+        """
+        try:
+            return bool(self._require_client().delete(self._key("rate", key)))
+        except RedisBackendError:
+            raise
+        except Exception as error:
+            raise RedisOperationError("Redis rate-limit reset failed") from error
 
     def claim_idempotency(self, key: str, value: str, *, ttl_seconds: int) -> bool:
         """Store an idempotency result only if ``key`` is currently absent."""
