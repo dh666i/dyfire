@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from spark_console.worker_sharding import validate_shard
+
 
 def _env_bool(value: str, *, name: str) -> bool:
     normalized = value.strip().lower()
@@ -39,6 +41,10 @@ class Settings:
     web_bind: str = "127.0.0.1"
     web_port: int = 8899
     worker_poll_seconds: int = 10
+    # A worker owns accounts whose stable dispatch key maps to this shard.
+    # Defaults deliberately preserve the historical single-worker behavior.
+    worker_shard: int = 0
+    worker_shards: int = 1
     auth_poll_seconds: int = 1
     clock_offset_limit_seconds: int = 5
     secure_cookies: bool = True
@@ -55,6 +61,7 @@ class Settings:
                 raise ValueError(f"invalid trusted proxy CIDR: {cidr!r}") from error
         if self.hsts_max_age_seconds < 0:
             raise ValueError("HSTS max age must be non-negative")
+        validate_shard(self.worker_shard, self.worker_shards)
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "Settings":
@@ -84,6 +91,8 @@ class Settings:
             web_bind=environ.get("SPARK_WEB_BIND", "127.0.0.1"),
             web_port=int(environ.get("SPARK_WEB_PORT", "8899")),
             worker_poll_seconds=int(environ.get("SPARK_WORKER_POLL_SECONDS", "10")),
+            worker_shard=int(environ.get("SPARK_WORKER_SHARD", "0")),
+            worker_shards=int(environ.get("SPARK_WORKER_SHARDS", "1")),
             auth_poll_seconds=int(environ.get("SPARK_AUTH_POLL_SECONDS", "1")),
             clock_offset_limit_seconds=int(
                 environ.get("SPARK_CLOCK_OFFSET_LIMIT_SECONDS", "5")

@@ -13,6 +13,7 @@
 - 转发头由应用层按 `SPARK_TRUSTED_PROXY_CIDRS` 严格限制：未配置时忽略 `X-Forwarded-For/Proto`；只有直接对端属于配置的 IP/CIDR 时才解析最近的客户端地址和 HTTPS scheme。HSTS 可通过 `SPARK_HSTS_MAX_AGE_SECONDS` 与 `SPARK_HSTS_INCLUDE_SUBDOMAINS` 配置。
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
+- 已提供默认 dry-run 的 retention CLI，可分批清理终态执行、登录会话、邮件和审计记录，并保护活跃/待核实数据。
 - 移动端时间输入已设置单列布局、`min-width: 0` 和 `box-sizing`，应在真机和常见浏览器再次核验。
 
 ## P0：上线前必须解决
@@ -26,7 +27,7 @@
 1. PostgreSQL 承担事务数据；使用行级锁和 `FOR UPDATE SKIP LOCKED` 领取任务。
 2. Redis 承担分布式限流、短期状态、分布式锁和会话撤销版本。
 3. 使用持久化任务队列，将扫描、登录复核和发送任务从 Web 请求中移出。
-4. 按抖音账号分片执行，并为每个账号设置并发信号量，移除全局 WorkerLock 串行瓶颈。
+4. 按抖音账号分片执行，并为每个账号设置并发信号量，移除全局 WorkerLock 串行瓶颈。当前版本已提供可渐进启用的 `SPARK_WORKER_SHARD` / `SPARK_WORKER_SHARDS`：账号按稳定 SHA-256 key 分配到分片，任务新领、过期回收和健康恢复均带分片条件；仍需在 PostgreSQL/Redis 队列环境完成压测后再提高分片数量。
 5. 截图、二维码帧和大对象放入对象存储，数据库只保存元数据和生命周期信息。
 
 迁移验收：双写或回放测试通过；断电、重复投递、队列积压和 worker 重启不产生重复发送；任务领取、重试、取消都有幂等键。

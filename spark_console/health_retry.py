@@ -6,6 +6,7 @@ from spark_console.models import (
     TaskHealthRetry, TaskRun, SparkTask, DouyinAccount, User, UserSubscription,
     AccountOperation, DouyinLoginSession,
 )
+from spark_console.worker_sharding import validate_shard
 
 WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW_MINUTES", "30"))))
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
@@ -102,13 +103,17 @@ def queue(db, task, run, now, reason):
         retry_after=now + delay)
 
 
-def claim(db, now, worker_id):
+def claim(db, now, worker_id, *, shard=0, shards=1):
     from spark_console.scheduler import finish_run, RUN_LEASE
+    shard, shards = validate_shard(shard, shards)
     # Only records explicitly created by the new policy are eligible. Historical
     # failed runs never become candidates after an upgrade.
     rows = db.execute(select(TaskRun, TaskHealthRetry).join(
         TaskHealthRetry, TaskHealthRetry.run_id == TaskRun.id
-    ).where(TaskRun.status.in_(("retrying", "running"))).order_by(
+    ).join(SparkTask, SparkTask.id == TaskRun.task_id).join(
+        DouyinAccount, DouyinAccount.id == SparkTask.douyin_account_id
+    ).where(TaskRun.status.in_(("retrying", "running")),
+        DouyinAccount.dispatch_key % shards == shard).order_by(
         TaskRun.scheduled_for, TaskRun.attempt, TaskRun.id
     )).all()
     for run, pending in rows:

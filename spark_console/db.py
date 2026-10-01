@@ -4,11 +4,13 @@ import sqlite3
 import time
 from contextlib import contextmanager
 
-from sqlalchemy import Connection, Engine, create_engine, event
+from sqlalchemy import Connection, Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session
+from sqlalchemy import select, update
 
 from spark_console.config import Settings
-from spark_console.models import Base, WorkerLock
+from spark_console.models import Base, DouyinAccount, WorkerLock
+from spark_console.worker_sharding import account_dispatch_key
 from spark_console.task_targets import (
     TARGET_KEY_LENGTH,
     legacy_task_target_key,
@@ -68,9 +70,22 @@ def create_schema(engine: Engine) -> None:
         return
 
     Base.metadata.create_all(engine)
+    inspector = inspect(engine)
+    account_columns = {column["name"] for column in inspector.get_columns("douyin_accounts")}
+    if "dispatch_key" not in account_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE douyin_accounts ADD COLUMN dispatch_key BIGINT"))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
+                "ON douyin_accounts (dispatch_key)"
+            ))
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
             session.add(WorkerLock(id=1))
+        for account in session.scalars(
+            select(DouyinAccount).where(DouyinAccount.dispatch_key.is_(None))
+        ).all():
+            account.dispatch_key = account_dispatch_key(account.id)
 
 
 def _initialize_sqlite_schema(engine: Engine) -> None:
@@ -103,6 +118,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (8, "user_admin_note", _upgrade_sqlite_user_admin_note),
         (9, "redemption_code_retrieval", _upgrade_sqlite_redemption_code_retrieval),
         (10, "scale_query_indexes", _upgrade_sqlite_scale_query_indexes),
+        (11, "account_dispatch_shards", _upgrade_sqlite_account_dispatch_shards),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -195,6 +211,32 @@ def _upgrade_sqlite_scale_query_indexes(connection: Connection) -> None:
         connection.exec_driver_sql(
             f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"
         )
+
+
+def _upgrade_sqlite_account_dispatch_shards(connection: Connection) -> None:
+    """Add and backfill the stable key used by horizontally sharded workers."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(douyin_accounts)"
+        ).fetchall()
+    }
+    if "dispatch_key" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE douyin_accounts ADD COLUMN dispatch_key BIGINT"
+        )
+    rows = connection.exec_driver_sql(
+        "SELECT id FROM douyin_accounts WHERE dispatch_key IS NULL"
+    ).fetchall()
+    for (account_id,) in rows:
+        connection.exec_driver_sql(
+            "UPDATE douyin_accounts SET dispatch_key = ? WHERE id = ?",
+            (account_dispatch_key(account_id), account_id),
+        )
+    connection.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
+        "ON douyin_accounts (dispatch_key)"
+    )
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:

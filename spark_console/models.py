@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     Boolean,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    event,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -125,6 +127,20 @@ class DouyinAccount(Base):
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    # Stable hash used by horizontally sharded workers. Nullable keeps the
+    # model compatible with databases created before the shard migration.
+    dispatch_key: Mapped[int | None] = mapped_column(BigInteger, index=True)
+
+
+@event.listens_for(DouyinAccount, "before_insert")
+def _set_account_dispatch_key(_mapper, _connection, account: DouyinAccount) -> None:
+    """Persist the shard key for every newly-created account."""
+    from spark_console.worker_sharding import account_dispatch_key
+
+    if account.id is None:
+        account.id = uuid_string()
+    if account.dispatch_key is None:
+        account.dispatch_key = account_dispatch_key(account.id)
 
 
 class AccountHealth(Base):

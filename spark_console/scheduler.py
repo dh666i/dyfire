@@ -17,6 +17,7 @@ from spark_console.models import (
     User,
     UserSubscription,
 )
+from spark_console.worker_sharding import validate_shard
 
 
 RUN_LEASE = timedelta(minutes=20)
@@ -76,16 +77,20 @@ def _protect_expired_submissions(session: Session, now_utc: datetime) -> None:
 
 
 def _reclaim_expired_run(
-    session: Session, now_utc: datetime, worker_id: str
+    session: Session, now_utc: datetime, worker_id: str, *, shard: int = 0, shards: int = 1
 ) -> TaskRun | None:
+    shard, shards = validate_shard(shard, shards)
     candidate_id = session.scalar(
         select(TaskRun.id)
+        .join(SparkTask, SparkTask.id == TaskRun.task_id)
+        .join(DouyinAccount, DouyinAccount.id == SparkTask.douyin_account_id)
         .where(
             TaskRun.status == "running",
             TaskRun.submitted_at.is_(None),
             TaskRun.stage != "submitted",
             ~exists().where(TaskHealthRetry.run_id == TaskRun.id),
             _expired_lease(now_utc),
+            DouyinAccount.dispatch_key % shards == shard,
         )
         .order_by(TaskRun.started_at, TaskRun.id)
         .limit(1)
@@ -154,7 +159,7 @@ def _close_superseded_retries(session: Session, now_utc: datetime) -> None:
         )
 
 
-def _due_task_statement(now_utc: datetime):
+def _due_task_statement(now_utc: datetime, *, shard: int = 0, shards: int = 1):
     """Build the ordered query for the next scheduler-eligible task.
 
     Keeping this query separate lets PostgreSQL add a row-level claim lock
@@ -168,6 +173,7 @@ def _due_task_statement(now_utc: datetime):
         .correlate(SparkTask)
         .scalar_subquery()
     )
+    shard, shards = validate_shard(shard, shards)
     return (
         select(SparkTask)
         .join(User, User.id == SparkTask.owner_user_id)
@@ -210,6 +216,7 @@ def _due_task_statement(now_utc: datetime):
             SparkTask.douyin_account_id.is_not(None),
             SparkTask.next_run_at.is_not(None),
             SparkTask.next_run_at <= now_utc,
+            DouyinAccount.dispatch_key % shards == shard,
         )
         .order_by(
             SparkTask.next_run_at,
@@ -239,21 +246,22 @@ def _apply_due_task_claim_lock(statement, dialect_name: str):
 def claim_next_due_task(
     session: Session, now: datetime, worker_id: str, *, shard: int = 0, shards: int = 1
 ) -> TaskRun | None:
+    shard, shards = validate_shard(shard, shards)
     now_utc = _utc(now)
     _close_superseded_retries(session, now_utc)
     from spark_console.health_retry import queue_blocked_tasks
     queue_blocked_tasks(session, now_utc)
     _protect_expired_submissions(session, now_utc)
     from spark_console.health_retry import claim as claim_health_retry
-    recovery = claim_health_retry(session, now_utc, worker_id)
+    recovery = claim_health_retry(session, now_utc, worker_id, shard=shard, shards=shards)
     if recovery is not None:
         return recovery
-    reclaimed = _reclaim_expired_run(session, now_utc, worker_id)
+    reclaimed = _reclaim_expired_run(session, now_utc, worker_id, shard=shard, shards=shards)
     if reclaimed is not None:
         return reclaimed
 
     due_task = _apply_due_task_claim_lock(
-        _due_task_statement(now_utc),
+        _due_task_statement(now_utc, shard=shard, shards=shards),
         session.get_bind().dialect.name,
     )
     task = session.scalar(due_task)

@@ -11,6 +11,8 @@ from datetime import datetime, timedelta, timezone
 
 from cryptography.exceptions import InvalidTag
 from sqlalchemy import exists, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
@@ -73,6 +75,7 @@ class Worker:
         clock=None,
     ):
         self.settings = settings
+        self.worker_lock_id = settings.worker_shard + 1
         self.engine = engine
         self.executor = executor or DouyinExecutor()
         self.worker_id = f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
@@ -89,7 +92,13 @@ class Worker:
         if not self._acquire_worker_lock(current_time):
             return None
         with session_scope(self.engine) as db:
-            run = claim_next_due_task(db, current_time, self.worker_id)
+            run = claim_next_due_task(
+                db,
+                current_time,
+                self.worker_id,
+                shard=self.settings.worker_shard,
+                shards=self.settings.worker_shards,
+            )
             if run is None:
                 return None
             run_id = run.id
@@ -391,10 +400,20 @@ class Worker:
 
     def _acquire_worker_lock(self, now: datetime) -> bool:
         with session_scope(self.engine) as db:
+            insert_factory = (
+                sqlite_insert
+                if db.get_bind().dialect.name == "sqlite"
+                else pg_insert
+            )
+            db.execute(
+                insert_factory(WorkerLock)
+                .values(id=self.worker_lock_id, worker_id=None, lease_until=None)
+                .on_conflict_do_nothing(index_elements=[WorkerLock.id])
+            )
             claimed = db.execute(
                 update(WorkerLock)
                 .where(
-                    WorkerLock.id == 1,
+                    WorkerLock.id == self.worker_lock_id,
                     or_(
                         WorkerLock.worker_id == self.worker_id,
                         WorkerLock.worker_id.is_(None),
@@ -411,7 +430,7 @@ class Worker:
 
     def _has_valid_worker_lock(self, now: datetime):
         return exists().where(
-            WorkerLock.id == 1,
+            WorkerLock.id == self.worker_lock_id,
             WorkerLock.worker_id == self.worker_id,
             WorkerLock.lease_until.is_not(None),
             WorkerLock.lease_until > now,
@@ -437,7 +456,7 @@ class Worker:
         worker = db.execute(
             update(WorkerLock)
             .where(
-                WorkerLock.id == 1,
+                WorkerLock.id == self.worker_lock_id,
                 WorkerLock.worker_id == self.worker_id,
                 WorkerLock.lease_until.is_not(None),
                 WorkerLock.lease_until > now,
@@ -550,7 +569,7 @@ class Worker:
                 worker = db.execute(
                     update(WorkerLock)
                     .where(
-                        WorkerLock.id == 1,
+                        WorkerLock.id == self.worker_lock_id,
                         WorkerLock.worker_id == self.worker_id,
                         WorkerLock.lease_until.is_not(None),
                         WorkerLock.lease_until > checkpoint_time,

@@ -128,6 +128,29 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(600, settings.hsts_max_age_seconds)
             self.assertTrue(settings.hsts_include_subdomains)
 
+    def test_loads_and_validates_worker_shard_settings(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            (root_path / "cookie.key").write_bytes(b"c" * 32)
+            (root_path / "session.key").write_bytes(b"s" * 32)
+            settings = Settings.from_env({
+                "SPARK_DATA_DIR": root,
+                "SPARK_COOKIE_KEY_FILE": str(root_path / "cookie.key"),
+                "SPARK_SESSION_KEY_FILE": str(root_path / "session.key"),
+                "SPARK_WORKER_SHARD": "2",
+                "SPARK_WORKER_SHARDS": "4",
+            })
+            self.assertEqual(2, settings.worker_shard)
+            self.assertEqual(4, settings.worker_shards)
+            with self.assertRaises(ValueError):
+                Settings.from_env({
+                    "SPARK_DATA_DIR": root,
+                    "SPARK_COOKIE_KEY_FILE": str(root_path / "cookie.key"),
+                    "SPARK_SESSION_KEY_FILE": str(root_path / "session.key"),
+                    "SPARK_WORKER_SHARD": "4",
+                    "SPARK_WORKER_SHARDS": "4",
+                })
+
     def test_rejects_unknown_boolean_values(self):
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)
@@ -519,6 +542,7 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual((8, "user_admin_note"), migrations[7][:2])
         self.assertEqual((9, "redemption_code_retrieval"), migrations[8][:2])
         self.assertEqual((10, "scale_query_indexes"), migrations[9][:2])
+        self.assertEqual((11, "account_dispatch_shards"), migrations[10][:2])
         self.assertTrue(all(row[2] is not None for row in migrations))
 
     def test_scale_query_migration_installs_all_expected_indexes(self):
@@ -665,7 +689,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((10, "scale_query_indexes"), migrations[-1])
+            self.assertEqual((11, "account_dispatch_shards"), migrations[-1])
         finally:
             engine.dispose()
 

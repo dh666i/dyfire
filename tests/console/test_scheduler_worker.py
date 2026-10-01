@@ -27,6 +27,7 @@ from spark_console.scheduler import claim_next_due_task, compute_next_run
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.worker import Worker
+from spark_console.worker_sharding import account_shard
 
 
 def _activate(session: Session, user: User, at: datetime) -> None:
@@ -109,6 +110,52 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(now + timedelta(minutes=20), first.lease_until.replace(tzinfo=timezone.utc))
         self.assertEqual(now + timedelta(days=1), task.next_run_at.replace(tzinfo=timezone.utc))
         session.close(); engine.dispose()
+
+    def test_sharded_claim_only_returns_accounts_owned_by_this_worker(self):
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        with Session(engine) as session:
+            selected = []
+            for index in range(8):
+                account_id = f"shard-account-{index}"
+                selected.append((account_id, account_shard(account_id, 2)))
+            wanted = {
+                shard: next(item for item in selected if item[1] == shard)
+                for shard in (0, 1)
+            }
+            for shard, (account_id, _owner_shard) in wanted.items():
+                user = User(username=f"shard-owner-{shard}", password_hash="hash")
+                session.add(user)
+                session.flush()
+                _activate(session, user, now)
+                account = DouyinAccount(
+                    id=account_id,
+                    owner_user_id=user.id,
+                    display_name="main",
+                    encrypted_cookies=b"x",
+                    cookie_nonce=b"n",
+                )
+                session.add(account)
+                session.flush()
+                session.add(SparkTask(
+                    owner_user_id=user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"friend-{shard}",
+                    send_time="09:00",
+                    message_template="今日火花",
+                    enabled=True,
+                    next_run_at=now,
+                ))
+            session.commit()
+            first = claim_next_due_task(session, now, "shard-0", shard=0, shards=2)
+            self.assertIsNotNone(first)
+            self.assertEqual(wanted[0][0], session.get(SparkTask, first.task_id).douyin_account_id)
+            session.commit()
+            second = claim_next_due_task(session, now, "shard-1", shard=1, shards=2)
+            self.assertIsNotNone(second)
+            self.assertEqual(wanted[1][0], session.get(SparkTask, second.task_id).douyin_account_id)
+        engine.dispose()
 
     def test_superseded_retry_rows_leave_the_active_queue(self):
         engine = create_engine("sqlite:///:memory:")
