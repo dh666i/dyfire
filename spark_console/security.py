@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -33,9 +34,19 @@ class SessionService:
         self._key = session_key
         self._lifetime = lifetime
 
-    @staticmethod
-    def token_hash(raw_token: str) -> str:
-        return hashlib.sha256(raw_token.encode("ascii")).hexdigest()
+    def token_hash(self, raw_token: str) -> str:
+        """Bind the database verifier to the deployment session key.
+
+        A plain SHA-256 digest would let anyone holding the database verify
+        guessed session tokens offline and would survive session-key rotation.
+        HMAC makes the stored verifier useful only with the current key; key
+        rotation therefore invalidates all existing browser sessions.
+        """
+        return hmac.new(
+            self._key,
+            raw_token.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
 
     def create_record(
         self, user_id: str, now: datetime | None = None

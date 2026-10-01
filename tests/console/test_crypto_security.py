@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -52,12 +53,16 @@ class SessionTests(unittest.TestCase):
             "user-id", now=datetime(2026, 8, 25, tzinfo=timezone.utc)
         )
         self.assertNotEqual(raw, record.token_hash)
-        self.assertEqual(hashlib.sha256(raw.encode()).hexdigest(), record.token_hash)
+        self.assertEqual(
+            hmac.new(b"s" * 32, raw.encode(), hashlib.sha256).hexdigest(),
+            record.token_hash,
+        )
         self.assertEqual(
             datetime(2026, 8, 25, tzinfo=timezone.utc) + timedelta(hours=8),
             record.expires_at,
         )
         self.assertTrue(service.matches(raw, record))
+        self.assertFalse(SessionService(b"t" * 32).matches(raw, record))
 
     def test_csrf_compare_is_constant_time_boundary(self):
         csrf = CsrfService()

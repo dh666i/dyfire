@@ -12,6 +12,7 @@
 - 应用层增加可配置的请求体上限 `SPARK_MAX_REQUEST_BYTES`，默认 2 MiB。反向代理仍必须设置相同或更严格的限制。
 - 转发头由应用层按 `SPARK_TRUSTED_PROXY_CIDRS` 严格限制：未配置时忽略 `X-Forwarded-For/Proto`；只有直接对端属于配置的 IP/CIDR 时才解析最近的客户端地址和 HTTPS scheme。HSTS 可通过 `SPARK_HSTS_MAX_AGE_SECONDS` 与 `SPARK_HSTS_INCLUDE_SUBDOMAINS` 配置。
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
+- 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
 - 移动端时间输入已设置单列布局、`min-width: 0` 和 `box-sizing`，应在真机和常见浏览器再次核验。
 
 ## P0：上线前必须解决
