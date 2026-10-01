@@ -52,6 +52,7 @@ class Settings:
     trusted_proxy_cidrs: tuple[str, ...] = ()
     hsts_max_age_seconds: int = 31536000
     hsts_include_subdomains: bool = False
+    require_admin_step_up: bool = False
     # PostgreSQL pool settings. SQLite keeps its existing file/WAL behavior.
     database_pool_size: int = 10
     database_max_overflow: int = 20
@@ -124,6 +125,10 @@ class Settings:
             hsts_include_subdomains=_env_bool(
                 environ.get("SPARK_HSTS_INCLUDE_SUBDOMAINS", "false"),
                 name="SPARK_HSTS_INCLUDE_SUBDOMAINS",
+            ),
+            require_admin_step_up=_env_bool(
+                environ.get("SPARK_REQUIRE_ADMIN_STEP_UP", "false"),
+                name="SPARK_REQUIRE_ADMIN_STEP_UP",
             ),
             database_pool_size=int(environ.get("SPARK_DATABASE_POOL_SIZE", "10")),
             database_max_overflow=int(environ.get("SPARK_DATABASE_MAX_OVERFLOW", "20")),

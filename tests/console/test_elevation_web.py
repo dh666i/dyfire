@@ -26,6 +26,7 @@ class ElevationWebTests(unittest.TestCase):
             cookie_key_file=cookie_key,
             session_key_file=session_key,
             secure_cookies=True,
+            require_admin_step_up=True,
         )
         self.engine = create_engine(
             self.settings.database_url, connect_args={"check_same_thread": False}
@@ -98,6 +99,14 @@ class ElevationWebTests(unittest.TestCase):
                 .filter(WebSession.elevated_until.is_not(None))
                 .count(),
             )
+
+    def test_admin_write_is_blocked_until_step_up(self):
+        bootstrap = self._login()
+        response = self.client.post(
+            "/api/admin/users/missing/role",
+            json={"csrf_token": bootstrap["csrf"], "role": "admin"},
+        )
+        self.assertEqual(428, response.status_code)
 
 
 if __name__ == "__main__":

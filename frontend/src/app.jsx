@@ -156,9 +156,10 @@ function mockApi(path, options={}) {
 
 async function api(path, options={}) {
   if (previewRequested) return mockApi(path, options);
+  const {__stepUpRetry, ...fetchOptions} = options;
   let response;
   try {
-    response = await fetch(path, {credentials:'same-origin', cache:'no-store', ...options});
+    response = await fetch(path, {credentials:'same-origin', cache:'no-store', ...fetchOptions});
   } catch (error) {
     if (import.meta.env.DEV) return mockApi(path, options);
     throw error;
@@ -173,6 +174,20 @@ async function api(path, options={}) {
     const error = new Error(typeof value?.detail === 'string' ? value.detail : value?.message || '请求未完成');
     error.status = response.status;
     error.payload = value;
+    if (response.status === 428 && !__stepUpRetry && fetchOptions.method && fetchOptions.method !== 'GET') {
+      const password = window.prompt('此管理员操作需要重新验证密码：');
+      if (password) {
+        const bootstrap = await fetch('/api/auth/bootstrap', {credentials:'same-origin', cache:'no-store'});
+        const authState = await bootstrap.json();
+        await api('/api/auth/elevate', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({csrf_token:authState.csrf, password}),
+          __stepUpRetry:true,
+        });
+        return api(path, {...options, __stepUpRetry:true});
+      }
+    }
     throw error;
   }
   return value;

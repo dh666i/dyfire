@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
@@ -13,6 +14,9 @@ from spark_console.web.membership import membership_summary
 
 
 STEP_UP_LIFETIME = timedelta(minutes=15)
+REQUIRE_ADMIN_STEP_UP = os.environ.get("SPARK_REQUIRE_ADMIN_STEP_UP", "false").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
 
 def _aware(value: datetime) -> datetime:
@@ -68,6 +72,14 @@ class WebAuth:
         """Require a recent password step-up for a sensitive admin action."""
         if not cls.is_elevated(record, now=now):
             raise HTTPException(428, "需要重新验证管理员密码")
+
+    @classmethod
+    def require_elevated_if_configured(
+        cls, record: WebSession, now: datetime | None = None
+    ) -> None:
+        """Opt-in guard for legacy admin surfaces during UI migration."""
+        if REQUIRE_ADMIN_STEP_UP:
+            cls.require_elevated(record, now=now)
 
     def user_context(
         self, request: Request, db: Session
