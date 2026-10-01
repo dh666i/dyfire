@@ -1,0 +1,28 @@
+name: Scheduled user-data task
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  task:
+    runs-on: ubuntu-22.04
+    environment: user-data
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run the explicitly requested user-data task
+        env:
+          WZ_DATA: ${{ secrets.WZ_DATA }}
+        run: |
+          if [ -f main.py ]; then
+            python main.py --doTask
+          else
+            echo "main.py is not part of this repository; no legacy task was run."
+          fi
