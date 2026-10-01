@@ -30,6 +30,10 @@ RUN set -eux; \
     if ! id spark >/dev/null 2>&1; then useradd --create-home --uid 10001 --user-group spark; fi; \
     chmod -R a+rX /ms-playwright; \
     rm -rf /var/lib/apt/lists/*
+# The release path may reuse an older image to avoid redownloading the browser
+# runtime. Remove application trees first so deleted files cannot survive as
+# stale code in the incremental image.
+RUN rm -rf /app/frontend/dist /app/core /app/spark_console /app/utils
 COPY --chown=spark:spark LICENSE /app/LICENSE
 COPY --chown=spark:spark VERSION /app/VERSION
 COPY --from=frontend --chown=spark:spark /frontend/dist /app/frontend/dist
