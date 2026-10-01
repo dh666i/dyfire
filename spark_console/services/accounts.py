@@ -37,6 +37,10 @@ class AccountReloginActive(Conflict):
 
 
 class AccountService:
+    # Account selectors are embedded in legacy edit forms. Keep the initial
+    # projection bounded; the account management surface has its own API.
+    LIST_PAGE_SIZE = 100
+
     def __init__(self, session: Session, cipher: CookieCipher, audit: AuditService):
         self.session = session
         self.cipher = cipher
@@ -324,6 +328,7 @@ class AccountService:
             select(DouyinAccount)
             .where(DouyinAccount.owner_user_id == owner_id)
             .order_by(DouyinAccount.created_at)
+            .limit(self.LIST_PAGE_SIZE)
         ).all()
         return [
             {"id": item.id, "display_name": item.display_name, "validation_state": item.validation_state}

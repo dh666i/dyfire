@@ -6,7 +6,7 @@ from sqlalchemy import select
 from spark_console.db import session_scope
 from spark_console.crypto import CookieCipher
 from spark_console.models import (User, DouyinAccount, DouyinAccountProfile, ContactDirectoryJob,
-    DouyinContactIdentity, SparkTask, SparkTaskTargetIdentity, utc_now)
+    DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.directory import save_profile, save_contacts, process_directory_job, task_avatar_map
@@ -99,6 +99,31 @@ class DirectoryTests(unittest.TestCase):
         with session_scope(self.engine) as db:
             self.assertEqual(original, db.get(DouyinAccount, self.account).encrypted_cookies)
             self.assertEqual('succeeded', db.get(ContactDirectoryJob, job['id']).status)
+
+    def test_conversations_response_is_bounded_and_signals_more(self):
+        """Legacy picker responses must not grow with a large directory."""
+        with session_scope(self.engine) as db:
+            db.add_all(
+                DouyinContactIdentity(
+                    account_id=self.account,
+                    sec_uid=f"sec-{index}",
+                    nickname=f"好友-{index:03d}",
+                )
+                for index in range(125)
+            )
+            db.add_all(
+                DouyinConversation(
+                    account_id=self.account,
+                    display_name=f"会话-{index:03d}",
+                )
+                for index in range(125)
+            )
+        response = self.client.get(f"/accounts/{self.account}/conversations")
+        self.assertEqual(200, response.status_code)
+        body = response.json()
+        self.assertEqual(100, body["limit"])
+        self.assertEqual(100, len(body["items"]))
+        self.assertTrue(body["has_more"])
 
     def test_inconclusive_search_does_not_block_healthy_account(self):
         from core.session_health import SessionEvidence, SessionUnavailable

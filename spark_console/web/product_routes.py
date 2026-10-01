@@ -10,6 +10,10 @@ from spark_console.web.membership import membership_summary
 from spark_console.services.subscriptions import pricing_plans
 
 
+PRODUCT_SESSION_PAGE_SIZE = 100
+PRODUCT_ACCOUNT_PAGE_SIZE = 100
+
+
 def build_product_router(engine,auth,page):
     router=APIRouter()
 
@@ -37,7 +41,7 @@ def build_product_router(engine,auth,page):
     def account_center_json(request:Request):
         with session_scope(engine) as db:
             user,record=auth.current(request,db)
-            sessions=db.scalars(select(WebSession).where(WebSession.user_id==user.id,WebSession.expires_at>datetime.now(timezone.utc)).order_by(WebSession.created_at.desc())).all()
+            sessions=db.scalars(select(WebSession).where(WebSession.user_id==user.id,WebSession.expires_at>datetime.now(timezone.utc)).order_by(WebSession.created_at.desc()).limit(PRODUCT_SESSION_PAGE_SIZE)).all()
             return {'csrf':record.csrf_token,'current_session_id':record.id,'sessions':[{'id':item.id,'created_at':item.created_at,'expires_at':item.expires_at,'current':item.id==record.id} for item in sessions]}
 
     @router.post('/api/account-center/revoke-sessions')
@@ -73,7 +77,11 @@ def build_product_router(engine,auth,page):
     def attention(request:Request):
         with session_scope(engine) as db:
             user,_,context=auth.user_context(request,db)
-            accounts=db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id==user.id,DouyinAccount.validation_state.in_(['temporary','verification','invalid']))).all()
+            accounts=db.scalars(select(DouyinAccount).where(
+                DouyinAccount.owner_user_id==user.id,
+                DouyinAccount.validation_state.in_(['temporary','verification','invalid']),
+            ).order_by(DouyinAccount.updated_at.desc(), DouyinAccount.id)
+                .limit(PRODUCT_ACCOUNT_PAGE_SIZE)).all()
             runs=db.execute(select(TaskRun,SparkTask).join(SparkTask).where(SparkTask.owner_user_id==user.id,TaskRun.status.in_(['failed','submitted_unconfirmed']),TaskRun.scheduled_for>=datetime.now(timezone.utc)-timedelta(days=7)).order_by(TaskRun.scheduled_for.desc()).limit(50)).all()
             from spark_console.web.inbox import entries
             return page(request,'attention.html',title='待处理事项',accounts=accounts,account_health=health_views(db,accounts),runs=runs,inbox=entries(db,user.id),**context)
@@ -82,7 +90,7 @@ def build_product_router(engine,auth,page):
     def account_center(request:Request):
         with session_scope(engine) as db:
             user,record,context=auth.user_context(request,db)
-            sessions=db.scalars(select(WebSession).where(WebSession.user_id==user.id,WebSession.expires_at>datetime.now(timezone.utc)).order_by(WebSession.created_at.desc())).all()
+            sessions=db.scalars(select(WebSession).where(WebSession.user_id==user.id,WebSession.expires_at>datetime.now(timezone.utc)).order_by(WebSession.created_at.desc()).limit(PRODUCT_SESSION_PAGE_SIZE)).all()
             return page(request,'account_center.html',title='账户中心',sessions=sessions,current_session=record.id,**context)
 
     @router.post('/account-center/revoke-sessions')
@@ -106,7 +114,9 @@ def build_product_router(engine,auth,page):
             _,_,context=auth.admin_context(request,db)
             customer=db.get(User,user_id)
             if not customer:raise HTTPException(404)
-            accounts=db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id==user_id)).all()
+            accounts=db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id==user_id)
+                .order_by(DouyinAccount.created_at, DouyinAccount.id)
+                .limit(PRODUCT_ACCOUNT_PAGE_SIZE)).all()
             tasks=db.scalars(select(SparkTask).where(SparkTask.owner_user_id==user_id).order_by(SparkTask.send_time).limit(100)).all()
             grants=db.scalars(select(SubscriptionGrant).where(SubscriptionGrant.user_id==user_id).order_by(SubscriptionGrant.created_at.desc()).limit(20)).all()
             audits=db.scalars(select(AuditEvent).where(AuditEvent.actor_user_id==user_id).order_by(AuditEvent.created_at.desc()).limit(20)).all()

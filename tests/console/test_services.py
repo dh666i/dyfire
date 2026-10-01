@@ -143,6 +143,13 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual("我的账号", public[0]["display_name"])
         self.assertEqual("unknown", public[0]["validation_state"])
 
+    def test_account_selector_projection_is_bounded(self):
+        """Legacy task edit forms must not materialize every owned account."""
+        for index in range(125):
+            self.accounts.create(self.owner.id, f"账号-{index:03d}", b'[{"name":"sid","value":"test"}]')
+        public = self.accounts.list_owned(self.owner.id)
+        self.assertEqual(100, len(public))
+
     def test_storage_state_is_encrypted_with_identity_and_safe_projection(self):
         state = {
             "cookies": [

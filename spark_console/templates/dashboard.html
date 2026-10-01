@@ -36,13 +36,15 @@
   </section>
   <section class="studio-schedule" aria-labelledby="schedule-title">
     <header class="studio-section-title"><div><h2 id="schedule-title">每日发送安排</h2><span>北京时间 · 按启用任务统计</span></div><a href="/studio">全部计划{{ icon('arrow', 16) }}</a></header>
-    {% set periods = namespace(morning=0, afternoon=0, evening=0) %}
-    {% for task in enabled_tasks %}
-      {% set hour = task.send_time[:2]|int %}
-      {% if hour < 12 %}{% set periods.morning = periods.morning + 1 %}
-      {% elif hour < 18 %}{% set periods.afternoon = periods.afternoon + 1 %}
-      {% else %}{% set periods.evening = periods.evening + 1 %}{% endif %}
-    {% endfor %}
+    {% set periods = namespace(morning=(schedule_periods.morning if schedule_periods is defined else 0), afternoon=(schedule_periods.afternoon if schedule_periods is defined else 0), evening=(schedule_periods.evening if schedule_periods is defined else 0)) %}
+    {% if schedule_periods is not defined %}
+      {% for task in enabled_tasks %}
+        {% set hour = task.send_time[:2]|int %}
+        {% if hour < 12 %}{% set periods.morning = periods.morning + 1 %}
+        {% elif hour < 18 %}{% set periods.afternoon = periods.afternoon + 1 %}
+        {% else %}{% set periods.evening = periods.evening + 1 %}{% endif %}
+      {% endfor %}
+    {% endif %}
     <div class="studio-day-strip studio-day-periods" role="list" aria-label="早中晚计划任务数">
       <a class="studio-hour{{ ' has-tasks' if periods.morning else '' }}" href="/studio" role="listitem">上午 · {{ periods.morning }}</a>
       <a class="studio-hour{{ ' has-tasks' if periods.afternoon else '' }}" href="/studio" role="listitem">下午 · {{ periods.afternoon }}</a>
