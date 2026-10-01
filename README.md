@@ -5,6 +5,7 @@
 ## 当前交付状态
 
 - FastAPI / SQLite 业务服务保留账号验证、任务防重复、订阅兑换、通知及管理员权限。
+- 已提供 PostgreSQL 驱动和 PostgreSQL 行级任务领取基础；生产切换前仍需完成一次性数据迁移、回放校验和故障演练。
 - `/studio` 使用新设计，真实读取账号、好友与今日任务状态，支持批量创建及暂停/恢复。今日概览、账号列表、分页执行记录和版本更新页也使用同一套新设计。
 - 账号绑定、编辑任务、通知、会员、账户中心、待处理事项和帮助页均通过新版界面提供真实流程；管理员页面保留现有权限与运维能力。
 - 新版不使用示例账号、不把业务数据或密码存入 localStorage。
@@ -40,6 +41,19 @@ docker compose --env-file .env.console -f compose.console.yml exec spark-web \
 ```
 
 生产环境建议由宿主机定时任务调用，先保存 dry-run 输出，再在低峰期执行 `--apply`。可使用 `--runs-days`、`--sessions-days`、`--mail-days`、`--audit-days` 和 `--batch-size` 调整窗口；所有参数都有上限，`--as-of` 仅用于可重复的演练且必须带时区。该命令不会删除用户、任务、账号、订阅或兑换码。
+
+### SQLite 到 PostgreSQL 迁移
+
+迁移命令默认只做完整性、空目标、活动任务/扫码/邮件检查，不写入目标；停掉所有 Web、auth、worker、monitor 写入进程后，经过备份和回放验证，再显式添加 `--apply`：
+
+```sh
+python -m spark_console.cli migrate-sqlite-postgres /data/spark.db \
+  --target 'postgresql+psycopg://dyfire:密码@postgres:5432/dyfire'
+python -m spark_console.cli migrate-sqlite-postgres /data/spark.db \
+  --target 'postgresql+psycopg://dyfire:密码@postgres:5432/dyfire' --apply
+```
+
+该工具要求目标数据库为空，按表分批复制并校验行数；它不是在线双写或自动切换工具。
 
 使用反向代理提供 HTTPS；默认仅在 127.0.0.1:8899 监听。绑定账号和发送任务需要 auth、worker 服务在线。新部署先创建管理员，再登录；不会预置默认密码。
 

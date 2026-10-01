@@ -16,6 +16,7 @@ from spark_console.crypto import CookieCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.models import User
 from spark_console.retention import RetentionPolicy, retain
+from spark_console.data_migration import migrate_sqlite_to_postgres
 from spark_console.security import PasswordService
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -169,6 +170,29 @@ def command_retention(args) -> int:
     return 0
 
 
+def command_migrate_sqlite(args) -> int:
+    """Preflight or apply a one-time SQLite to PostgreSQL copy."""
+    settings = Settings.from_env(os.environ)
+    source = Path(args.source).expanduser().resolve()
+    target_url = args.target or settings.database_url
+    if not target_url.startswith("postgresql"):
+        raise SystemExit("--target 必须是 postgresql+psycopg://... 连接串")
+    from sqlalchemy import create_engine
+
+    target = create_engine(target_url, pool_pre_ping=True)
+    try:
+        report = migrate_sqlite_to_postgres(
+            source,
+            target,
+            apply=args.apply,
+            batch_size=args.batch_size,
+        )
+    finally:
+        target.dispose()
+    print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spark-console")
     commands = parser.add_subparsers(required=True)
@@ -188,6 +212,15 @@ def build_parser() -> argparse.ArgumentParser:
     retention.add_argument("--batch-size", type=int, default=500, help="本次每类最多删除的记录数；后续运行继续清理积压")
     retention.add_argument("--as-of", help="按指定 ISO 8601 时间计算，必须带时区")
     retention.set_defaults(handler=command_retention)
+    migration = commands.add_parser(
+        "migrate-sqlite-postgres",
+        help="离线预检或导入 SQLite 到空 PostgreSQL；默认只预检",
+    )
+    migration.add_argument("source", help="SQLite spark.db 路径")
+    migration.add_argument("--target", required=True, help="postgresql+psycopg://... 目标连接串")
+    migration.add_argument("--apply", action="store_true", help="明确执行导入")
+    migration.add_argument("--batch-size", type=int, default=1000)
+    migration.set_defaults(handler=command_migrate_sqlite)
     return parser
 
 

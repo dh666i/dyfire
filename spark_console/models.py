@@ -158,6 +158,9 @@ class AccountHealth(Base):
 
 class AccountOperation(Base):
     __tablename__ = "account_operations"
+    __table_args__ = (
+        Index("ix_account_operations_expires", "expires_at"),
+    )
     account_id: Mapped[str] = mapped_column(ForeignKey("douyin_accounts.id", ondelete="CASCADE"), primary_key=True)
     token: Mapped[str] = mapped_column(String(64))
     kind: Mapped[str] = mapped_column(String(24))
@@ -188,6 +191,9 @@ class DouyinAccountProfile(Base):
 
 class ContactDirectoryJob(Base):
     __tablename__ = "contact_directory_jobs"
+    __table_args__ = (
+        Index("ix_contact_directory_jobs_status_created", "status", "created_at"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
     account_id: Mapped[str] = mapped_column(ForeignKey("douyin_accounts.id", ondelete="CASCADE"), index=True)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -359,6 +365,7 @@ class DouyinLoginSession(Base):
     __table_args__ = (
         Index("ix_douyin_login_sessions_status_expires", "status", "expires_at"),
         Index("ix_douyin_login_sessions_status_finished", "status", "finished_at"),
+        Index("ix_douyin_login_sessions_account_status_expires", "account_id", "status", "expires_at"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
@@ -417,6 +424,13 @@ class DouyinLoginInput(Base):
             "scan_id",
             "request_id",
             unique=True,
+        ),
+        Index(
+            "uq_douyin_login_inputs_scan_active",
+            "scan_id",
+            unique=True,
+            sqlite_where=text("delivery_status IN ('queued', 'claimed')"),
+            postgresql_where=text("delivery_status IN ('queued', 'claimed')"),
         ),
     )
 

@@ -19,6 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
+SQLITE_SCHEMA_VERSION = 13
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -80,6 +81,7 @@ def create_schema(engine: Engine) -> None:
             "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
             "ON douyin_accounts (dispatch_key)"
         ))
+    _assert_postgres_schema_complete(engine)
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
             session.add(WorkerLock(id=1))
@@ -87,6 +89,45 @@ def create_schema(engine: Engine) -> None:
             select(DouyinAccount).where(DouyinAccount.dispatch_key.is_(None))
         ).all():
             account.dispatch_key = account_dispatch_key(account.id)
+
+
+def _assert_postgres_schema_complete(engine: Engine) -> None:
+    """Fail closed when an existing PostgreSQL schema predates a column.
+
+    ``create_all`` is intentionally additive for new databases but does not
+    alter existing tables. Continuing with a partially migrated schema creates
+    delayed runtime failures, so require an explicit reviewed migration before
+    serving traffic.
+    """
+    inspector = inspect(engine)
+    missing: list[str] = []
+    for table_name, table in Base.metadata.tables.items():
+        actual = {column["name"] for column in inspector.get_columns(table_name)}
+        for column in table.columns:
+            if column.name not in actual:
+                missing.append(f"{table_name}.{column.name}")
+    if missing:
+        raise RuntimeError(
+            "PostgreSQL schema is incomplete; run the reviewed migration before "
+            "starting Dyfire: " + ", ".join(sorted(missing)[:20])
+        )
+    required_indexes = {
+        "uq_douyin_login_inputs_scan_active",
+        "ix_douyin_accounts_dispatch_key",
+        "ix_task_runs_status_finished",
+        "ix_mail_deliveries_status_updated",
+    }
+    actual_indexes = {
+        index["name"]
+        for table_name in inspect(engine).get_table_names()
+        for index in inspect(engine).get_indexes(table_name)
+    }
+    missing_indexes = sorted(required_indexes - actual_indexes)
+    if missing_indexes:
+        raise RuntimeError(
+            "PostgreSQL schema is missing required indexes; run the reviewed "
+            "migration before starting Dyfire: " + ", ".join(missing_indexes)
+        )
 
 
 def _initialize_sqlite_schema(engine: Engine) -> None:
@@ -121,6 +162,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (10, "scale_query_indexes", _upgrade_sqlite_scale_query_indexes),
         (11, "account_dispatch_shards", _upgrade_sqlite_account_dispatch_shards),
         (12, "retention_query_indexes", _upgrade_sqlite_retention_query_indexes),
+        (13, "account_queue_query_indexes", _upgrade_sqlite_account_queue_query_indexes),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -211,6 +253,9 @@ def _upgrade_sqlite_scale_query_indexes(connection: Connection) -> None:
         ("ix_douyin_login_sessions_status_finished", "douyin_login_sessions", "status, finished_at"),
         ("ix_task_runs_status_finished", "task_runs", "status, finished_at"),
         ("ix_mail_deliveries_status_updated", "mail_deliveries", "status, updated_at"),
+        ("ix_douyin_login_sessions_account_status_expires", "douyin_login_sessions", "account_id, status, expires_at"),
+        ("ix_account_operations_expires", "account_operations", "expires_at"),
+        ("ix_contact_directory_jobs_status_created", "contact_directory_jobs", "status, created_at"),
     )
     for name, table, columns in indexes:
         connection.exec_driver_sql(
@@ -250,6 +295,18 @@ def _upgrade_sqlite_retention_query_indexes(connection: Connection) -> None:
         ("ix_douyin_login_sessions_status_finished", "douyin_login_sessions", "status, finished_at"),
         ("ix_task_runs_status_finished", "task_runs", "status, finished_at"),
         ("ix_mail_deliveries_status_updated", "mail_deliveries", "status, updated_at"),
+    )
+    for name, table, columns in indexes:
+        connection.exec_driver_sql(
+            f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"
+        )
+
+
+def _upgrade_sqlite_account_queue_query_indexes(connection: Connection) -> None:
+    indexes = (
+        ("ix_douyin_login_sessions_account_status_expires", "douyin_login_sessions", "account_id, status, expires_at"),
+        ("ix_account_operations_expires", "account_operations", "expires_at"),
+        ("ix_contact_directory_jobs_status_created", "contact_directory_jobs", "status, created_at"),
     )
     for name, table, columns in indexes:
         connection.exec_driver_sql(
