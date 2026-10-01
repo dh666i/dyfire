@@ -28,6 +28,8 @@ SERVICES = ['spark-web', 'spark-auth', 'spark-worker', 'spark-monitor']
 WEB_SERVICES = ['spark-web']
 COMPOSE_PROJECT = os.environ.get('DYFIRE_COMPOSE_PROJECT', 'dyfire')
 RELEASE_CACHE_SECONDS = 20 * 60
+COMPOSE_OPERATION_TIMEOUT_SECONDS = 10 * 60
+IMAGE_PULL_TIMEOUT_SECONDS = 60 * 60
 _RELEASE_CACHE = {}
 
 
@@ -193,7 +195,11 @@ def compose(image, *args):
     process = subprocess.Popen(['docker', 'compose', '--project-name', COMPOSE_PROJECT, '--env-file', str(ROOT / '.env.console'),
                     '--file', str(ROOT / 'compose.console.yml'), *args], cwd=ROOT, env=env,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    deadline = time.monotonic() + 600
+    # Registry pulls can be much slower than a local stop/start on a small
+    # server. Keep the normal container operation bound tight, but allow a
+    # fixed digest pull enough time to finish without interrupting it halfway.
+    timeout = IMAGE_PULL_TIMEOUT_SECONDS if args and args[0] == 'pull' else COMPOSE_OPERATION_TIMEOUT_SECONDS
+    deadline = time.monotonic() + timeout
     while process.poll() is None:
         write_state()
         if time.monotonic() > deadline:

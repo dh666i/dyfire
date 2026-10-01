@@ -28,6 +28,7 @@ def host(tmp_path,monkeypatch):
     monkeypatch.setattr(module,'latest',lambda force=False:target)
     monkeypatch.setattr(module.shutil,'disk_usage',lambda _:SimpleNamespace(free=10*1024**3))
     calls=[]
+    module._real_compose = module.compose
     monkeypatch.setattr(module,'compose',lambda *args:calls.append(args))
     return module,previous,target,calls
 
@@ -113,6 +114,32 @@ def test_release_manifest_must_match_tag_and_digest(host):
     assert module._release_from_payload(release, resolve_registry=False)['image'].endswith('e' * 64)
     mismatched = {'tag_name': 'v0.2.1', 'body': '<!-- dyfire-manifest ' + manifest + ' -->'}
     assert module._release_from_payload(mismatched, resolve_registry=False) == {}
+
+
+def test_compose_uses_longer_timeout_only_for_image_pulls(host, monkeypatch):
+    module, *_ = host
+    module.IMAGE_PULL_TIMEOUT_SECONDS = 7
+    module.COMPOSE_OPERATION_TIMEOUT_SECONDS = 1
+    class Process:
+        def __init__(self): self.killed = False
+        def poll(self): return None
+        def kill(self): self.killed = True
+        def wait(self): return None
+    processes = []
+    monkeypatch.setattr(module.subprocess, 'Popen', lambda *args, **kwargs: processes.append(Process()) or processes[-1])
+    monkeypatch.setattr(module.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(module, 'write_state', lambda: None)
+    ticks = iter([0, 8])
+    monkeypatch.setattr(module.time, 'monotonic', lambda: next(ticks))
+    with pytest.raises(TimeoutError):
+        module._real_compose('image', 'pull', 'spark-web')
+    assert processes[-1].killed
+
+    ticks = iter([0, 2])
+    monkeypatch.setattr(module.time, 'monotonic', lambda: next(ticks))
+    with pytest.raises(TimeoutError):
+        module._real_compose('image', 'stop', '-t', '180', 'spark-web')
+    assert processes[-1].killed
 
 
 def test_resolves_live_compose_data_bind_mount(host,monkeypatch):
