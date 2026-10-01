@@ -64,6 +64,8 @@ jobs:
           file: Dockerfile.console
           push: true
           tags: ghcr.io/dh666i/dyfire:${{ steps.version.outputs.version }}
+          build-args: |
+            RUNTIME_BASE=ghcr.io/dh666i/dyfire@sha256:e165f28f2419e695dcf96594bfd8e9cce1fc33de7302c1f98dbe7b63dd95ab40
           labels: org.opencontainers.image.source=https://github.com/dh666i/dyfire
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,3 +1,5 @@
+ARG RUNTIME_BASE=mcr.microsoft.com/dotnet/runtime-deps:8.0-noble
+
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -6,7 +8,7 @@ COPY frontend/ ./
 COPY spark_console/static/ /spark_console/static/
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-noble
+FROM ${RUNTIME_BASE}
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PATH=/opt/venv/bin:$PATH
