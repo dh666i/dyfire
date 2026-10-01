@@ -260,6 +260,15 @@ function useCountUp(to, {duration=900, enabled=true}={}) {
   return value;
 }
 
+function useDebounced(value, delay=220) {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return settled;
+}
+
 // SplitText: renders text with each character staggered in on mount
 function SplitText({children, className='', stagger=18, delay=0}) {
   const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -782,6 +791,10 @@ function Admin({data,onRefresh}) {
   const [redemptionQuery,setRedemptionQuery]=useState('');
   const [redemptionStatus,setRedemptionStatus]=useState('');
   const [redemptionPage,setRedemptionPage]=useState(1);
+  const settledQuery=useDebounced(query);
+  const settledAuditQuery=useDebounced(auditQuery);
+  const settledRunQuery=useDebounced(runQuery);
+  const settledRedemptionQuery=useDebounced(redemptionQuery);
   const section=baseSection==='users'?(isTaskGroup?'task-group':userWorkspaceTab==='customers'?'users':userWorkspaceTab):baseSection==='runs'?(runDay==='today'?'today':'runs'):baseSection==='operations'?(operationsTab==='server'?'operations':operationsTab):baseSection;
   useEffect(()=>{
     if(rawSection==='subscriptions')setUserWorkspaceTab('subscriptions');
@@ -794,12 +807,12 @@ function Admin({data,onRefresh}) {
     else if(rawSection==='operations')setOperationsTab(requestedView==='diagnostics'||requestedView==='audit'?requestedView:'server');
   },[rawSection,requestedView]);
   useEffect(()=>{
-    if(baseSection==='users'&&userWorkspaceTab==='customers') api(`/api/admin/bootstrap?q=${encodeURIComponent(query)}&status=${encodeURIComponent(userStatusFilter)}&page=${usersPagination?.page||1}`).then(v=>{setUsers(v.users||[]);setUsersPagination(v.usersPagination||null)}).catch(e=>setFeedback(e.message));
-    if(baseSection==='users'&&userWorkspaceTab==='subscriptions') api(`/api/admin/subscriptions?q=${encodeURIComponent(query)}&status=${encodeURIComponent(subscriptionStatusFilter)}&page=${subscriptionsPagination?.page||1}`).then(v=>{setSubscriptions(v.items||[]);setSubscriptionsPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
-    if(baseSection==='users'&&userWorkspaceTab==='tasks'&&!isTaskGroup) api(`/api/admin/task-groups?q=${encodeURIComponent(query)}&status=${encodeURIComponent(taskStatusFilter)}&page=${taskGroupsPagination?.page||1}`).then(v=>{setTaskGroups(v.items||[]);setTaskGroupsPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
-    if(baseSection==='operations'&&operationsTab==='audit') api(`/api/admin/audit?q=${encodeURIComponent(auditQuery)}&page=${auditPagination?.page||1}`).then(v=>{setAuditRows(v.items||[]);setAuditPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
-    if(baseSection==='codes') api(`/api/admin/redemption-codes?q=${encodeURIComponent(redemptionQuery)}&status=${encodeURIComponent(redemptionStatus)}&page=${redemptionPage}`).then(v=>{setRedemptionCodes(v.items||[]);setRedemptionPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
-    if(baseSection==='runs') api(`/api/admin/runs?q=${encodeURIComponent(runQuery)}&status=${encodeURIComponent(runStatusFilter)}&start=${runDay==='range'?runStartDate:''}&end=${runDay==='range'?runEndDate:''}&day=${runDay==='today'?'today':''}&page=${runPage}`).then(v=>{setRunRows(v.items||[]);setRunPagination(v.pagination||null);setSendBoard(runDay==='today'?v.today_board||null:null)}).catch(e=>setFeedback(e.message));
+    if(baseSection==='users'&&userWorkspaceTab==='customers') api(`/api/admin/bootstrap?q=${encodeURIComponent(settledQuery)}&status=${encodeURIComponent(userStatusFilter)}&page=${usersPagination?.page||1}`).then(v=>{setUsers(v.users||[]);setUsersPagination(v.usersPagination||null)}).catch(e=>setFeedback(e.message));
+    if(baseSection==='users'&&userWorkspaceTab==='subscriptions') api(`/api/admin/subscriptions?q=${encodeURIComponent(settledQuery)}&status=${encodeURIComponent(subscriptionStatusFilter)}&page=${subscriptionsPagination?.page||1}`).then(v=>{setSubscriptions(v.items||[]);setSubscriptionsPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
+    if(baseSection==='users'&&userWorkspaceTab==='tasks'&&!isTaskGroup) api(`/api/admin/task-groups?q=${encodeURIComponent(settledQuery)}&status=${encodeURIComponent(taskStatusFilter)}&page=${taskGroupsPagination?.page||1}`).then(v=>{setTaskGroups(v.items||[]);setTaskGroupsPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
+    if(baseSection==='operations'&&operationsTab==='audit') api(`/api/admin/audit?q=${encodeURIComponent(settledAuditQuery)}&page=${auditPagination?.page||1}`).then(v=>{setAuditRows(v.items||[]);setAuditPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
+    if(baseSection==='codes') api(`/api/admin/redemption-codes?q=${encodeURIComponent(settledRedemptionQuery)}&status=${encodeURIComponent(redemptionStatus)}&page=${redemptionPage}`).then(v=>{setRedemptionCodes(v.items||[]);setRedemptionPagination(v.pagination||null)}).catch(e=>setFeedback(e.message));
+    if(baseSection==='runs') api(`/api/admin/runs?q=${encodeURIComponent(settledRunQuery)}&status=${encodeURIComponent(runStatusFilter)}&start=${runDay==='range'?runStartDate:''}&end=${runDay==='range'?runEndDate:''}&day=${runDay==='today'?'today':''}&page=${runPage}`).then(v=>{setRunRows(v.items||[]);setRunPagination(v.pagination||null);setSendBoard(runDay==='today'?v.today_board||null:null)}).catch(e=>setFeedback(e.message));
     if(baseSection==='overview'||baseSection==='runs') api(`/api/admin/insights?days=${insightDays}`).then(setInsights).catch(e=>setFeedback(e.message));
     if(baseSection==='operations'&&operationsTab==='diagnostics') api('/api/admin/diagnostics').then(setDiagnostics).catch(e=>setFeedback(e.message));
     if(baseSection==='operations'&&operationsTab==='server'){
@@ -812,8 +825,8 @@ function Admin({data,onRefresh}) {
       const historyTimer=window.setInterval(readHistory,60000);
       return()=>{active=false;window.clearInterval(timer);window.clearInterval(historyTimer)};
     }
-    if(isTaskGroup && groupParts.length===2) api(`/api/admin/tasks/groups/${groupParts[0]}/${groupParts[1]}?q=${encodeURIComponent(query)}&page=${groupTasksPage}`).then(setGroupDetail).catch(e=>setFeedback(e.message));
-  },[query,userStatusFilter,subscriptionStatusFilter,taskStatusFilter,auditQuery,insightDays,usersPagination?.page,subscriptionsPagination?.page,taskGroupsPagination?.page,auditPagination?.page,groupTasksPage,runQuery,runStatusFilter,runStartDate,runEndDate,runPage,runDay,userWorkspaceTab,operationsTab,baseSection,section,isMail,isTaskGroup,path,redemptionQuery,redemptionStatus,redemptionPage]);
+    if(isTaskGroup && groupParts.length===2) api(`/api/admin/tasks/groups/${groupParts[0]}/${groupParts[1]}?q=${encodeURIComponent(settledQuery)}&page=${groupTasksPage}`).then(setGroupDetail).catch(e=>setFeedback(e.message));
+  },[settledQuery,userStatusFilter,subscriptionStatusFilter,taskStatusFilter,settledAuditQuery,insightDays,usersPagination?.page,subscriptionsPagination?.page,taskGroupsPagination?.page,auditPagination?.page,groupTasksPage,settledRunQuery,runStatusFilter,runStartDate,runEndDate,runPage,runDay,userWorkspaceTab,operationsTab,baseSection,section,isMail,isTaskGroup,path,settledRedemptionQuery,redemptionStatus,redemptionPage]);
   useEffect(()=>{
     if(section!=='settings'||isMail)return;
     let active=true;
