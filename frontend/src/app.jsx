@@ -125,6 +125,7 @@ function previewData() {
 function mockApi(path, options={}) {
   const data = previewData();
   if (path === '/api/app/bootstrap' || path === '/api/admin/bootstrap') return Promise.resolve(data);
+  if (path.startsWith('/api/admin/redemption-codes')) return Promise.resolve({items:data.redemptionCodes,pagination:{page:1,page_size:20,total:data.redemptionCodes.length,pages:1,has_previous:false,has_prev:false,has_next:false}});
   if (path === '/api/notifications') return Promise.resolve({csrf:data.csrf,mail_ready:true, preference:{email:'',enabled:false,verified:false}, policy:{events:['account_alert','account_recovered','task_failed','expiry'],quiet_start:23,quiet_end:8,quiet_enabled:false,interval_minutes:60}});
   if (path === '/api/attention') return Promise.resolve({csrf:data.csrf,items:previewAttention});
   if (path === '/api/account-center') return Promise.resolve({csrf:data.csrf,current_session_id:'preview-session-1',sessions:[{id:'preview-session-1',created_at:'2026-09-28T08:00:00+08:00',expires_at:'2026-09-28T16:00:00+08:00',current:true},{id:'preview-session-2',created_at:'2026-09-26T19:00:00+08:00',expires_at:'2026-09-27T03:00:00+08:00',current:false}]});

@@ -481,6 +481,32 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual((10, "scale_query_indexes"), migrations[9][:2])
         self.assertTrue(all(row[2] is not None for row in migrations))
 
+    def test_scale_query_migration_installs_all_expected_indexes(self):
+        expected = {
+            "ix_user_subscriptions_valid_window",
+            "ix_douyin_login_sessions_status_expires",
+            "ix_spark_tasks_enabled_next_run",
+            "ix_task_runs_status_scheduled",
+            "ix_task_runs_task_scheduled_status",
+            "ix_audit_events_created_action",
+        }
+        with self.engine.connect() as connection:
+            actual = set()
+            for table in (
+                "user_subscriptions",
+                "douyin_login_sessions",
+                "spark_tasks",
+                "task_runs",
+                "audit_events",
+            ):
+                actual.update(
+                    row[1]
+                    for row in connection.exec_driver_sql(
+                        f"PRAGMA index_list({table})"
+                    ).fetchall()
+                )
+        self.assertTrue(expected <= actual)
+
     def test_target_key_migration_preserves_legacy_duplicates_and_enabled_state(self):
         legacy_path = Path(self.temp.name) / "legacy-task-targets.db"
         connection = sqlite3.connect(legacy_path)
