@@ -52,9 +52,11 @@ def test_restore_drill_refuses_missing_key_without_touching_source(tmp_path):
     key = b"k" * 32
     _database(source, key)
     before = hashlib.sha256(source.read_bytes()).hexdigest()
+    key_file = tmp_path / "cookie.key"
+    key_file.write_bytes(b"wrong")
 
-    with pytest.raises(module.RecoveryDrillError, match="备份文件不存在"):
-        module.run(source, cookie_key=tmp_path / "cookie.key")
+    with pytest.raises(module.RecoveryDrillError, match="Cookie 密钥必须"):
+        module.run(source, cookie_key=key_file)
     assert hashlib.sha256(source.read_bytes()).hexdigest() == before
 
 
