@@ -929,7 +929,49 @@ function UpdatePanel({update,data,onFeedback}) {
   const operationBusy=busy||busyPhase.includes(update?.phase);
   const submit=async action=>{if(operationBusy)return;setBusy(true);try{const version=action==='rollback'?(rollbackVersion||''):(action==='check'?'':(update?.available||''));if(action==='install'||action==='rollback'){if(!window.confirm(action==='rollback'?`将回滚到 ${version||'最近安全版本'}，继续吗？`:`将更新到 ${version}，网页可能短暂不可用，继续吗？`)){setBusy(false);return;}}const send=()=>api(`/api/admin/updates/${action}`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data.csrf},body:JSON.stringify({version})});let result;try{result=await send()}catch(error){if(error.status!==428||action==='check')throw error;const password=window.prompt('此操作需要重新验证管理员密码：');if(!password)throw error;await api('/api/auth/elevate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf,password})});result=await send()}onFeedback(result?.operation_id?`更新操作已排队（${result.operation_id.slice(0,8)}），状态会自动刷新。`:'更新检查已排队，状态会自动刷新。');}catch(error){onFeedback(error.message)}finally{setBusy(false)}};
   const rollbackOptions=update?.rollback_versions||[];
-  return <><Card className="update-panel"><div className="section-head"><div><span className="eyebrow">RELEASE CHANNEL</span><h2>版本更新</h2></div><Badge tone={update?.online?'good':'neutral'}>{update?.online?'更新服务在线':'更新服务未连接'}</Badge></div><div className="update-version-grid"><div><small>当前版本</small><strong>{update?.current||'—'}</strong></div><div><small>最新版本</small><strong className={update?.update_available?'update-new':''}>{update?.latest||update?.current||'—'}</strong></div><div><small>运行方式</small><strong>{update?.web_current&&update.web_current!==update.current?'Web 独立版本':'完整镜像'}</strong></div></div>{update?.release_body&&<details className="update-release-notes"><summary>{update.release_name||'查看本次 Release 说明'}</summary><pre>{update.release_body}</pre></details>}<p className="muted-copy">更新会重新拉取固定镜像并校验摘要；Web-only 更新不会停止登录、发送和监控服务。</p><div className="setting-actions"><Button variant="quiet" disabled={operationBusy||!update?.online} onClick={()=>submit('check')}>检查更新</Button><Button variant="quiet" disabled={operationBusy||!update?.update_available} onClick={()=>submit('install-web')}>仅更新 Web</Button><Button disabled={operationBusy||!update?.update_available} onClick={()=>submit('install')}>完整更新</Button></div>{rollbackOptions.length>0&&<div className="update-rollback"><label>安全回滚版本<select className="input" value={rollbackVersion||rollbackOptions[0].version} onChange={e=>setRollbackVersion(e.target.value)}>{rollbackOptions.map(item=><option key={item.version} value={item.version}>{item.version}{item.published_at?` · ${new Date(item.published_at).toLocaleDateString('zh-CN')}`:''}</option>)}</select></label><Button variant="danger" disabled={operationBusy} onClick={()=>submit('rollback')}>回滚</Button></div>}{update?.phase&&<div className="update-progress"><span>{update.message||'正在处理更新…'}</span><b>{update.phase}</b></div>}</Card><Card><div className="section-head"><div><span className="eyebrow">MAIL DELIVERY</span><h2>邮件服务</h2></div><Badge tone={data.mail?.enabled?'good':'neutral'}>{data.mail?.enabled?'已启用':'未启用'}</Badge></div><p className="muted-copy">发信配置保存在服务端密文中，密码不会回显。完整 SMTP 配置可在保存后测试连接。</p><div className="quick-links"><Link to="/notifications">打开用户通知设置 ↗</Link><Link to="/admin/settings/mail">打开完整邮件设置 ↗</Link></div></Card></>;
+  return <><Card className="update-panel"><div className="section-head"><div><span className="eyebrow">RELEASE CHANNEL</span><h2>版本更新</h2></div><Badge tone={update?.online?'good':'neutral'}>{update?.online?'更新服务在线':'更新服务未连接'}</Badge></div><div className="update-version-grid"><div><small>当前版本</small><strong>{update?.current||'—'}</strong></div><div><small>最新版本</small><strong className={update?.update_available?'update-new':''}>{update?.latest||update?.current||'—'}</strong></div><div><small>运行方式</small><strong>{update?.web_current&&update.web_current!==update.current?'Web 独立版本':'完整镜像'}</strong></div></div>{update?.release_body&&<details className="update-release-notes"><summary>{update.release_name||'查看本次 Release 说明'}</summary><pre>{update.release_body}</pre></details>}<p className="muted-copy">更新会重新拉取固定镜像并校验摘要；Web-only 更新不会停止登录、发送和监控服务。</p><div className="setting-actions"><Button variant="quiet" disabled={operationBusy||!update?.online} onClick={()=>submit('check')}>检查更新</Button><Button variant="quiet" disabled={operationBusy||!update?.update_available} onClick={()=>submit('install-web')}>仅更新 Web</Button><Button disabled={operationBusy||!update?.update_available} onClick={()=>submit('install')}>完整更新</Button></div>{rollbackOptions.length>0&&<div className="update-rollback"><label>安全回滚版本<select className="input" value={rollbackVersion||rollbackOptions[0].version} onChange={e=>setRollbackVersion(e.target.value)}>{rollbackOptions.map(item=><option key={item.version} value={item.version}>{item.version}{item.published_at?` · ${new Date(item.published_at).toLocaleDateString('zh-CN')}`:''}</option>)}</select></label><Button variant="danger" disabled={operationBusy} onClick={()=>submit('rollback')}>回滚</Button></div>}{update?.phase&&<div className="update-progress"><span>{update.message||'正在处理更新…'}</span><b>{update.phase}</b></div>}</Card><AdminTotpPanel csrf={data.csrf}/><Card><div className="section-head"><div><span className="eyebrow">MAIL DELIVERY</span><h2>邮件服务</h2></div><Badge tone={data.mail?.enabled?'good':'neutral'}>{data.mail?.enabled?'已启用':'未启用'}</Badge></div><p className="muted-copy">发信配置保存在服务端密文中，密码不会回显。完整 SMTP 配置可在保存后测试连接。</p><div className="quick-links"><Link to="/notifications">打开用户通知设置 ↗</Link><Link to="/admin/settings/mail">打开完整邮件设置 ↗</Link></div></Card></>;
+}
+function AdminTotpPanel({csrf}) {
+  const [state,setState]=useState(null);
+  const [password,setPassword]=useState('');
+  const [code,setCode]=useState('');
+  const [pending,setPending]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState('');
+  const refresh=async()=>{
+    try { setState(await api('/api/auth/mfa/totp')); }
+    catch(error) { setNotice(error.message); }
+  };
+  useEffect(()=>{refresh()},[]);
+  const setup=async()=>{
+    setBusy(true);setNotice('正在生成验证器密钥…');
+    try {
+      const value=await api('/api/auth/mfa/totp/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf,password})});
+      setPending(value);setCode('');setPassword('');setNotice('密钥已生成；请先添加到验证器，再输入当前验证码完成确认。');
+      await refresh();
+    } catch(error) { setNotice(error.message); }
+    finally { setBusy(false); }
+  };
+  const confirm=async()=>{
+    setBusy(true);setNotice('正在确认验证码…');
+    try {
+      const value=await api('/api/auth/mfa/totp/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf,code})});
+      if(!value?.ok)throw new Error(value?.detail||'验证码无效');
+      setPending(null);setCode('');setNotice('验证器已启用。当前阶段不会改变登录流程。');await refresh();
+    } catch(error) { setNotice(error.message); }
+    finally { setBusy(false); }
+  };
+  const disable=async()=>{
+    if(!window.confirm(state?.enabled?'停用管理员验证器？':'取消尚未完成的验证器设置？'))return;
+    setBusy(true);setNotice('正在停用验证器…');
+    try {
+      const value=await api('/api/auth/mfa/totp/disable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf,password,code})});
+      if(!value?.ok)throw new Error(value?.detail||'停用失败');
+      setPending(null);setPassword('');setCode('');setNotice('验证器已停用。');await refresh();
+    } catch(error) { setNotice(error.message); }
+    finally { setBusy(false); }
+  };
+  return <Card className="admin-totp-panel"><div className="section-head"><div><span className="eyebrow">ADMIN SECURITY</span><h2>管理员验证器</h2></div><Badge tone={state?.enabled?'good':state?.pending?'warn':'neutral'}>{state?.enabled?'已配置':state?.pending?'待确认':state?'未配置':'读取中'}</Badge></div><p className="muted-copy">可在 Google Authenticator、Microsoft Authenticator 或兼容应用中添加 TOTP。当前只保存配置，不会要求登录验证码。</p>{!state?.configured&&!pending&&<div className="form-grid"><label>当前管理员密码<input className="input" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label><Button variant="quiet" disabled={busy||!password} onClick={setup}>{busy?'请稍候…':'开始设置验证器'}</Button></div>}{pending&&<div className="form-stack"><label>一次性设置密钥<input className="input" readOnly value={pending.secret} onFocus={event=>event.target.select()} aria-label="一次性 TOTP 设置密钥"/></label><small className="muted-copy">请在离开页面前将密钥手动添加到验证器；此密钥之后不会再次显示。</small><label>验证器当前 6 位验证码<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={event=>setCode(event.target.value)}/></label><div className="setting-actions"><Button disabled={busy||code.trim().length!==6} onClick={confirm}>{busy?'正在确认…':'确认并启用'}</Button><Button variant="quiet" disabled={busy} onClick={disable}>取消设置</Button></div></div>}{state?.enabled&&<div className="form-stack"><label>当前 6 位验证码<input className="input" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={event=>setCode(event.target.value)}/></label><label>当前管理员密码<input className="input" type="password" autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label><Button variant="danger" disabled={busy||code.trim().length!==6||!password} onClick={disable}>验证后停用</Button></div>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}</Card>;
 }
 function MailAdmin({data,onSaved}) {
   const config=data.mail||{};

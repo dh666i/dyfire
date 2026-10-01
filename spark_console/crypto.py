@@ -28,3 +28,28 @@ class CookieCipher:
 
     def decrypt(self, ciphertext: bytes, nonce: bytes) -> bytes:
         return self._aes.decrypt(nonce, ciphertext, self._AAD)
+
+
+class SecretCipher:
+    """Encrypt small server-side secrets with an explicit purpose boundary.
+
+    This is intentionally separate from :class:`CookieCipher`: a key file may
+    be shared by both services, but authenticated data must never be
+    interchangeable across credential types.
+    """
+
+    _AAD = b"dyfire-admin-totp-v1"
+
+    def __init__(self, key: bytes):
+        if len(key) != 32:
+            raise ValueError("AES-256-GCM requires a 32-byte key")
+        self._aes = AESGCM(key)
+
+    def encrypt(self, payload: bytes) -> EncryptedPayload:
+        nonce = os.urandom(12)
+        return EncryptedPayload(
+            ciphertext=self._aes.encrypt(nonce, payload, self._AAD), nonce=nonce
+        )
+
+    def decrypt(self, ciphertext: bytes, nonce: bytes) -> bytes:
+        return self._aes.decrypt(nonce, ciphertext, self._AAD)

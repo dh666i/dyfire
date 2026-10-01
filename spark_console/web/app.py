@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine
 from core.avatars import safe_avatar_url
 
 from spark_console.config import Settings
-from spark_console.crypto import CookieCipher
+from spark_console.crypto import CookieCipher, SecretCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.run_attempts import for_runs as attempts_for_runs
 from spark_console.run_events import for_runs as events_for_runs
@@ -61,6 +61,7 @@ from spark_console.web.proxy_headers import TrustedProxyMiddleware
 from spark_console.web.request_context import RequestCorrelationMiddleware
 from spark_console.web.subscription_routes import build_subscription_router
 from spark_console.web.elevation_routes import build_elevation_router
+from spark_console.web.mfa_routes import build_mfa_router
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -132,6 +133,12 @@ MISS_ERROR_CODES = {
     "worker_was_offline",
     "target_ambiguous",
 }
+
+# Legacy server-rendered views are still reachable from old bookmarks and
+# automation links. Keep their initial payload bounded even though the main
+# product now uses the React bootstrap APIs.
+LEGACY_WORKSPACE_PAGE_SIZE = 100
+ACCOUNT_CONVERSATION_PAGE_SIZE = 100
 
 
 def run_view_status(run) -> dict[str, str]:
@@ -320,6 +327,17 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     elevation_limiter = FailedAttemptLimiter(limit=5)
     app.include_router(build_elevation_router(engine, auth, passwords, elevation_limiter))
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
+    # TOTP enrollment is available for administrators but is not consulted by
+    # login or step-up until an explicit, separately reviewed rollout.
+    app.include_router(
+        build_mfa_router(
+            engine,
+            auth,
+            passwords,
+            FailedAttemptLimiter(limit=5),
+            SecretCipher(settings.session_key_file.read_bytes()),
+        )
+    )
     from spark_console.web.studio_routes import build_studio_router
     app.include_router(build_studio_router(engine, auth, cipher))
     from spark_console.web.spa_routes import build_spa_router
@@ -656,8 +674,34 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     def dashboard(request: Request):
         with session_scope(engine) as db:
             user, _record, context = auth.user_context(request, db)
-            tasks = db.scalars(select(SparkTask).where(SparkTask.owner_user_id == user.id)).all()
-            accounts = db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)).all()
+            tasks = db.scalars(
+                select(SparkTask)
+                .where(SparkTask.owner_user_id == user.id)
+                .order_by(SparkTask.send_time, SparkTask.target_name, SparkTask.id)
+                .limit(LEGACY_WORKSPACE_PAGE_SIZE)
+            ).all()
+            accounts = db.scalars(
+                select(DouyinAccount)
+                .where(DouyinAccount.owner_user_id == user.id)
+                .order_by(DouyinAccount.created_at, DouyinAccount.id)
+                .limit(LEGACY_WORKSPACE_PAGE_SIZE)
+            ).all()
+            task_total = int(
+                db.scalar(
+                    select(func.count(SparkTask.id)).where(
+                        SparkTask.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
+            account_total = int(
+                db.scalar(
+                    select(func.count(DouyinAccount.id)).where(
+                        DouyinAccount.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
             runs = db.scalars(select(TaskRun).join(SparkTask).where(SparkTask.owner_user_id == user.id).order_by(TaskRun.scheduled_for.desc()).limit(5)).all()
             local_now = datetime.now(ZoneInfo("Asia/Shanghai"))
             today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
@@ -678,20 +722,84 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             today_success, today_attention, today_unconfirmed, today_failed = (
                 int(today_counts[index] or 0) for index in range(1, 5)
             )
-            valid_accounts = sum(item.validation_state == "valid" for item in accounts)
+            valid_accounts = int(
+                db.scalar(
+                    select(func.count(DouyinAccount.id)).where(
+                        DouyinAccount.owner_user_id == user.id,
+                        DouyinAccount.validation_state == "valid",
+                    )
+                )
+                or 0
+            )
             accounts.sort(key=lambda item: (item.validation_state == 'valid', item.display_name.casefold()))
-            account_attention = sum(item.validation_state in ('invalid','temporary','verification') for item in accounts)
-            next_task = min(
-                (task for task in tasks if task.enabled and task.next_run_at is not None),
-                key=lambda task: task.next_run_at.replace(tzinfo=timezone.utc)
-                if task.next_run_at.tzinfo is None
-                else task.next_run_at.astimezone(timezone.utc),
-                default=None,
+            account_attention = int(
+                db.scalar(
+                    select(func.count(DouyinAccount.id)).where(
+                        DouyinAccount.owner_user_id == user.id,
+                        DouyinAccount.validation_state.in_(
+                            ('invalid', 'temporary', 'verification')
+                        ),
+                    )
+                )
+                or 0
+            )
+            schedule_counts = db.execute(
+                select(
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    SparkTask.enabled.is_(True),
+                                    SparkTask.send_time < "12:00",
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    SparkTask.enabled.is_(True),
+                                    SparkTask.send_time >= "12:00",
+                                    SparkTask.send_time < "18:00",
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    SparkTask.enabled.is_(True),
+                                    SparkTask.send_time >= "18:00",
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                ).where(SparkTask.owner_user_id == user.id)
+            ).one()
+            # Do not derive the next run from the bounded preview. A user with
+            # more than 100 tasks must still see the actual next task.
+            next_task = db.scalar(
+                select(SparkTask)
+                .where(
+                    SparkTask.owner_user_id == user.id,
+                    SparkTask.enabled.is_(True),
+                    SparkTask.next_run_at.is_not(None),
+                )
+                .order_by(SparkTask.next_run_at, SparkTask.id)
+                .limit(1)
             )
             onboarding = {
                 "membership": bool(context.get("membership", {}).get("active")),
-                "account": bool(accounts),
-                "task": bool(tasks),
+                "account": account_total > 0,
+                "task": task_total > 0,
                 "success": any(run.status == "success" for run in runs)
                 or db.scalar(
                     select(TaskRun.id)
@@ -722,6 +830,18 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 today_unconfirmed=today_unconfirmed,
                 today_failed=today_failed,
                 next_task=next_task,
+                workspace_limits={
+                    "page_size": LEGACY_WORKSPACE_PAGE_SIZE,
+                    "accounts_total": account_total,
+                    "tasks_total": task_total,
+                    "accounts_truncated": account_total > len(accounts),
+                    "tasks_truncated": task_total > len(tasks),
+                },
+                schedule_periods={
+                    "morning": int(schedule_counts[0] or 0),
+                    "afternoon": int(schedule_counts[1] or 0),
+                    "evening": int(schedule_counts[2] or 0),
+                },
                 **context,
             )
 
@@ -733,8 +853,24 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 select(DouyinAccount)
                 .where(DouyinAccount.owner_user_id == user.id)
                 .order_by(DouyinAccount.created_at)
+                .limit(LEGACY_WORKSPACE_PAGE_SIZE)
             ).all()
-            return page(request, "accounts.html", title="抖音账号", accounts=accounts, account_profiles=profile_map(db, [a.id for a in accounts]), account_health=health_views(db, accounts), **context)
+            account_total = int(
+                db.scalar(
+                    select(func.count(DouyinAccount.id)).where(
+                        DouyinAccount.owner_user_id == user.id
+                    )
+                )
+                or 0
+            )
+            return page(request, "accounts.html", title="抖音账号", accounts=accounts,
+                        account_profiles=profile_map(db, [a.id for a in accounts]),
+                        account_health=health_views(db, accounts),
+                        workspace_limits={
+                            "page_size": LEGACY_WORKSPACE_PAGE_SIZE,
+                            "accounts_total": account_total,
+                            "accounts_truncated": account_total > len(accounts),
+                        }, **context)
 
     @app.post("/accounts/{account_id}/delete")
     def delete_account(request: Request, account_id: str, csrf_token: str = Form(default="")):
@@ -768,15 +904,40 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 select(DouyinConversation.display_name)
                 .where(DouyinConversation.account_id == account_id)
                 .order_by(DouyinConversation.display_name)
+                .limit(ACCOUNT_CONVERSATION_PAGE_SIZE)
             ).all()
             contacts = db.scalars(
                 select(DouyinContactIdentity)
                 .where(DouyinContactIdentity.account_id == account_id)
+                .order_by(DouyinContactIdentity.discovered_at.desc(), DouyinContactIdentity.sec_uid)
+                .limit(ACCOUNT_CONVERSATION_PAGE_SIZE)
             ).all()
+            contact_ids = [contact.sec_uid for contact in contacts]
             avatars = {
                 item.sec_uid: safe_avatar_url(item.avatar_url)
-                for item in db.scalars(select(DouyinContactAvatar).where(DouyinContactAvatar.account_id == account_id))
-            }
+                for item in db.scalars(
+                    select(DouyinContactAvatar).where(
+                        DouyinContactAvatar.account_id == account_id,
+                        DouyinContactAvatar.sec_uid.in_(contact_ids),
+                    )
+                )
+            } if contact_ids else {}
+            conversation_count = int(
+                db.scalar(
+                    select(func.count(DouyinConversation.display_name)).where(
+                        DouyinConversation.account_id == account_id
+                    )
+                )
+                or 0
+            )
+            contact_count = int(
+                db.scalar(
+                    select(func.count(DouyinContactIdentity.sec_uid)).where(
+                        DouyinContactIdentity.account_id == account_id
+                    )
+                )
+                or 0
+            )
             aliases = {
                 value
                 for contact in contacts
@@ -816,7 +977,15 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 ContactDirectoryJob.query == "", ContactDirectoryJob.status == "succeeded").order_by(ContactDirectoryJob.finished_at.desc()).limit(1))
             active = db.scalar(select(ContactDirectoryJob).where(ContactDirectoryJob.account_id == account_id,
                 ContactDirectoryJob.status.in_(['queued', 'running'])).order_by(ContactDirectoryJob.created_at.desc()).limit(1))
-            return JSONResponse({"items": sorted(items, key=lambda item: item["name"]), "sync": job_view(latest) if latest else None,
+            sorted_items = sorted(items, key=lambda item: item["name"])
+            # Keep the historical `items` field intact while exposing enough
+            # metadata for a future paged picker to request more contacts.
+            return JSONResponse({"items": sorted_items[:ACCOUNT_CONVERSATION_PAGE_SIZE],
+                "has_more": len(sorted_items) > ACCOUNT_CONVERSATION_PAGE_SIZE
+                    or contact_count > len(contacts)
+                    or conversation_count > len(conversation_names),
+                "limit": ACCOUNT_CONVERSATION_PAGE_SIZE,
+                "sync": job_view(latest) if latest else None,
                 "active_sync": job_view(active) if active else None}, headers={"Cache-Control": "no-store"})
 
     @app.get("/tasks")
@@ -1055,7 +1224,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 .offset((current - 1) * page_size).limit(page_size)
             ).all()
             accounts = db.scalars(
-                select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)
+                select(DouyinAccount)
+                .where(DouyinAccount.owner_user_id == user.id)
+                .order_by(DouyinAccount.created_at, DouyinAccount.id)
+                .limit(LEGACY_WORKSPACE_PAGE_SIZE)
             ).all()
             return page(
                 request,
