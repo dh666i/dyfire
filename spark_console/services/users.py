@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 import secrets
 import string
+import unicodedata
 from datetime import timedelta, timezone
 
 from sqlalchemy import case, func, or_, select, update
@@ -15,18 +17,146 @@ from spark_console.services.audits import AuditService
 
 MAX_FAILED_LOGINS = 5
 LOGIN_LOCKOUT_DURATION = timedelta(minutes=15)
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 256
+PASSWORD_POLICY_HINT = "密码至少 12 位，且需同时包含字母和数字；请勿使用常见、连续或重复模式"
+
+# Keep this deliberately small and high-signal.  It catches the passwords
+# that are routinely sprayed at internet-facing services without pretending
+# that a short deny-list is a substitute for breach-password screening.
+_COMMON_PASSWORDS = frozenset(
+    {
+        "password",
+        "password123",
+        "password1234",
+        "passw0rd",
+        "qwerty",
+        "qwerty123",
+        "123456",
+        "123456789",
+        "1234567890",
+        "123456789012",
+        "123123",
+        "123123123123",
+        "111111",
+        "111111111111",
+        "000000000000",
+        "abc123",
+        "admin",
+        "admin123",
+        "admin123456",
+        "letmein",
+        "welcome",
+        "welcome123",
+        "changeme",
+        "iloveyou",
+        "1q2w3e4r5t",
+    }
+)
+
+
+def _password_forms(password: str) -> tuple[str, str]:
+    normalized = unicodedata.normalize("NFKC", password).casefold().strip()
+    compact = re.sub(r"[^\w]+", "", normalized, flags=re.UNICODE)
+    return normalized, compact
+
+
+_COMMON_PASSWORD_FORMS = frozenset(
+    _password_forms(value)[1] for value in _COMMON_PASSWORDS
+)
+_COMMON_PASSWORD_BASES = ("password", "qwerty", "admin", "welcome", "letmein", "changeme")
+
+
+def _is_repeated_pattern(value: str) -> bool:
+    if len(value) < 12:
+        return False
+    return any(
+        len(value) % width == 0
+        and value == value[:width] * (len(value) // width)
+        for width in range(1, 5)
+    )
+
+
+def _contains_sequential_run(value: str) -> bool:
+    for alphabet in ("0123456789", "abcdefghijklmnopqrstuvwxyz"):
+        for width in range(6, len(alphabet) + 1):
+            for start in range(len(alphabet) - width + 1):
+                run = alphabet[start : start + width]
+                if run in value or run[::-1] in value:
+                    return True
+    return False
 
 
 def _aware(value):
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
-def validate_registration_password(password: str) -> None:
+def validate_registration_password(password: str, *, username: str | None = None) -> None:
+    """Validate a website password without exposing account-specific details.
+
+    The public error is intentionally the same for every rejected password.
+    This keeps registration and recovery responses from becoming a source of
+    account or policy probing while still allowing the UI to show the stable
+    requirements in its own copy.
+    """
+    if (
+        not isinstance(password, str)
+        or len(password) < MIN_PASSWORD_LENGTH
+        or len(password) > MAX_PASSWORD_LENGTH
+    ):
+        raise ValidationError("注册信息无效")
     if (
         not any(character.isalpha() for character in password)
         or not any(character.isdigit() for character in password)
     ):
         raise ValidationError("注册信息无效")
+    normalized, compact = _password_forms(password)
+    if normalized in _COMMON_PASSWORDS or compact in _COMMON_PASSWORD_FORMS:
+        raise ValidationError("注册信息无效")
+    # Reject decorated variants such as ``Password123!`` while avoiding a
+    # broad substring rule that would reject ordinary passphrases. A common
+    # base followed only by a short numeric suffix remains a sprayable secret.
+    if any(
+        compact.startswith(base)
+        and compact[len(base) :].isdigit()
+        and 0 < len(compact) - len(base) <= 8
+        for base in _COMMON_PASSWORD_BASES
+    ):
+        raise ValidationError("注册信息无效")
+    if (
+        _is_repeated_pattern(compact)
+        or _contains_sequential_run(compact)
+        or len(set(compact)) == 1
+    ):
+        raise ValidationError("注册信息无效")
+    if username:
+        username_normalized, username_compact = _password_forms(username)
+        if (
+            normalized == username_normalized
+            or compact == username_compact
+            or (username_compact and username_compact in compact)
+        ):
+            raise ValidationError("注册信息无效")
+
+
+def _temporary_password() -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#$%"
+    # Include each required character class explicitly; random generation
+    # should never produce a temporary password that violates our policy.
+    characters = [
+        secrets.choice(string.ascii_letters),
+        secrets.choice(string.digits),
+        *(secrets.choice(alphabet) for _ in range(16)),
+    ]
+    secrets.SystemRandom().shuffle(characters)
+    return "".join(characters)
+
+
+def _validate_explicit_password(password: str, username: str) -> None:
+    try:
+        validate_registration_password(password, username=username)
+    except ValidationError as error:
+        raise ValidationError(PASSWORD_POLICY_HINT) from error
 
 
 class UserService:
@@ -37,8 +167,7 @@ class UserService:
 
     @staticmethod
     def temporary_password() -> str:
-        alphabet = string.ascii_letters + string.digits + "!@#$%"
-        return "".join(secrets.choice(alphabet) for _ in range(18))
+        return _temporary_password()
 
     def create(self, username: str, password: str | None = None, role: str = "user") -> tuple[User, str]:
         name = username.strip().lower()
@@ -53,6 +182,8 @@ class UserService:
         if self.session.scalar(select(User).where(User.username == name)):
             raise Conflict("用户名已存在")
         temporary = self.temporary_password() if password is None else password
+        if password is not None:
+            _validate_explicit_password(temporary, name)
         user = User(
             username=name,
             password_hash=self.passwords.hash(temporary),

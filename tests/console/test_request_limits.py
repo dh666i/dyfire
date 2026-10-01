@@ -41,7 +41,10 @@ class RequestBodyLimitTests(unittest.TestCase):
         with TestClient(create_app(self.settings, self.engine)) as client:
             response = client.post("/login", data={"username": "u" * 100, "password": "x"})
         self.assertEqual(response.status_code, 413)
-        self.assertEqual(response.json(), {"detail": "request body too large"})
+        self.assertEqual(response.json()["detail"], "request body too large")
+        self.assertRegex(response.json()["request_id"], r"^[0-9a-f]{32}$")
+        self.assertEqual(response.json()["error_code"], "request_too_large")
+        self.assertEqual(response.headers["x-request-id"], response.json()["request_id"])
         self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_streamed_body_is_counted_when_content_length_is_missing(self):

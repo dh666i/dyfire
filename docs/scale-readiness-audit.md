@@ -11,6 +11,7 @@
 - 管理员初始化响应不再携带全部明文兑换码；兑换码页面使用独立接口、搜索和分页加载。
 - 应用层增加可配置的请求体上限 `SPARK_MAX_REQUEST_BYTES`，默认 2 MiB。反向代理仍必须设置相同或更严格的限制。
 - 转发头由应用层按 `SPARK_TRUSTED_PROXY_CIDRS` 严格限制：未配置时忽略 `X-Forwarded-For/Proto`；只有直接对端属于配置的 IP/CIDR 时才解析最近的客户端地址和 HTTPS scheme。HSTS 可通过 `SPARK_HSTS_MAX_AGE_SECONDS` 与 `SPARK_HSTS_INCLUDE_SUBDOMAINS` 配置。
+- HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 移动端时间输入已设置单列布局、`min-width: 0` 和 `box-sizing`，应在真机和常见浏览器再次核验。
 
 ## P0：上线前必须解决
@@ -45,7 +46,7 @@
 
 ## P1：规模化前完成
 
-- 拆分 `/api/app/bootstrap` 和 `/api/admin/bootstrap`，按页面提供摘要、列表和详情接口；所有列表使用最大 100 条的 keyset/cursor 分页。
+- 继续拆分 `/api/app/bootstrap` 和 `/api/admin/bootstrap` 的用户端大列表；管理端已将任务分组、订阅、审计、邮件和兑换码改为按页面加载。剩余列表统一使用最大 100 条的 keyset/cursor 分页。
 - 用户、任务、执行记录、审计、邮件和账号告警设置保留期与归档策略，避免主表无限增长。
 - 搜索从 `%keyword%` 模糊匹配升级为前缀、全文或 trigram 索引；统计使用汇总表或事件驱动计数。
 - 增加 `tenant_id`、客户归属、邀请、订单、支付、退款、佣金账本、结算周期和退款追回模型。管理员备注只能作为展示字段，不能承担下线关系。

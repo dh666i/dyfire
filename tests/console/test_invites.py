@@ -101,12 +101,31 @@ class InviteServiceTests(unittest.TestCase):
 
 
 class RegistrationPasswordTests(unittest.TestCase):
-    def test_registration_password_requires_letters_and_digits_without_length_limit(self):
-        validate_registration_password("A1")
-        for password in ("abcdefghij", "1234567890", ""):
+    def test_registration_password_requires_length_and_letters_and_digits(self):
+        validate_registration_password("Secure-12345")
+        for password in ("A1", "abcdefghij", "1234567890", "", "A" * 257 + "1"):
             with self.subTest(password=password):
                 with self.assertRaisesRegex(ValidationError, "注册信息无效"):
                     validate_registration_password(password)
+
+    def test_registration_password_rejects_common_and_username_based_variants(self):
+        for password in (
+            "Password1234",
+            "Welcome-123",
+            "Admin123456",
+            "Abc123456789",
+            "Aa11Aa11Aa11",
+        ):
+            with self.subTest(password=password):
+                with self.assertRaisesRegex(ValidationError, "注册信息无效"):
+                    validate_registration_password(password)
+        with self.assertRaisesRegex(ValidationError, "注册信息无效"):
+            validate_registration_password("friend-12345", username="friend")
+
+    def test_temporary_password_always_meets_policy(self):
+        for _ in range(100):
+            password = UserService.temporary_password()
+            validate_registration_password(password)
 
 
 class FailedAttemptLimiterTests(unittest.TestCase):

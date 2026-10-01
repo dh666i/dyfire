@@ -15,7 +15,11 @@ from spark_console.security import PasswordService
 from spark_console.services import Conflict, ValidationError
 from spark_console.services.audits import AuditService
 from spark_console.services.invites import InviteService
-from spark_console.services.users import UserService, validate_registration_password
+from spark_console.services.users import (
+    PASSWORD_POLICY_HINT,
+    UserService,
+    validate_registration_password,
+)
 from spark_console.web.auth import WebAuth
 from spark_console.models import InviteCode, SparkTask, TaskRun, User
 
@@ -92,11 +96,9 @@ def build_registration_router(
         try:
             with session_scope(engine) as db:
                 try:
-                    validate_registration_password(password)
+                    validate_registration_password(password, username=username)
                 except ValidationError as error:
-                    raise _RegistrationFormError(
-                        "密码需同时包含字母和数字"
-                    ) from error
+                    raise _RegistrationFormError(PASSWORD_POLICY_HINT) from error
                 if password != password_confirmation:
                     raise _RegistrationFormError("两次输入的密码不一致")
                 try:

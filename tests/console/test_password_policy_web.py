@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, unquote_plus
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -74,12 +74,43 @@ class PasswordPolicyWebTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(303, response.status_code)
-        self.assertIn("密码需同时包含字母和数字", unquote(response.headers["location"]))
+        self.assertIn("密码至少 12 位", unquote_plus(response.headers["location"]))
         with session_scope(self.engine) as db:
             user = db.get(User, self.user_id)
             self.assertTrue(user.must_change_password)
             self.assertTrue(self.passwords.verify(user.password_hash, "Original-123"))
             self.assertFalse(self.passwords.verify(user.password_hash, "weak"))
+
+    def test_registration_uses_generic_policy_message_and_accepts_strong_password(self):
+        weak = self.client.post(
+            "/register",
+            data={
+                "username": "new-policy-user",
+                "password": "weak",
+                "password_confirmation": "weak",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(303, weak.status_code)
+        self.assertIn("密码至少 12 位", unquote_plus(weak.headers["location"]))
+        self.assertNotIn("用户名已存在", unquote_plus(weak.headers["location"]))
+
+        valid = self.client.post(
+            "/register",
+            data={
+                "username": "new-policy-user",
+                "password": "Strong-Password-123",
+                "password_confirmation": "Strong-Password-123",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(303, valid.status_code)
+        with session_scope(self.engine) as db:
+            user = db.query(User).filter(User.username == "new-policy-user").one()
+            self.assertFalse(user.must_change_password)
+            self.assertTrue(
+                self.passwords.verify(user.password_hash, "Strong-Password-123")
+            )
 
     def test_login_lockout_is_persistent_and_expires(self):
         for _ in range(5):
@@ -139,8 +170,8 @@ class PasswordPolicyWebTests(unittest.TestCase):
             data={
                 "csrf_token": csrf,
                 "current_password": "Original-123",
-                "new_password": "Updated-456",
-                "new_password_confirmation": "Updated-456",
+                "new_password": "Updated-456!",
+                "new_password_confirmation": "Updated-456!",
             },
             follow_redirects=False,
         )

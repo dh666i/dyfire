@@ -92,14 +92,16 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(updated, self.session.get(DouyinContactAvatar, (account.id, "stable")).avatar_url)
         self.assertIsNone(self.session.get(DouyinContactAvatar, (self.account.id, "stable")))
 
-    def test_user_password_can_be_short_but_explicit_empty_password_is_rejected(self):
-        user, supplied = self.users.create("short.password@example.com", "A1")
+    def test_user_password_requires_the_shared_policy(self):
+        user, supplied = self.users.create(
+            "long.password@example.com", "Long-Password-123"
+        )
 
-        self.assertEqual("A1", supplied)
-        self.assertEqual("short.password@example.com", user.username)
-        self.assertTrue(PasswordService().verify(user.password_hash, "A1"))
-        with self.assertRaisesRegex(ValueError, "must not be empty"):
-            self.users.create("empty-password", "")
+        self.assertEqual("Long-Password-123", supplied)
+        self.assertEqual("long.password@example.com", user.username)
+        self.assertTrue(PasswordService().verify(user.password_hash, supplied))
+        with self.assertRaisesRegex(ValidationError, "密码至少 12 位"):
+            self.users.create("short-password", "A1")
 
     def test_omitted_password_still_generates_a_temporary_password(self):
         user, temporary = self.users.create("generated-password")
@@ -345,7 +347,7 @@ class ServiceTests(unittest.TestCase):
             target_sec_uid="stable-contact",
         )
 
-        with self.assertRaisesRegex(Conflict, "已存在"):
+        with self.assertRaisesRegex(Conflict, "已有续火任务"):
             self.tasks.create(
                 self.owner.id,
                 self.account.id,
@@ -400,7 +402,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual("好友甲", updated.target_name)
         self.assertNotEqual(first.target_key, updated.target_key)
 
-        with self.assertRaisesRegex(Conflict, "已存在"):
+        with self.assertRaisesRegex(Conflict, "启用任务已存在"):
             self.tasks.update_owned(
                 self.owner.id,
                 second.id,
@@ -507,7 +509,7 @@ class ServiceTests(unittest.TestCase):
         )
         self.session.flush()
 
-        with self.assertRaisesRegex(Conflict, "已存在"):
+        with self.assertRaisesRegex(Conflict, "已有续火任务"):
             self.tasks.create_many(
                 self.owner.id,
                 self.account.id,
@@ -864,7 +866,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual("续火花", task.message_template)
 
     def test_native_spark_sticker_rejects_other_payloads_and_unknown_kinds(self):
-        with self.assertRaisesRegex(ValidationError, "原生续火花"):
+        with self.assertRaisesRegex(ValidationError, "仅支持续火花表情"):
             self.tasks.create(
                 self.owner.id,
                 self.account.id,

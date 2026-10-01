@@ -258,44 +258,6 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 .order_by(TaskRun.scheduled_for.desc())
                 .limit(30)
             ).all()
-            groups, pagination = list_task_groups(db, q=q, status="", page=1)
-            subscriptions, subscriptions_page = list_subscriptions(db, page=1)
-            audit_rows, audit_page = list_audit_events(db, page=1)
-            invite_codes = db.scalars(
-                select(InviteCode).order_by(InviteCode.created_at.desc()).limit(50)
-            ).all()
-            mail = {}
-            if cipher is not None:
-                from spark_console.services import mail as mail_service
-                config = mail_service.load_config(db, cipher)
-                mail = {
-                    "enabled": bool(config.get("enabled")),
-                    "host": config.get("host", ""),
-                    "port": config.get("port"),
-                    "mode": config.get("mode", "ssl"),
-                    "username": config.get("username", ""),
-                    "sender": config.get("sender", ""),
-                    "sender_name": config.get("sender_name", ""),
-                    "events": list(config.get("events", [])),
-                    "password_configured": bool(config.get("password")),
-                    "templates": config.get("templates", {}),
-                    "deliveries": [
-                        {
-                            "id": item.id,
-                            "event": item.event,
-                            "recipient": item.recipient,
-                            "status": item.status,
-                            "error": item.error,
-                            "created_at": _date_value(item.created_at),
-                        }
-                        for item in db.scalars(
-                            select(MailDelivery)
-                            .order_by(MailDelivery.created_at.desc())
-                            .limit(30)
-                        ).all()
-                    ],
-                }
-            subscription_map = {item.id: item for item in subscriptions}
             return {
                 "user": {"id": admin.id, "name": admin.username, "role": admin.role},
                 "csrf": record.csrf_token,
@@ -310,20 +272,6 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                      "today_success": row.today_success_count, "today_failed": row.today_failed_count}
                     for row in user_rows
                 ],
-                "groups": [
-                    {
-                        "owner_id": row.get("owner_id"),
-                        "account_id": row.get("account_id"),
-                        "username": row.get("username"),
-                        "remark": row.get("remark") or row.get("nickname") or "抖音账号",
-                        "nickname": row.get("nickname"),
-                        "avatar_url": row.get("avatar_url"),
-                        "validation_state": row.get("validation_state"),
-                        "total": int(row.get("total") or 0),
-                        "enabled": int(row.get("enabled") or 0),
-                    }
-                    for row in groups
-                ],
                 "recentRuns": [
                     {
                         "id": run.id,
@@ -336,54 +284,61 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     for run, task, user in recent_runs
                 ],
                 "operations": jsonable_encoder(operations_snapshot(db, settings)) if settings else {},
-                "subscriptions": [
-                    {
-                        "id": item.id,
-                        "username": item.username,
-                        "role": item.role,
-                        "status": item.status,
-                        "membership_status": item.membership_status,
-                        "membership_label": item.membership_label,
-                        "valid_until": _date_value(item.valid_until),
-                        "days_remaining": item.days_remaining,
-                        "max_accounts": item.max_accounts,
-                        "max_tasks": item.max_tasks,
-                        "task_limit_label": item.task_limit_label,
-                        "account_count": item.account_count,
-                        "task_count": item.task_count,
-                    }
-                    for item in subscriptions
-                ],
+                # These collections are loaded by their tab-specific endpoints.
+                # Keep empty compatibility keys so older clients do not fail while
+                # avoiding unrelated joins and large reads on every admin page.
+                "groups": [],
+                "subscriptions": [],
                 # Redemption codes are loaded by the dedicated codes screen.
                 # Keeping plaintext codes out of the global bootstrap prevents
                 # every admin page load from exposing all active credentials.
                 "redemptionCodes": [],
                 "plans": pricing_plans(),
-                "invites": [
-                    {
-                        "id": item.id,
-                        "status": "已使用" if item.used_at else "已撤销" if item.revoked_at else "有效",
-                        "created_at": _date_value(item.created_at),
-                        "expires_at": _date_value(item.expires_at),
-                    }
-                    for item in invite_codes
-                ],
-                "audit": [
-                    {
-                        "id": item.id,
-                        "event": item.action,
-                        "subject_type": item.resource_type,
-                        "subject_id": item.resource_id,
-                        "detail": item.detail,
-                        "created_at": _date_value(item.created_at),
-                    }
-                    for item in audit_rows
-                ],
-                "mail": mail,
+                "invites": [],
+                "audit": [],
+                "mail": {},
                 "page": page,
                 "pageSize": user_pagination["page_size"],
                 "total": user_pagination["total"],
                 "usersPagination": user_pagination,
+            }
+
+    @router.get("/api/admin/mail")
+    def admin_mail(request: Request):
+        """Load mail settings only for the mail settings screen."""
+        with session_scope(engine) as db:
+            auth.admin_context(request, db)
+            if cipher is None:
+                return {"enabled": False, "deliveries": []}
+            from spark_console.services import mail as mail_service
+
+            config = mail_service.load_config(db, cipher)
+            return {
+                "enabled": bool(config.get("enabled")),
+                "host": config.get("host", ""),
+                "port": config.get("port"),
+                "mode": config.get("mode", "ssl"),
+                "username": config.get("username", ""),
+                "sender": config.get("sender", ""),
+                "sender_name": config.get("sender_name", ""),
+                "events": list(config.get("events", [])),
+                "password_configured": bool(config.get("password")),
+                "templates": config.get("templates", {}),
+                "deliveries": [
+                    {
+                        "id": item.id,
+                        "event": item.event,
+                        "recipient": item.recipient,
+                        "status": item.status,
+                        "error": item.error,
+                        "created_at": _date_value(item.created_at),
+                    }
+                    for item in db.scalars(
+                        select(MailDelivery)
+                        .order_by(MailDelivery.created_at.desc())
+                        .limit(30)
+                    ).all()
+                ],
             }
 
     @router.get("/api/admin/redemption-codes")

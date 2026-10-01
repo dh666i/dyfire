@@ -51,7 +51,7 @@ def build_password_recovery_router(engine,auth,cipher,passwords,page):
         password_valid = bool(password and password == confirmation)
         if password_valid:
             try:
-                validate_registration_password(password)
+                validate_registration_password(password, username=username)
             except ValidationError:
                 password_valid = False
         if allowed(request) and password_valid:
