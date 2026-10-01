@@ -110,3 +110,19 @@ def test_restore_drill_rejects_foreign_key_corruption(tmp_path):
 
     with pytest.raises(module.RecoveryDrillError, match="完整性"):
         module.run(source)
+
+
+def test_restore_drill_rejects_symlink_source_and_output(tmp_path):
+    module = _module()
+    source = tmp_path / "backup.db"
+    _database(source, b"k" * 32)
+    source_link = tmp_path / "backup-link.db"
+    output_target = tmp_path / "output.db"
+    output_link = tmp_path / "output-link.db"
+    source_link.symlink_to(source)
+    output_link.symlink_to(output_target)
+
+    with pytest.raises(module.RecoveryDrillError, match="符号链接"):
+        module.run(source_link)
+    with pytest.raises(module.RecoveryDrillError, match="符号链接"):
+        module.run(source, output=output_link)

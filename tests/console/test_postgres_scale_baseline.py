@@ -68,6 +68,7 @@ class PostgresScaleFixture:
     settings: Settings
     admin_token: str = field(repr=False)
     customer_token: str = field(repr=False)
+    customer_tokens: tuple[str, ...] = field(repr=False)
     customer_id: str
     account_id: str
     task_ids: tuple[str, ...]
@@ -240,8 +241,14 @@ def postgres_scale_fixture(tmp_path_factory: pytest.TempPathFactory) -> Postgres
 
             sessions = SessionService(session_key)
             admin_token, admin_session = sessions.create_record(admin_id, now=now)
-            customer_token, customer_session = sessions.create_record(customer_ids[0], now=now)
-            db.add_all([admin_session, customer_session])
+            customer_tokens = []
+            customer_sessions = []
+            for customer_id in customer_ids:
+                token, record = sessions.create_record(customer_id, now=now)
+                customer_tokens.append(token)
+                customer_sessions.append(record)
+            db.add(admin_session)
+            db.add_all(customer_sessions)
         build_seconds = time.perf_counter() - started
         print(
             "postgres isolated fixture: customers=%d accounts=%d tasks=%d runs=%d build=%.3fs"
@@ -251,7 +258,8 @@ def postgres_scale_fixture(tmp_path_factory: pytest.TempPathFactory) -> Postgres
             engine=engine,
             settings=settings,
             admin_token=admin_token,
-            customer_token=customer_token,
+            customer_token=customer_tokens[0],
+            customer_tokens=tuple(customer_tokens),
             customer_id=customer_ids[0],
             account_id=account_ids[0],
             task_ids=tuple(task_ids[:TASKS_PER_ACCOUNT]),
@@ -295,7 +303,9 @@ def _client(fixture: PostgresScaleFixture, token: str) -> TestClient:
 
 def _state_snapshot(fixture: PostgresScaleFixture) -> dict[str, object]:
     with session_scope(fixture.engine) as db:
-        account = db.get(DouyinAccount, fixture.account_id)
+        accounts = db.scalars(
+            select(DouyinAccount).order_by(DouyinAccount.id)
+        ).all()
         tasks = db.scalars(
             select(SparkTask)
             .where(SparkTask.owner_user_id == fixture.customer_id)
@@ -306,9 +316,18 @@ def _state_snapshot(fixture: PostgresScaleFixture) -> dict[str, object]:
             .where(SparkTaskTargetIdentity.task_id.in_(fixture.task_ids))
             .order_by(SparkTaskTargetIdentity.task_id)
         ).all()
-        assert account is not None
+        assert len(accounts) == ACCOUNT_COUNT
         return {
-            "cookie": (bytes(account.encrypted_cookies), bytes(account.cookie_nonce)),
+            "accounts": tuple(
+                (
+                    account.id,
+                    bytes(account.encrypted_cookies),
+                    bytes(account.cookie_nonce),
+                    account.cookie_version,
+                    account.validation_state,
+                )
+                for account in accounts
+            ),
             "tasks": tuple(
                 (task.id, task.douyin_account_id, task.target_name, task.send_time,
                  task.message_template, task.enabled, task.next_run_at)
@@ -350,16 +369,21 @@ def test_postgres_api_concurrency_baseline_preserves_bound_state(
             statements.append(statement)
 
     event.listen(fixture.engine, "before_cursor_execute", capture)
-    endpoints = (
-        (fixture.customer_token, "/api/app/bootstrap", None),
-        (fixture.customer_token, "/api/studio", None),
-        (fixture.customer_token, "/api/studio/runs", {"page": 1}),
-        (fixture.admin_token, "/api/admin/bootstrap", {"page": 1}),
-        (fixture.admin_token, "/api/admin/runs", {"page": 1}),
-        (fixture.admin_token, "/api/admin/subscriptions", {"page": 1}),
-        (fixture.admin_token, "/api/admin/task-groups", {"page": 1}),
+    # Issue one authenticated workspace request for every synthetic customer,
+    # then add a smaller administrator/read-history burst.  This exercises
+    # tenant isolation across the full fixture rather than timing one user
+    # repeatedly and calling it a 500-customer result.
+    jobs = [(token, "/api/app/bootstrap", None) for token in fixture.customer_tokens]
+    jobs.extend(
+        [
+            (fixture.customer_token, "/api/studio/runs", {"page": 1}),
+            (fixture.admin_token, "/api/admin/bootstrap", {"page": 1}),
+            (fixture.admin_token, "/api/admin/runs", {"page": 1}),
+            (fixture.admin_token, "/api/admin/subscriptions", {"page": 1}),
+            (fixture.admin_token, "/api/admin/task-groups", {"page": 1}),
+        ]
+        * REQUESTS_PER_WORKER
     )
-    jobs = endpoints * REQUESTS_PER_WORKER
     started = time.perf_counter()
     try:
         with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
@@ -392,4 +416,3 @@ def test_postgres_api_concurrency_baseline_preserves_bound_state(
     assert p95 < P95_LIMIT_SECONDS
     assert statements == []
     assert _state_snapshot(fixture) == before
-

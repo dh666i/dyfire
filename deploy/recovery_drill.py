@@ -47,9 +47,10 @@ class RecoveryDrillError(RuntimeError):
 
 
 def _safe_path(value: str | Path, *, must_exist: bool = True) -> Path:
-    path = Path(value).expanduser().resolve()
-    if path.is_symlink():
-        raise RecoveryDrillError(f"路径不能是符号链接: {path}")
+    raw_path = Path(value).expanduser()
+    if raw_path.is_symlink():
+        raise RecoveryDrillError(f"路径不能是符号链接: {raw_path}")
+    path = raw_path.resolve()
     if must_exist and not path.is_file():
         raise RecoveryDrillError(f"备份文件不存在或不是普通文件: {path}")
     return path
