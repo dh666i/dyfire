@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import os
-import statistics
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -70,10 +69,8 @@ class PostgresScaleFixture:
     customer_token: str = field(repr=False)
     customer_tokens: tuple[str, ...] = field(repr=False)
     customer_id: str
-    account_id: str
     account_ids: tuple[str, ...]
     task_ids: tuple[str, ...]
-    cookie_key: bytes = field(repr=False)
 
 
 def _id() -> str:
@@ -262,10 +259,8 @@ def postgres_scale_fixture(tmp_path_factory: pytest.TempPathFactory) -> Postgres
             customer_token=customer_tokens[0],
             customer_tokens=tuple(customer_tokens),
             customer_id=customer_ids[0],
-            account_id=account_ids[0],
             account_ids=tuple(account_ids),
             task_ids=tuple(task_ids[:TASKS_PER_ACCOUNT]),
-            cookie_key=cookie_key,
         )
     except BaseException:
         engine.dispose()
