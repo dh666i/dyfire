@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import contextvars
+import ipaddress
 import re
 import uuid
 from collections.abc import Callable
@@ -23,6 +25,28 @@ _STATUS_ERROR_CODES = {
     422: "validation_error",
     429: "rate_limited",
 }
+_audit_context: contextvars.ContextVar[dict[str, str | None] | None] = contextvars.ContextVar(
+    "spark_audit_request_context", default=None
+)
+
+
+def current_audit_context() -> dict[str, str | None]:
+    """Return request metadata for audit writes in this request task."""
+    values = _audit_context.get()
+    return dict(values) if values is not None else {}
+
+
+def _client_ip(scope: Scope) -> str | None:
+    peer = scope.get("client")
+    if not peer or not peer[0]:
+        return None
+    try:
+        address = ipaddress.ip_address(str(peer[0]))
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return str(address)
 
 
 def _new_request_id() -> str:
@@ -81,11 +105,14 @@ class RequestCorrelationMiddleware:
             return
 
         request_id = _request_id(scope)
+        audit_context = {"request_id": request_id, "client_ip": _client_ip(scope)}
         state = scope.get("state")
         if not isinstance(state, dict):
             state = {}
             scope["state"] = state
         state["request_id"] = request_id
+        state["audit_context"] = audit_context
+        context_token = _audit_context.set(audit_context)
 
         response_start: Message | None = None
         response_body: list[bytes] = []
@@ -146,4 +173,7 @@ class RequestCorrelationMiddleware:
             await send({**response_start, "headers": headers})
             await send({"type": "http.response.body", "body": body})
 
-        await self.app(scope, receive, send_with_metadata)
+        try:
+            await self.app(scope, receive, send_with_metadata)
+        finally:
+            _audit_context.reset(context_token)

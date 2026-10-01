@@ -650,6 +650,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             rows, pagination = list_audit_events(db, q=q, status=status, page=page)
             return {"items": [{"id": row.id, "event": row.action, "subject_type": row.resource_type,
                 "subject_id": row.resource_id, "actor": row.actor_username or "系统", "detail": row.detail,
+                "request_id": row.event.request_id, "client_ip": row.event.client_ip,
+                "outcome": row.event.outcome, "error_code": row.event.error_code,
                 "created_at": _date_value(row.created_at)} for row in rows], "pagination": pagination}
 
     @router.get("/api/admin/insights")
@@ -818,7 +820,9 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             actor = db.get(User, event.actor_user_id) if event.actor_user_id else None
             return {"id": event.id, "event": event.action, "subject_type": event.resource_type,
                 "subject_id": event.resource_id, "actor": actor.username if actor else "系统",
-                "detail": event.detail, "created_at": _date_value(event.created_at)}
+                "detail": event.detail, "request_id": event.request_id,
+                "client_ip": event.client_ip, "outcome": event.outcome,
+                "error_code": event.error_code, "created_at": _date_value(event.created_at)}
 
     @router.get("/api/admin/users/{user_id}/workspace")
     def admin_user_workspace(request: Request, user_id: str):

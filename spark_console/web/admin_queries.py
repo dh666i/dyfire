@@ -546,6 +546,9 @@ def list_audit_events(
                 AuditEvent.resource_type.ilike(pattern),
                 AuditEvent.resource_id.ilike(pattern),
                 AuditEvent.detail.ilike(pattern),
+                AuditEvent.request_id.ilike(pattern),
+                AuditEvent.client_ip.ilike(pattern),
+                AuditEvent.error_code.ilike(pattern),
                 User.username.ilike(pattern),
             )
         )

@@ -12,14 +12,16 @@
   {% if audit_events %}
   <div class="admin-table-wrap">
     <table class="admin-table admin-table-audit admin-table-mobile">
-      <thead><tr><th>时间</th><th>操作者</th><th>操作</th><th>资源</th><th>详情</th></tr></thead>
+      <thead><tr><th>时间</th><th>操作者</th><th>操作</th><th>结果</th><th>资源</th><th>请求 / IP</th><th>详情</th></tr></thead>
       <tbody>
         {% for item in audit_events %}
         <tr>
           <td class="admin-mono" data-label="时间">{{ item.created_at|shanghai_time }}</td>
           <td data-label="操作者"><div class="admin-cell-stack"><strong>{{ item.actor_username or '系统' }}</strong><small>{{ '管理员操作' if item.actor_username else '自动流程' }}</small></div></td>
           <td data-label="操作"><code class="admin-audit-action">{{ item.action }}</code></td>
+          <td data-label="结果"><div class="admin-cell-stack"><strong>{{ {'success': '成功', 'failure': '失败'}.get(item.event.outcome, '历史记录') }}</strong>{% if item.event.error_code %}<small>{{ item.event.error_code }}</small>{% endif %}</div></td>
           <td data-label="资源"><div class="admin-cell-stack"><strong>{{ item.resource_type }}</strong><small class="admin-mono">{{ item.resource_id[:12] if item.resource_id else '—' }}</small></div></td>
+          <td data-label="请求 / IP"><div class="admin-cell-stack"><code>{{ item.event.request_id or '—' }}</code><small class="admin-mono">{{ item.event.client_ip or '—' }}</small></div></td>
           <td class="admin-audit-detail" data-label="详情">{{ item.detail or '—' }}</td>
         </tr>
         {% endfor %}

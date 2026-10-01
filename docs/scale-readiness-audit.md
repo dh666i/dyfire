@@ -7,6 +7,7 @@
 - 工作台和管理后台的执行记录、今日统计、账号健康状态、任务身份查询已减少明显的全量读取和 N+1 查询。
 - 增加了调度、执行记录、会话、订阅和审计查询使用的复合索引，并提供 SQLite v10 迁移。
 - SQLite v11 已加入账号 dispatch key；v12 为 retention 的终态时间查询增加复合索引，v13 为账号队列增加复合索引，PostgreSQL 新库由模型元数据创建同等索引。
+- SQLite v15 为审计事件增加可空的 `request_id`、`client_ip`、`outcome` 和 `error_code` 字段，并建立请求索引。HTTP 请求会自动把请求 ID 和可信代理解析后的客户端地址写入审计事件；历史记录保持为空，不会被猜测性回填。PostgreSQL 启动时执行同样的加法迁移，字段缺失会在服务启动前被发现。
 - SQLite v13 为账号健康、过期操作和目录队列增加复合索引；索引改进不等同于生产 worker 容量已经通过验收。
 - `psycopg` 已纳入容器依赖，配置 `postgresql+psycopg://...` 可启动 PostgreSQL 新库；现有 SQLite 数据不会自动迁移，正式切换前必须执行离线迁移和回放校验。
 - API 默认返回 `Cache-Control: no-store`，CSRF 非字符串输入返回 403，登录失败限流有内存上限。
@@ -17,6 +18,7 @@
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
 - 管理员提供当前浏览器会话范围的 15 分钟密码 step-up 接口 `/api/auth/elevate`，失败尝试审计并限流；高风险后台动作仍需逐项接入并完成 UI 引导后再强制启用。
+- 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存，setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；默认不会改变登录、现有 WebSession、密码 step-up、抖音 Cookie 或任务执行。启用 MFA 强制策略前，必须补管理界面、恢复码/丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
 - `SPARK_REQUIRE_ADMIN_STEP_UP=true` 时，后台写接口统一要求 step-up；前端会在 428 响应后请求密码并重试原操作。生产部署该开关前应确认管理员已使用包含验证面板的前端版本。
 - 已提供默认 dry-run 的 retention CLI，可分批清理终态执行、登录会话、邮件和审计记录，并保护活跃/待核实数据。
 - `deploy/recovery_drill.py` 提供隔离恢复演练：源备份只读，全新副本执行表集合、内容指纹、SQLite 完整性、外键、schema migration 和可选 Cookie 解密校验；默认删除临时副本，失败不会留下未验证数据库。

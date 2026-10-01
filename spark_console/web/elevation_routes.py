@@ -51,6 +51,8 @@ def build_elevation_router(
                     "auth.step_up_failed",
                     "web_session",
                     record.id,
+                    outcome="failure",
+                    error_code="password_invalid",
                 )
                 # Return normally so the failed-attempt audit is committed;
                 # raising here would roll back the transaction.

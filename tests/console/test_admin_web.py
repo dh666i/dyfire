@@ -687,9 +687,14 @@ class AdminWebTests(unittest.TestCase):
         audit = self.real_client.get("/api/admin/audit", params={"q": "task.disabled"})
         self.assertEqual(200, audit.status_code, audit.text)
         event = audit.json()["items"][0]
+        self.assertIn("request_id", event)
+        self.assertIn("client_ip", event)
+        self.assertIn("outcome", event)
+        self.assertIn("error_code", event)
         detail = self.real_client.get(f"/api/admin/audit/{event['id']}")
         self.assertEqual(200, detail.status_code, detail.text)
         self.assertEqual("admin", detail.json()["actor"])
+        self.assertEqual(event["request_id"], detail.json()["request_id"])
 
         headers = {"Content-Type": "application/json"}
         paused = self.real_client.post("/api/admin/tasks/bulk", json={

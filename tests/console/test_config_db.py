@@ -595,6 +595,8 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual((11, "account_dispatch_shards"), migrations[10][:2])
         self.assertEqual((12, "retention_query_indexes"), migrations[11][:2])
         self.assertEqual((13, "account_queue_query_indexes"), migrations[12][:2])
+        self.assertEqual((14, "admin_totp_credentials"), migrations[13][:2])
+        self.assertEqual((15, "audit_request_context"), migrations[14][:2])
         self.assertTrue(all(row[2] is not None for row in migrations))
 
     def test_scale_query_migration_installs_all_expected_indexes(self):
@@ -605,6 +607,7 @@ class DatabaseTests(unittest.TestCase):
             "ix_task_runs_status_scheduled",
             "ix_task_runs_task_scheduled_status",
             "ix_audit_events_created_action",
+            "ix_audit_events_request_id",
             "ix_douyin_login_sessions_status_finished",
             "ix_task_runs_status_finished",
             "ix_mail_deliveries_status_updated",
@@ -745,7 +748,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((13, "account_queue_query_indexes"), migrations[-1])
+            self.assertEqual((15, "audit_request_context"), migrations[-1])
         finally:
             engine.dispose()
 

@@ -272,6 +272,33 @@ class InviteCodeSecret(Base):
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
 
+class AdminTotpCredential(Base):
+    """Optional administrator TOTP credential, encrypted at rest.
+
+    A pending row is created during setup and becomes enabled only after the
+    administrator confirms a code from the authenticator.  Existing sessions
+    and the normal password login flow intentionally do not consult this row;
+    enforcement is a separately reviewed rollout step.
+    """
+
+    __tablename__ = "admin_totp_credentials"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # RFC 6238 time-step accepted for the last successful confirmation or
+    # future enforcement check.  It prevents the same OTP being replayed.
+    last_used_counter: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class UserSubscription(Base):
     __tablename__ = "user_subscriptions"
     __table_args__ = (
@@ -604,6 +631,7 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
     __table_args__ = (
         Index("ix_audit_events_created_action", "created_at", "action"),
+        Index("ix_audit_events_request_id", "request_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
@@ -612,4 +640,8 @@ class AuditEvent(Base):
     resource_type: Mapped[str] = mapped_column(String(32), nullable=False)
     resource_id: Mapped[str | None] = mapped_column(String(36))
     detail: Mapped[str | None] = mapped_column(String(240))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    client_ip: Mapped[str | None] = mapped_column(String(45))
+    outcome: Mapped[str | None] = mapped_column(String(16))
+    error_code: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

@@ -43,7 +43,7 @@ def _database(path: Path, key: bytes) -> None:
             ("a1", "u1", encrypted.ciphertext, encrypted.nonce),
         )
         db.execute("INSERT INTO spark_tasks VALUES ('t1', 'u1', '好友')")
-        db.execute("INSERT INTO schema_migrations VALUES (13, 'account_queue_query_indexes')")
+        db.execute("INSERT INTO schema_migrations VALUES (15, 'audit_request_context')")
 
 
 def test_restore_drill_refuses_missing_key_without_touching_source(tmp_path):
@@ -79,7 +79,7 @@ def test_restore_drill_checks_cookie_and_preserves_source(tmp_path):
     }
     assert report["cookie_check"] == {"provided": True, "checked": 1}
     assert report["schema_migrations"] == [
-        {"version": 13, "name": "account_queue_query_indexes"}
+        {"version": 15, "name": "audit_request_context"}
     ]
     assert hashlib.sha256(source.read_bytes()).hexdigest() == before
 

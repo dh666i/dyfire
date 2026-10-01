@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 13
+SQLITE_SCHEMA_VERSION = 15
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -90,6 +90,21 @@ def create_schema(engine: Engine) -> None:
         connection.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_douyin_accounts_dispatch_key "
             "ON douyin_accounts (dispatch_key)"
+        ))
+        # These columns are nullable and additive, so existing PostgreSQL
+        # audit history remains readable while new writes gain correlation.
+        for name, definition in (
+            ("request_id", "VARCHAR(64)"),
+            ("client_ip", "VARCHAR(45)"),
+            ("outcome", "VARCHAR(16)"),
+            ("error_code", "VARCHAR(64)"),
+        ):
+            connection.execute(text(
+                f"ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS {name} {definition}"
+            ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
+            "ON audit_events (request_id)"
         ))
     _assert_postgres_schema_complete(engine)
     with session_scope(engine) as session:
@@ -173,6 +188,8 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (11, "account_dispatch_shards", _upgrade_sqlite_account_dispatch_shards),
         (12, "retention_query_indexes", _upgrade_sqlite_retention_query_indexes),
         (13, "account_queue_query_indexes", _upgrade_sqlite_account_queue_query_indexes),
+        (14, "admin_totp_credentials", _upgrade_sqlite_admin_totp_credentials),
+        (15, "audit_request_context", _upgrade_sqlite_audit_request_context),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -322,6 +339,52 @@ def _upgrade_sqlite_account_queue_query_indexes(connection: Connection) -> None:
         connection.exec_driver_sql(
             f"CREATE INDEX IF NOT EXISTS {name} ON {table} ({columns})"
         )
+
+
+def _upgrade_sqlite_admin_totp_credentials(connection: Connection) -> None:
+    """Record additive TOTP credential-table creation for SQLite upgrades."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(admin_totp_credentials)"
+        ).fetchall()
+    }
+    required = {
+        "user_id",
+        "ciphertext",
+        "nonce",
+        "enabled",
+        "confirmed_at",
+        "last_used_counter",
+        "created_at",
+        "updated_at",
+    }
+    if not required <= columns:
+        raise RuntimeError(
+            "admin_totp_credentials schema is incomplete; refusing to start"
+        )
+
+
+def _upgrade_sqlite_audit_request_context(connection: Connection) -> None:
+    """Add trace metadata without rewriting historical audit records."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql("PRAGMA table_info(audit_events)").fetchall()
+    }
+    for name, definition in (
+        ("request_id", "VARCHAR(64)"),
+        ("client_ip", "VARCHAR(45)"),
+        ("outcome", "VARCHAR(16)"),
+        ("error_code", "VARCHAR(64)"),
+    ):
+        if name not in columns:
+            connection.exec_driver_sql(
+                f"ALTER TABLE audit_events ADD COLUMN {name} {definition}"
+            )
+    connection.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
+        "ON audit_events (request_id)"
+    )
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:

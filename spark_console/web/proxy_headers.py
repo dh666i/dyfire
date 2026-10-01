@@ -105,6 +105,7 @@ class TrustedProxyMiddleware:
             peer = scope.get("client")
             peer_address = self._address(peer[0]) if peer else None
             if self._trusted(peer_address):
+                resolved_client: str | None = None
                 forwarded_scheme = self._header(scope, b"x-forwarded-proto")
                 if forwarded_scheme:
                     scheme = self._forwarded_scheme(forwarded_scheme)
@@ -116,5 +117,14 @@ class TrustedProxyMiddleware:
                     client_address = self._forwarded_client(forwarded_for)
                     if client_address:
                         scope["client"] = (client_address, peer[1] if peer else 0)
+                        resolved_client = client_address
+
+            # RequestCorrelationMiddleware normally observes the transformed
+            # scope. Updating its state as well keeps the context correct for
+            # either Starlette middleware wrapping order.
+            state = scope.get("state")
+            if isinstance(state, dict) and isinstance(state.get("audit_context"), dict):
+                if self._trusted(peer_address):
+                    state["audit_context"]["client_ip"] = resolved_client
 
         await self.app(scope, receive, send)
