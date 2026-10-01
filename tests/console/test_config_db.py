@@ -105,6 +105,46 @@ class SettingsTests(unittest.TestCase):
             self.assertTrue(settings.secure_cookies)
             self.assertTrue(settings.database_url.endswith("spark.db"))
 
+    def test_loads_explicit_proxy_and_hsts_settings(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            cookie_key = root_path / "cookie.key"
+            session_key = root_path / "session.key"
+            cookie_key.write_bytes(b"c" * 32)
+            session_key.write_bytes(b"s" * 32)
+
+            settings = Settings.from_env(
+                {
+                    "SPARK_DATA_DIR": root,
+                    "SPARK_COOKIE_KEY_FILE": str(cookie_key),
+                    "SPARK_SESSION_KEY_FILE": str(session_key),
+                    "SPARK_TRUSTED_PROXY_CIDRS": " 10.0.0.0/8, 2001:db8::/32 ",
+                    "SPARK_HSTS_MAX_AGE_SECONDS": "600",
+                    "SPARK_HSTS_INCLUDE_SUBDOMAINS": "true",
+                }
+            )
+
+            self.assertEqual(("10.0.0.0/8", "2001:db8::/32"), settings.trusted_proxy_cidrs)
+            self.assertEqual(600, settings.hsts_max_age_seconds)
+            self.assertTrue(settings.hsts_include_subdomains)
+
+    def test_rejects_unknown_boolean_values(self):
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+            cookie_key = root_path / "cookie.key"
+            session_key = root_path / "session.key"
+            cookie_key.write_bytes(b"c" * 32)
+            session_key.write_bytes(b"s" * 32)
+
+            with self.assertRaisesRegex(ValueError, "SPARK_SECURE_COOKIES"):
+                Settings.from_env(
+                    {
+                        "SPARK_DATA_DIR": root,
+                        "SPARK_COOKIE_KEY_FILE": str(cookie_key),
+                        "SPARK_SESSION_KEY_FILE": str(session_key),
+                        "SPARK_SECURE_COOKIES": "maybe",
+                    }
+                )
     def test_auth_and_task_worker_poll_intervals_are_independent(self):
         with tempfile.TemporaryDirectory() as root:
             root_path = Path(root)

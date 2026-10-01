@@ -18,4 +18,10 @@
 
 更新请求目录由应用写入，其余更新状态及部署目录由主机拥有。网页仅允许管理员提交 check/install，检查 CSRF，已有请求不会重复排队。当前不启用周期性宿主机备份；正式更新仍会在切换前保存可回退快照。
 
+## 反向代理安全配置
+
+在 `.env.console` 中设置 `SPARK_TRUSTED_PROXY_CIDRS` 为应用容器看到的直接反向代理 IP/CIDR，多个值用逗号分隔；不要填公网客户端网段，也不要使用 `0.0.0.0/0`。留空时应用完全忽略 `X-Forwarded-For` 和 `X-Forwarded-Proto`。反向代理必须先清理客户端携带的同名请求头，再追加它自己计算的值，并将 HTTPS 终止状态写入 `X-Forwarded-Proto`。
+
+应用只会对直连 HTTPS 或已信任代理报告的 HTTPS 响应发送 HSTS。确认所有子域名都支持 HTTPS 后，才设置 `SPARK_HSTS_INCLUDE_SUBDOMAINS=true`；默认关闭该选项以免误锁定尚未迁移的子域名。
+
 安装 `dyfire-updater.service` 后，让 `/opt/dyfire/updates` 同时作为 Web 容器的只读状态目录和请求目录的宿主路径。完整更新前会检查正在运行的容器确实把 `/opt/dyfire` 下的数据目录绑定到 `/data`，避免误用旧卷路径。

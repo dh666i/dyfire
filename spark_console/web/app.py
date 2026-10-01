@@ -39,7 +39,11 @@ from spark_console.services.audits import AuditService
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.tasks import TaskService
 from spark_console.services.subscriptions import SubscriptionService
-from spark_console.services.users import UserService, validate_registration_password
+from spark_console.services.users import (
+    PASSWORD_POLICY_HINT,
+    UserService,
+    validate_registration_password,
+)
 from spark_console.web.account_scan_routes import build_account_scan_router
 from spark_console.web.directory_routes import build_directory_router
 from spark_console.web.health_routes import build_health_router
@@ -53,6 +57,8 @@ from spark_console.web.registration_routes import (
     registration_client_key,
 )
 from spark_console.web.request_limits import RequestBodyLimitMiddleware
+from spark_console.web.proxy_headers import TrustedProxyMiddleware
+from spark_console.web.request_context import RequestCorrelationMiddleware
 from spark_console.web.subscription_routes import build_subscription_router
 
 
@@ -217,7 +223,15 @@ templates.env.filters["run_guidance"] = run_guidance
 
 def create_app(settings: Settings, engine: Engine) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    # Forwarded scheme and client address are trusted only when the immediate
+    # peer belongs to an explicitly configured proxy network.  An empty list
+    # is the secure default for direct/local deployments.
+    app.add_middleware(
+        TrustedProxyMiddleware,
+        trusted_proxy_cidrs=settings.trusted_proxy_cidrs,
+    )
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_bytes)
+    app.add_middleware(RequestCorrelationMiddleware)
     app.state.settings = settings
     app.state.engine = engine
 
@@ -228,13 +242,27 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; base-uri 'self'; object-src 'none'; "
+            "frame-ancestors 'none'; form-action 'self'; "
+            "img-src 'self' data: blob: https:; font-src 'self' data:; "
+            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+            "connect-src 'self'",
+        )
+        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+        response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
         # API responses include CSRF tokens and account-specific data.  Keep
         # them out of browser and intermediary caches even when an individual
         # route forgets to set its own no-store header.
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
-        if request.url.scheme == "https":
-            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        if request.url.scheme == "https" and settings.hsts_max_age_seconds > 0:
+            hsts = f"max-age={settings.hsts_max_age_seconds}"
+            if settings.hsts_include_subdomains:
+                hsts += "; includeSubDomains"
+            response.headers.setdefault("Strict-Transport-Security", hsts)
         return response
 
     app.mount("/static", StaticFiles(directory=str(PACKAGE_ROOT / "static")), name="static")
@@ -553,7 +581,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     error="新密码不能为空",
                 )
             try:
-                validate_registration_password(new_password)
+                validate_registration_password(new_password, username=user.username)
             except ValidationError:
                 return page(
                     request,
@@ -564,7 +592,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     user=user,
                     csrf_token=record.csrf_token,
                     is_admin=user.role == "admin",
-                    error="密码需同时包含字母和数字",
+                    error=PASSWORD_POLICY_HINT,
                 )
             user.password_hash = passwords.hash(new_password)
             user.must_change_password = False

@@ -10,6 +10,7 @@
 - 普通用户与管理员角色变更会撤销目标用户现有会话，并保留最后一名管理员保护和审计事件。
 - 管理员初始化响应不再携带全部明文兑换码；兑换码页面使用独立接口、搜索和分页加载。
 - 应用层增加可配置的请求体上限 `SPARK_MAX_REQUEST_BYTES`，默认 2 MiB。反向代理仍必须设置相同或更严格的限制。
+- 转发头由应用层按 `SPARK_TRUSTED_PROXY_CIDRS` 严格限制：未配置时忽略 `X-Forwarded-For/Proto`；只有直接对端属于配置的 IP/CIDR 时才解析最近的客户端地址和 HTTPS scheme。HSTS 可通过 `SPARK_HSTS_MAX_AGE_SECONDS` 与 `SPARK_HSTS_INCLUDE_SUBDOMAINS` 配置。
 - 移动端时间输入已设置单列布局、`min-width: 0` 和 `box-sizing`，应在真机和常见浏览器再次核验。
 
 ## P0：上线前必须解决
