@@ -71,6 +71,7 @@ class PostgresScaleFixture:
     customer_tokens: tuple[str, ...] = field(repr=False)
     customer_id: str
     account_id: str
+    account_ids: tuple[str, ...]
     task_ids: tuple[str, ...]
     cookie_key: bytes = field(repr=False)
 
@@ -262,6 +263,7 @@ def postgres_scale_fixture(tmp_path_factory: pytest.TempPathFactory) -> Postgres
             customer_tokens=tuple(customer_tokens),
             customer_id=customer_ids[0],
             account_id=account_ids[0],
+            account_ids=tuple(account_ids),
             task_ids=tuple(task_ids[:TASKS_PER_ACCOUNT]),
             cookie_key=cookie_key,
         )
@@ -308,15 +310,15 @@ def _state_snapshot(fixture: PostgresScaleFixture) -> dict[str, object]:
         ).all()
         tasks = db.scalars(
             select(SparkTask)
-            .where(SparkTask.owner_user_id == fixture.customer_id)
             .order_by(SparkTask.id)
         ).all()
         identities = db.scalars(
             select(SparkTaskTargetIdentity)
-            .where(SparkTaskTargetIdentity.task_id.in_(fixture.task_ids))
             .order_by(SparkTaskTargetIdentity.task_id)
         ).all()
         assert len(accounts) == ACCOUNT_COUNT
+        assert len(tasks) == TASK_COUNT
+        assert len(identities) == TASK_COUNT
         return {
             "accounts": tuple(
                 (
@@ -342,7 +344,11 @@ def _read_request(app, token: str, path: str, params: dict[str, object] | None =
     with TestClient(app, base_url="https://testserver") as client:
         client.cookies.set("spark_session", token)
         response = client.get(path, params=params)
-    return time.perf_counter() - started, response.status_code, response.text[:240]
+    try:
+        body = response.json()
+    except ValueError:
+        body = response.text[:240]
+    return time.perf_counter() - started, response.status_code, body
 
 
 def _percentile(values: list[float], percentile: float) -> float:
@@ -408,11 +414,16 @@ def test_postgres_api_concurrency_baseline_preserves_bound_state(
         % (len(results), CONCURRENCY, elapsed, p50, p95, len(failures), failure_rate)
     )
     if failures:
-        print("postgres API failures: " + json.dumps(failures[:5], ensure_ascii=False))
+        print("postgres API failures: " + json.dumps(failures[:5], ensure_ascii=False, default=str))
 
     assert len(results) == len(jobs)
     assert failures == []
     assert failure_rate == 0
     assert p95 < P95_LIMIT_SECONDS
+    for index, result in enumerate(results[:CUSTOMER_COUNT]):
+        payload = result[2]
+        assert {account["id"] for account in payload["accounts"]} == {fixture.account_ids[index]}
+        assert len(payload["tasks"]) == TASKS_PER_ACCOUNT
+        assert {task["accountId"] for task in payload["tasks"]} == {fixture.account_ids[index]}
     assert statements == []
     assert _state_snapshot(fixture) == before
