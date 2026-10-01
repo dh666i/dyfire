@@ -122,3 +122,61 @@ def test_app_bootstrap_aggregates_local_days_and_batches_task_identities(tmp_pat
     # count stays constant as task count grows, instead of issuing db.get per task.
     assert len(identity_selects) <= 2
     engine.dispose()
+
+
+def test_app_task_pages_bound_bootstrap_and_preserve_owner_scope(tmp_path):
+    cookie_key = tmp_path / "cookie.key"
+    cookie_key.write_bytes(b"c" * 32)
+    session_key = tmp_path / "session.key"
+    session_key.write_bytes(b"s" * 32)
+    settings = Settings(tmp_path, f"sqlite:///{tmp_path}/tasks.db", cookie_key, session_key)
+    engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+    create_schema(engine)
+    with session_scope(engine) as db:
+        owner = User(username="paged-owner", password_hash="hash", role="user", must_change_password=False)
+        outsider = User(username="paged-outsider", password_hash="hash", role="user", must_change_password=False)
+        db.add_all([owner, outsider])
+        db.flush()
+        db.add_all(
+            SparkTask(
+                owner_user_id=owner.id,
+                target_name=f"Friend {index:03d}",
+                send_time="09:30",
+                message_template="test",
+            )
+            for index in range(105)
+        )
+        db.add(
+            SparkTask(
+                owner_user_id=outsider.id,
+                target_name="Private friend",
+                send_time="09:30",
+                message_template="test",
+            )
+        )
+        token, record = SessionService(session_key.read_bytes()).create_record(owner.id)
+        db.add(record)
+
+    with TestClient(create_app(settings, engine), base_url="https://testserver") as client:
+        client.cookies.set("spark_session", token)
+        bootstrap = client.get("/api/app/bootstrap")
+        assert bootstrap.status_code == 200, bootstrap.text
+        payload = bootstrap.json()
+        assert len(payload["tasks"]) == 100
+        assert payload["tasks_pagination"] == {
+            "page": 1,
+            "page_size": 100,
+            "total": 105,
+            "pages": 2,
+            "has_previous": False,
+            "has_prev": False,
+            "has_next": True,
+        }
+        second = client.get("/api/app/tasks?page=2")
+        assert second.status_code == 200, second.text
+        second_payload = second.json()
+        assert second_payload["pagination"]["page"] == 2
+        assert second_payload["pagination"]["total"] == 105
+        assert len(second_payload["items"]) == 5
+        assert all(item["name"].startswith("Friend ") for item in second_payload["items"])
+    engine.dispose()

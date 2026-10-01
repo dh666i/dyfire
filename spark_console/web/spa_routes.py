@@ -53,6 +53,13 @@ from spark_console.run_events import for_runs as events_for_runs
 from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
 
 
+# The shell bootstrap is fetched on every route transition. Keep it bounded so
+# one customer with a large "unlimited" plan cannot make every page load
+# proportional to their complete task history. The dedicated tasks endpoint
+# below loads additional rows only when the task workspace asks for them.
+APP_BOOTSTRAP_PAGE_SIZE = 100
+
+
 def _task_payload(db, tasks):
     task_ids = [task.id for task in tasks]
     identities = {
@@ -95,14 +102,44 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
     def bootstrap(request: Request):
         with session_scope(engine) as db:
             user, record = auth.current(request, db)
+            account_total = db.scalar(
+                select(func.count(DouyinAccount.id)).where(
+                    DouyinAccount.owner_user_id == user.id
+                )
+            ) or 0
+            task_total = db.scalar(
+                select(func.count(SparkTask.id)).where(
+                    SparkTask.owner_user_id == user.id
+                )
+            ) or 0
             accounts = db.scalars(
-                select(DouyinAccount).where(DouyinAccount.owner_user_id == user.id)
+                select(DouyinAccount)
+                .where(DouyinAccount.owner_user_id == user.id)
+                .order_by(DouyinAccount.created_at.desc(), DouyinAccount.id)
+                .limit(APP_BOOTSTRAP_PAGE_SIZE)
             ).all()
             tasks = db.scalars(
                 select(SparkTask)
                 .where(SparkTask.owner_user_id == user.id)
-                .order_by(SparkTask.send_time, SparkTask.target_name)
+                .order_by(SparkTask.send_time, SparkTask.target_name, SparkTask.id)
+                .limit(APP_BOOTSTRAP_PAGE_SIZE)
             ).all()
+            task_counts = dict(
+                db.execute(
+                    select(SparkTask.douyin_account_id, func.count(SparkTask.id))
+                    .where(SparkTask.owner_user_id == user.id)
+                    .group_by(SparkTask.douyin_account_id)
+                ).all()
+            )
+            enabled_task_count = int(
+                db.scalar(
+                    select(func.count(SparkTask.id)).where(
+                        SparkTask.owner_user_id == user.id,
+                        SparkTask.enabled.is_(True),
+                    )
+                )
+                or 0
+            )
             health = account_health_views(db, accounts)
             profiles = profile_map(db, [a.id for a in accounts])
             now = datetime.now(timezone.utc)
@@ -203,6 +240,29 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "csrf": record.csrf_token,
                 "accounts": account_rows,
                 "tasks": task_rows,
+                "resource_limits": {
+                    "page_size": APP_BOOTSTRAP_PAGE_SIZE,
+                    "accounts_total": int(account_total),
+                    "tasks_total": int(task_total),
+                    "tasks_enabled_total": enabled_task_count,
+                    "tasks_paused_total": max(0, int(task_total) - enabled_task_count),
+                    "accounts_truncated": account_total > len(accounts),
+                    "tasks_truncated": task_total > len(tasks),
+                    "task_counts_by_account": {
+                        str(account_id): int(count)
+                        for account_id, count in task_counts.items()
+                        if account_id is not None
+                    },
+                },
+                "tasks_pagination": {
+                    "page": 1,
+                    "page_size": APP_BOOTSTRAP_PAGE_SIZE,
+                    "total": int(task_total),
+                    "pages": max(1, math.ceil(task_total / APP_BOOTSTRAP_PAGE_SIZE)),
+                    "has_previous": False,
+                    "has_prev": False,
+                    "has_next": task_total > len(tasks),
+                },
                 "runs": [
                     {
                         "id": r.id,
@@ -234,6 +294,79 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "activity": {"period_days": 365, "total": sum(item["count"] for item in activity_days), "days": activity_days},
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "can_add_task")},
                 "plans": pricing_plans(),
+            }
+
+    @router.get("/api/app/tasks")
+    def app_tasks(
+        request: Request,
+        page: int = Query(1, ge=1),
+        account_id: str = Query("", max_length=64),
+        q: str = Query("", max_length=100),
+    ):
+        """Return bounded task pages for the task workspace.
+
+        The global bootstrap intentionally contains only the first page. This
+        endpoint keeps the same ownership boundary while allowing an
+        "unlimited" customer to inspect the rest without making every route
+        load the full task table.
+        """
+        with session_scope(engine) as db:
+            user, _record = auth.current(request, db)
+            criteria = [SparkTask.owner_user_id == user.id]
+            if account_id:
+                criteria.append(SparkTask.douyin_account_id == account_id)
+            query = q.strip()
+            if query:
+                criteria.append(SparkTask.target_name.ilike(f"%{query}%"))
+            total = int(
+                db.scalar(select(func.count(SparkTask.id)).where(*criteria)) or 0
+            )
+            pages = max(1, math.ceil(total / APP_BOOTSTRAP_PAGE_SIZE))
+            current_page = min(page, pages)
+            tasks = db.scalars(
+                select(SparkTask)
+                .where(*criteria)
+                .order_by(SparkTask.send_time, SparkTask.target_name, SparkTask.id)
+                .offset((current_page - 1) * APP_BOOTSTRAP_PAGE_SIZE)
+                .limit(APP_BOOTSTRAP_PAGE_SIZE)
+            ).all()
+            rows = _task_payload(db, tasks)
+            latest = {}
+            if tasks:
+                latest_rank = (
+                    select(
+                        TaskRun.task_id,
+                        TaskRun.status,
+                        func.row_number()
+                        .over(
+                            partition_by=TaskRun.task_id,
+                            order_by=(TaskRun.scheduled_for.desc(), TaskRun.id.desc()),
+                        )
+                        .label("row_number"),
+                    )
+                    .where(TaskRun.task_id.in_([task.id for task in tasks]))
+                    .subquery()
+                )
+                for task_id, status in db.execute(
+                    select(latest_rank.c.task_id, latest_rank.c.status).where(
+                        latest_rank.c.row_number == 1
+                    )
+                ).all():
+                    latest.setdefault(task_id, status)
+            for row in rows:
+                row["status"] = latest.get(row["id"], "scheduled")
+                row["confirmed"] = row["status"] == "success"
+            return {
+                "items": rows,
+                "pagination": {
+                    "page": current_page,
+                    "page_size": APP_BOOTSTRAP_PAGE_SIZE,
+                    "total": total,
+                    "pages": pages,
+                    "has_previous": current_page > 1,
+                    "has_prev": current_page > 1,
+                    "has_next": current_page < pages,
+                },
             }
 
     @router.get("/api/admin/bootstrap")
