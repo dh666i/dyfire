@@ -1,7 +1,7 @@
 """Recovery policy for temporary login checks; never a generic resend queue."""
 from datetime import timedelta, timezone
 import os
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from spark_console.models import (
     TaskHealthRetry, TaskRun, SparkTask, DouyinAccount, User, UserSubscription,
     AccountOperation, DouyinLoginSession,
@@ -12,6 +12,11 @@ WINDOW = timedelta(minutes=max(10, int(os.environ.get("SPARK_HEALTH_RETRY_WINDOW
 MAX_ATTEMPTS = 3  # Initial execution plus at most two retries.
 FLAKE_ATTEMPT_CAP = 7  # Chat-page empty-list flakes may keep retrying until the window ends.
 CHAT_FLAKE = "未检测到已登录会话列表"
+# A scheduler poll claims at most one row. Keep candidate scans bounded so a
+# burst of blocked accounts cannot turn every worker poll into an unbounded ORM
+# result set; eligible rows remain for the next poll.
+MAX_HEALTH_RETRY_SCAN = 100
+MAX_BLOCKED_TASK_SCAN = 100
 
 
 def retry_wait(attempt):
@@ -108,14 +113,29 @@ def claim(db, now, worker_id, *, shard=0, shards=1):
     shard, shards = validate_shard(shard, shards)
     # Only records explicitly created by the new policy are eligible. Historical
     # failed runs never become candidates after an upgrade.
-    rows = db.execute(select(TaskRun, TaskHealthRetry).join(
+    statement = select(TaskRun, TaskHealthRetry).join(
         TaskHealthRetry, TaskHealthRetry.run_id == TaskRun.id
-    ).join(SparkTask, SparkTask.id == TaskRun.task_id).join(
-        DouyinAccount, DouyinAccount.id == SparkTask.douyin_account_id
-    ).where(TaskRun.status.in_(("retrying", "running")),
-        DouyinAccount.dispatch_key % shards == shard).order_by(
+    ).where(
+        or_(
+            TaskRun.status == "retrying",
+            (TaskRun.status == "running")
+            & or_(TaskRun.lease_until.is_(None), TaskRun.lease_until <= now),
+        ),
+        or_(TaskRun.retry_after.is_(None), TaskRun.retry_after <= now),
+    )
+    if shards > 1:
+        statement = statement.outerjoin(SparkTask, SparkTask.id == TaskRun.task_id).outerjoin(
+            DouyinAccount, DouyinAccount.id == SparkTask.douyin_account_id
+        ).where(or_(
+            DouyinAccount.dispatch_key % shards == shard,
+            DouyinAccount.dispatch_key.is_(None) if shard == 0 else False,
+        ))
+    statement = statement.order_by(
         TaskRun.scheduled_for, TaskRun.attempt, TaskRun.id
-    )).all()
+    ).limit(MAX_HEALTH_RETRY_SCAN)
+    if db.get_bind().dialect.name == "postgresql":
+        statement = statement.with_for_update(of=TaskRun, skip_locked=True)
+    rows = db.execute(statement).all()
     for run, pending in rows:
         if run.status == "running" and run.lease_until and aware(run.lease_until) > aware(now):
             continue
@@ -157,14 +177,20 @@ def claim(db, now, worker_id, *, shard=0, shards=1):
     return None
 
 
-def queue_blocked_tasks(db, now):
+def queue_blocked_tasks(db, now, *, shard=0, shards=1):
     """Make due tasks visible while their account awaits a read-only recheck."""
     from spark_console.scheduler import compute_next_run, finish_run
-    tasks = db.scalars(select(SparkTask).join(DouyinAccount,
+    shard, shards = validate_shard(shard, shards)
+    statement = select(SparkTask).join(DouyinAccount,
         DouyinAccount.id == SparkTask.douyin_account_id).where(
         SparkTask.enabled.is_(True), SparkTask.next_run_at <= now,
         DouyinAccount.validation_state.in_(("temporary", "verification", "invalid"))
-    ).order_by(SparkTask.next_run_at, SparkTask.id)).all()
+    )
+    if shards > 1:
+        statement = statement.where(DouyinAccount.dispatch_key % shards == shard)
+    tasks = db.scalars(
+        statement.order_by(SparkTask.next_run_at, SparkTask.id).limit(MAX_BLOCKED_TASK_SCAN)
+    ).all()
     for task in tasks:
         queue_waiting_task(db, task, now)
     db.flush()

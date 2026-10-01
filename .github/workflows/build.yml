@@ -35,6 +35,7 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
       - run: python -m pytest tests/console/test_session_recovery.py tests/console/test_directory.py tests/console/test_account_health.py tests/console/test_health_retry.py tests/console/test_scheduler_worker.py tests/console/test_scheduler_sql.py tests/console/test_worker_sharding.py tests/console/test_executor_session.py tests/console/test_release_updates.py tests/console/test_studio_api.py tests/console/test_schedule_slots.py tests/console/test_today_sends.py tests/console/test_updater_host.py tests/console/test_commercial_workflows.py tests/console/test_design_system.py tests/console/test_password_policy_web.py tests/console/test_spa_bootstrap_perf.py tests/console/test_admin_web.py tests/console/test_services.py tests/console/test_config_db.py tests/console/test_crypto_security.py tests/console/test_retention.py tests/console/test_data_migration.py tests/test_deployment_paths.py -q
       - name: Verify shared UI interactions without browser automation
+        # Keep the 500-customer data-integrity baseline independent of browser assets.
         run: |
           npm install --prefix "$RUNNER_TEMP/dyfire-ui-tests" --no-save --package-lock=false jsdom@26.1.0
           export NODE_PATH="$RUNNER_TEMP/dyfire-ui-tests/node_modules"
@@ -44,6 +45,8 @@ jobs:
           node tests/console/commercial_ui_harness.cjs
           node tests/console/motion_harness.cjs
           node tests/console/mobile_workspace_harness.cjs
+      - name: Verify customer capacity and account-state preservation
+        run: python -m pytest tests/console/test_scale_baseline.py tests/console/test_account_scan_web.py tests/console/test_request_context.py tests/console/test_request_limits.py tests/console/test_proxy_headers.py -q
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -73,6 +76,6 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m pytest tests/console/test_postgres_schema.py -q
+      - run: python -m pytest tests/console/test_postgres_schema.py tests/console/test_postgres_migration.py -q
         env:
           TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/dyfire

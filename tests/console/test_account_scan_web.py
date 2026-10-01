@@ -123,6 +123,14 @@ class AccountScanWebTests(unittest.TestCase):
     def _request_id(number=1):
         return f"00000000-0000-4000-8000-{number:012d}"
 
+    def assert_api_error(self, response, status, error, message):
+        self.assertEqual(status, response.status_code)
+        payload = response.json()
+        self.assertEqual(error, payload["error"])
+        self.assertEqual(message, payload["message"])
+        self.assertEqual(error, payload["error_code"])
+        self.assertEqual(response.headers["x-request-id"], payload["request_id"])
+
     def _awaiting_scan(self):
         with session_scope(self.engine) as db:
             service = ScanSessionService(db)
@@ -196,13 +204,11 @@ class AccountScanWebTests(unittest.TestCase):
         other = self.other_client.post(
             "/accounts/scan", data={"csrf_token": self.other_csrf}
         )
-        self.assertEqual(403, other.status_code)
-        self.assertEqual(
-            {
-                "error": "subscription_inactive",
-                "message": "会员未开通或已过期，请开通后重试",
-            },
-            other.json(),
+        self.assert_api_error(
+            other,
+            403,
+            "subscription_inactive",
+            "会员未开通或已过期，请开通后重试",
         )
 
     def test_start_rejects_exhausted_account_quota(self):
@@ -221,13 +227,11 @@ class AccountScanWebTests(unittest.TestCase):
             "/accounts/scan", data={"csrf_token": self.owner_csrf}
         )
 
-        self.assertEqual(409, response.status_code)
-        self.assertEqual(
-            {
-                "error": "account_limit_reached",
-                "message": "抖音账号额度已用完，请升级套餐或删除旧账号",
-            },
-            response.json(),
+        self.assert_api_error(
+            response,
+            409,
+            "account_limit_reached",
+            "抖音账号额度已用完，请升级套餐或删除旧账号",
         )
         with Session(self.engine) as db:
             self.assertIsNone(db.scalar(select(DouyinLoginSession)))
@@ -308,13 +312,11 @@ class AccountScanWebTests(unittest.TestCase):
         )
 
         self.assertEqual(201, created.status_code)
-        self.assertEqual(409, conflict.status_code)
-        self.assertEqual(
-            {
-                "error": "scan_target_conflict",
-                "message": "已有其他账号登录会话正在进行，请先完成或取消后再试",
-            },
-            conflict.json(),
+        self.assert_api_error(
+            conflict,
+            409,
+            "scan_target_conflict",
+            "已有其他账号登录会话正在进行，请先完成或取消后再试",
         )
         with Session(self.engine) as db:
             scan = db.get(DouyinLoginSession, created.json()["id"])
@@ -363,9 +365,11 @@ class AccountScanWebTests(unittest.TestCase):
         ]
 
         self.assertEqual([201, 200, 200, 200, 200, 429], [r.status_code for r in responses])
-        self.assertEqual(
-            {"error": "rate_limited", "message": "请求过于频繁，请稍后重试"},
-            responses[-1].json(),
+        self.assert_api_error(
+            responses[-1],
+            429,
+            "rate_limited",
+            "请求过于频繁，请稍后重试",
         )
 
     def test_polling_and_qr_requests_have_independent_safe_rate_limits(self):
@@ -381,10 +385,11 @@ class AccountScanWebTests(unittest.TestCase):
         self.assertTrue(all(response.status_code == 200 for response in status_responses[:90]))
         self.assertTrue(all(response.status_code == 200 for response in qr_responses[:90]))
         for response in (status_responses[-1], qr_responses[-1]):
-            self.assertEqual(429, response.status_code)
-            self.assertEqual(
-                {"error": "rate_limited", "message": "请求过于频繁，请稍后重试"},
-                response.json(),
+            self.assert_api_error(
+                response,
+                429,
+                "rate_limited",
+                "请求过于频繁，请稍后重试",
             )
 
     def test_cancel_requests_are_rate_limited_independently(self):
@@ -436,10 +441,11 @@ class AccountScanWebTests(unittest.TestCase):
         self.assertNotIn(self.owner_id, response.text)
         for client in (self.other_client, self.admin_client):
             hidden = client.get(f"/accounts/scan/{scan_id}")
-            self.assertEqual(404, hidden.status_code)
-            self.assertEqual(
-                {"error": "not_found", "message": "未找到扫码会话"},
-                hidden.json(),
+            self.assert_api_error(
+                hidden,
+                404,
+                "not_found",
+                "未找到扫码会话",
             )
 
     def test_owner_can_fetch_no_store_qr_but_other_user_and_admin_get_404(self):
@@ -798,8 +804,11 @@ class AccountScanWebTests(unittest.TestCase):
 
         self.assertEqual(404, qr.status_code)
         self.assertEqual("no-store", qr.headers["cache-control"])
-        self.assertEqual(
-            {"error": "qr_unavailable", "message": "二维码尚未就绪"}, qr.json()
+        self.assert_api_error(
+            qr,
+            404,
+            "qr_unavailable",
+            "二维码尚未就绪",
         )
 
     def test_owner_can_cancel_with_csrf_and_cross_user_is_hidden(self):

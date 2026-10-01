@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import DateTime, Engine, Integer, String, func, inspect, select, text
+from sqlalchemy import Column, DateTime, Engine, Integer, MetaData, String, Table, func, inspect, select, text
 from sqlalchemy.engine import URL, Connection, create_engine
-from sqlalchemy.orm import Session
 
 from spark_console.db import SQLITE_SCHEMA_VERSION
 from spark_console.crypto import CookieCipher
@@ -27,15 +28,20 @@ from spark_console.models import (
     DouyinLoginInput,
     DouyinAccount,
     MailDelivery,
-    SparkTask,
     TaskRun,
-    User,
 )
 
 
 CURRENT_SQLITE_SCHEMA_VERSION = SQLITE_SCHEMA_VERSION
 DEFAULT_BATCH_SIZE = 1000
 MAX_BATCH_SIZE = 10000
+SCHEMA_HISTORY = Table(
+    "schema_migrations",
+    MetaData(),
+    Column("version", Integer, primary_key=True, autoincrement=False),
+    Column("name", String(128), nullable=False),
+    Column("applied_at", DateTime(timezone=True), nullable=False),
+)
 
 
 @dataclass(frozen=True)
@@ -230,48 +236,77 @@ def _copy_snapshot(
 
     metadata = Base.metadata
     with target.begin() as destination:
+        destination.execute(text("SET LOCAL TIME ZONE 'UTC'"))
         _assert_empty_target(destination)
         metadata.create_all(destination)
 
         for table in metadata.sorted_tables:
-            source_rows = source.execution_options(stream_results=True).execute(
-                select(table)
-            )
-            copied = 0
-            while True:
-                batch = source_rows.fetchmany(batch_size)
-                if not batch:
-                    break
-                records = [
-                    _normalize_record(table, dict(row._mapping)) for row in batch
-                ]
-                destination.execute(table.insert(), records)
-                copied += len(records)
+            copied = _copy_table(source, destination, table, batch_size=batch_size)
             if copied != expected_counts[table.name]:
                 raise RuntimeError(
                     f"source row count changed during copy for {table.name}: "
                     f"expected {expected_counts[table.name]}, copied {copied}"
                 )
 
-        _create_schema_history(destination)
+        SCHEMA_HISTORY.create(destination, checkfirst=True)
+        history_count = _copy_table(source, destination, SCHEMA_HISTORY, batch_size=batch_size)
         _synchronize_postgres_sequences(destination)
-        for table in metadata.sorted_tables:
+        for table in [*metadata.sorted_tables, SCHEMA_HISTORY]:
+            expected_count = (
+                history_count if table is SCHEMA_HISTORY else expected_counts[table.name]
+            )
             copied_count = _count(
                 destination,
                 select(func.count()).select_from(table),
             )
-            if copied_count != expected_counts[table.name]:
+            if copied_count != expected_count:
                 raise RuntimeError(
                     f"target row count mismatch for {table.name}: "
-                    f"expected {expected_counts[table.name]}, got {copied_count}"
+                    f"expected {expected_count}, got {copied_count}"
                 )
+            if _table_checksum(source, table, batch_size=batch_size) != _table_checksum(
+                destination, table, batch_size=batch_size
+            ):
+                raise RuntimeError(f"target row content mismatch for {table.name}")
 
 
-def _assert_empty_target_after_ddl(connection: Connection) -> None:
-    # This check is intentionally separate after CREATE TABLE: a pre-existing
-    # table that was empty remains safe, while any concurrent target write is
-    # detected before source rows are inserted.
-    _assert_empty_target(connection)
+def _copy_table(
+    source: Connection, destination: Connection, table: Table, *, batch_size: int
+) -> int:
+    copied = 0
+    with source.execute(select(table).execution_options(yield_per=batch_size)) as rows:
+        for batch in rows.partitions(batch_size):
+            records = [_normalize_record(table, dict(row._mapping)) for row in batch]
+            destination.execute(table.insert(), records)
+            copied += len(records)
+    return copied
+
+
+def _table_checksum(connection: Connection, table: Table, *, batch_size: int) -> str:
+    """Compare all values with bounded memory and dialect-independent ordering."""
+    ordering = [
+        column.collate("C" if connection.dialect.name == "postgresql" else "BINARY")
+        if isinstance(column.type, String) else column
+        for column in table.primary_key.columns
+    ]
+    checksum = hashlib.sha256()
+    statement = select(table).order_by(*ordering).execution_options(yield_per=batch_size)
+    with connection.execute(statement) as rows:
+        for batch in rows.partitions(batch_size):
+            for row in batch:
+                record = _normalize_record(table, dict(row._mapping))
+                values = []
+                for column in table.columns:
+                    value = record[column.name]
+                    if isinstance(value, datetime):
+                        value = ["datetime", value.isoformat(timespec="microseconds")]
+                    elif isinstance(value, (bytes, bytearray, memoryview)):
+                        value = ["binary", bytes(value).hex()]
+                    values.append(value)
+                encoded = json.dumps(values, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+                checksum.update(len(encoded).to_bytes(8, "big"))
+                checksum.update(encoded)
+    return checksum.hexdigest()
 
 
 def _normalize_record(table, record: dict[str, Any]) -> dict[str, Any]:
@@ -288,32 +323,6 @@ def _normalize_record(table, record: dict[str, Any]) -> dict[str, Any]:
     return record
 
 
-def _create_schema_history(connection: Connection) -> None:
-    connection.execute(text(
-        "CREATE TABLE IF NOT EXISTS schema_migrations ("
-        "version INTEGER PRIMARY KEY, name VARCHAR(128) NOT NULL, "
-        "applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-    ))
-    connection.execute(
-        text("INSERT INTO schema_migrations (version, name) VALUES (:version, :name)"),
-        [{"version": version, "name": name} for version, name in (
-            (1, "task_runs_reliability"),
-            (2, "login_input_delivery_receipts"),
-            (3, "normalize_submitted_runs"),
-            (4, "spark_task_message_kind"),
-            (5, "spark_task_target_key"),
-            (6, "normalize_spark_task_target_keys"),
-            (7, "login_session_mode"),
-            (8, "user_admin_note"),
-            (9, "redemption_code_retrieval"),
-            (10, "scale_query_indexes"),
-            (11, "account_dispatch_shards"),
-            (12, "retention_query_indexes"),
-            (13, "account_queue_query_indexes"),
-        )],
-    )
-
-
 def _synchronize_postgres_sequences(connection: Connection) -> None:
     if connection.dialect.name != "postgresql":
         return
@@ -322,15 +331,21 @@ def _synchronize_postgres_sequences(connection: Connection) -> None:
         for column in table.primary_key.columns:
             if not column.autoincrement or not isinstance(column.type, Integer):
                 continue
-            table_name = f"{table.schema}.{table.name}" if table.schema else table.name
+            table_name = preparer.format_table(table)
+            sequence = connection.scalar(
+                text("SELECT pg_get_serial_sequence(:table_name, :column_name)"),
+                {"table_name": table_name, "column_name": column.name},
+            )
+            if sequence is None:
+                continue
             connection.execute(
                 text(
-                    "SELECT setval(pg_get_serial_sequence(:table_name, :column_name), "
-                    f"COALESCE((SELECT MAX({preparer.quote(column.name)}) "
-                    f"FROM {preparer.quote(table.name)}), 1), "
-                    f"EXISTS(SELECT 1 FROM {preparer.quote(table.name)}))"
+                    "SELECT setval(CAST(:sequence AS regclass), "
+                    f"GREATEST(COALESCE((SELECT MAX({preparer.quote(column.name)}) "
+                    f"FROM {table_name}), 1), 1), "
+                    f"EXISTS(SELECT 1 FROM {table_name}))"
                 ),
-                {"table_name": table_name, "column_name": column.name},
+                {"sequence": sequence},
             )
 
 
@@ -356,6 +371,11 @@ def migrate_sqlite_to_postgres(
             _assert_idle(active_runs, active_logins, sending_mail)
             if apply:
                 _copy_snapshot(source, target, counts, batch_size=batch_size)
+            else:
+                # A preflight must prove the eventual destination is usable;
+                # this read-only check never creates tables or changes state.
+                with target.connect() as destination:
+                    _assert_empty_target(destination)
             return MigrationReport(
                 source=str(Path(source_path).expanduser().resolve()),
                 source_schema_version=schema_version,

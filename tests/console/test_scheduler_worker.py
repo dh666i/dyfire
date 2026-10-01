@@ -23,7 +23,12 @@ from spark_console.models import (
     UserSubscription,
     WorkerLock,
 )
-from spark_console.scheduler import claim_next_due_task, compute_next_run
+from spark_console.scheduler import (
+    _close_superseded_retries,
+    _protect_expired_submissions,
+    claim_next_due_task,
+    compute_next_run,
+)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.worker import Worker
@@ -155,6 +160,130 @@ class SchedulerTests(unittest.TestCase):
             second = claim_next_due_task(session, now, "shard-1", shard=1, shards=2)
             self.assertIsNotNone(second)
             self.assertEqual(wanted[1][0], session.get(SparkTask, second.task_id).douyin_account_id)
+        engine.dispose()
+
+    def test_sharded_submission_protection_does_not_update_another_shard(self):
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        with Session(engine) as session:
+            tasks = {}
+            for shard in (0, 1):
+                account_id = next(
+                    f"submission-isolation-{index}"
+                    for index in range(100)
+                    if account_shard(f"submission-isolation-{index}", 2) == shard
+                )
+                user = User(
+                    username=f"submission-isolation-{shard}",
+                    password_hash="hash",
+                    role="admin",
+                )
+                session.add(user)
+                session.flush()
+                account = DouyinAccount(
+                    id=account_id,
+                    owner_user_id=user.id,
+                    display_name="main",
+                    encrypted_cookies=b"x",
+                    cookie_nonce=b"n",
+                )
+                session.add(account)
+                session.flush()
+                task = SparkTask(
+                    owner_user_id=user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"submission-{shard}",
+                    send_time="09:00",
+                    message_template="x",
+                    enabled=True,
+                )
+                session.add(task)
+                session.flush()
+                run = TaskRun(
+                    task_id=task.id,
+                    scheduled_for=now - timedelta(minutes=30),
+                    status="running",
+                    stage="submitted",
+                    submitted_at=now - timedelta(minutes=25),
+                    started_at=now - timedelta(minutes=30),
+                    lease_until=now - timedelta(minutes=10),
+                )
+                session.add(run)
+                tasks[shard] = (task, run)
+            session.commit()
+
+            _protect_expired_submissions(session, now, shard=0, shards=2)
+            session.flush()
+            self.assertEqual(
+                "submitted_unconfirmed",
+                session.get(TaskRun, tasks[0][1].id).status,
+            )
+            self.assertEqual("running", session.get(TaskRun, tasks[1][1].id).status)
+
+        engine.dispose()
+
+    def test_sharded_superseded_retry_cleanup_does_not_update_another_shard(self):
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        with Session(engine) as session:
+            runs = {}
+            for shard in (0, 1):
+                account_id = next(
+                    f"retry-isolation-{index}"
+                    for index in range(100)
+                    if account_shard(f"retry-isolation-{index}", 2) == shard
+                )
+                user = User(
+                    username=f"retry-isolation-{shard}",
+                    password_hash="hash",
+                    role="admin",
+                )
+                session.add(user)
+                session.flush()
+                account = DouyinAccount(
+                    id=account_id,
+                    owner_user_id=user.id,
+                    display_name="main",
+                    encrypted_cookies=b"x",
+                    cookie_nonce=b"n",
+                )
+                session.add(account)
+                session.flush()
+                task = SparkTask(
+                    owner_user_id=user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"retry-{shard}",
+                    send_time="09:00",
+                    message_template="x",
+                    enabled=True,
+                )
+                session.add(task)
+                session.flush()
+                old = TaskRun(
+                    task_id=task.id,
+                    scheduled_for=now - timedelta(minutes=10),
+                    status="retrying",
+                    stage="selecting_target",
+                    retry_after=now - timedelta(minutes=5),
+                )
+                later = TaskRun(
+                    task_id=task.id,
+                    scheduled_for=now - timedelta(minutes=1),
+                    status="success",
+                    stage="complete",
+                    finished_at=now - timedelta(seconds=30),
+                )
+                session.add_all([old, later])
+                runs[shard] = old
+            session.commit()
+
+            _close_superseded_retries(session, now, shard=0, shards=2)
+            session.flush()
+            self.assertEqual("failed", session.get(TaskRun, runs[0].id).status)
+            self.assertEqual("retrying", session.get(TaskRun, runs[1].id).status)
+
         engine.dispose()
 
     def test_superseded_retry_rows_leave_the_active_queue(self):

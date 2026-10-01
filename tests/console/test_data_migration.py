@@ -10,8 +10,9 @@ from spark_console.data_migration import (
     _source_state,
     readonly_sqlite_engine,
 )
+from spark_console.crypto import CookieCipher
 from spark_console.db import create_schema
-from spark_console.models import Base, SparkTask
+from spark_console.models import Base, DouyinAccount, User
 
 
 def _keys(tmp_path: Path):
@@ -51,3 +52,37 @@ def test_migration_normalizes_sqlite_datetimes_without_touching_cookie_bytes(tmp
     assert normalized["updated_at"] == original.replace(tzinfo=timezone.utc)
     assert normalized["encrypted_cookies"] == b"cipher"
     engine.dispose()
+
+
+def test_source_preflight_verifies_existing_account_cookie_with_same_key(tmp_path):
+    cookie_key, _session_key = _keys(tmp_path)
+    database = tmp_path / "accounts.db"
+    engine = create_engine(f"sqlite:///{database}")
+    create_schema(engine)
+    sealed = CookieCipher(cookie_key.read_bytes()).encrypt(b'[{"name":"sid","value":"keep"}]')
+    with engine.begin() as connection:
+        connection.execute(
+            User.__table__.insert(),
+            {"id": "user-1", "username": "owner", "password_hash": "hash", "role": "user"},
+        )
+        connection.execute(
+            DouyinAccount.__table__.insert(),
+            {
+                "id": "account-1",
+                "owner_user_id": "user-1",
+                "display_name": "main",
+                "encrypted_cookies": sealed.ciphertext,
+                "cookie_nonce": sealed.nonce,
+                "cookie_version": 1,
+                "validation_state": "valid",
+            },
+        )
+    engine.dispose()
+
+    source = readonly_sqlite_engine(database)
+    with source.connect() as connection:
+        _source_state(connection, cookie_key=cookie_key.read_bytes())
+    with source.connect() as connection:
+        with pytest.raises(ValueError, match="Cookie"):
+            _source_state(connection, cookie_key=b"x" * 32)
+    source.dispose()

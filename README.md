@@ -31,7 +31,7 @@ docker compose --env-file .env.console -f compose.console.yml exec spark-web pyt
 `retention` 命令用于定期清理已过期的历史执行、登录会话、邮件投递和审计记录。默认是 **dry-run**，只输出 JSON 统计，不会删除数据；确认窗口和结果后才加 `--apply`。它会分批执行，并且始终保留执行中的任务、等待重试和“已提交待核实”记录、活跃扫码会话、排队/发送中/结果不确定的邮件，以及未过期的网页会话。
 
 ```sh
-# 先预览（默认：执行记录 90 天、会话 30 天、邮件 30 天、审计 365 天）
+# 先预览（默认：执行记录 365 天、会话 30 天、邮件 30 天、审计 365 天）
 docker compose --env-file .env.console -f compose.console.yml exec spark-web \
   python -m spark_console.cli retention
 

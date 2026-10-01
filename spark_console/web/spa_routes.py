@@ -477,12 +477,18 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 return JSONResponse({"detail": "日期范围不正确"}, status_code=400)
             attempts = attempts_for_runs(db, [row.id for row in rows])
             events = events_for_runs(db, [row.id for row in rows])
+            account_ids = {row.task.douyin_account_id for row in rows if row.task.douyin_account_id}
+            accounts = {
+                account.id: account for account in db.scalars(
+                    select(DouyinAccount).where(DouyinAccount.id.in_(account_ids))
+                ).all()
+            } if account_ids else {}
             items = []
             for row in rows:
                 run = row.run
                 view = run_view_status(run)
                 guidance = run_guidance(run)
-                account = db.get(DouyinAccount, row.task.douyin_account_id) if row.task.douyin_account_id else None
+                account = accounts.get(row.task.douyin_account_id)
                 items.append({"id": run.id, "task_id": row.task.id, "owner_id": row.user.id, "target": row.target_name,
                     "owner": row.username, "account": account.display_name if account else "账号不可用",
                     "scheduled_for": shanghai_time(run.scheduled_for), "status": run.status,

@@ -206,7 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="清理已过期的终态记录；默认只预览，不删除",
     )
     retention.add_argument("--apply", action="store_true", help="确认执行删除")
-    retention.add_argument("--runs-days", type=int, default=90, help="执行记录保留天数")
+    retention.add_argument("--runs-days", type=int, default=365, help="执行记录保留天数")
     retention.add_argument("--sessions-days", type=int, default=30, help="登录会话保留天数")
     retention.add_argument("--mail-days", type=int, default=30, help="邮件记录保留天数")
     retention.add_argument("--audit-days", type=int, default=365, help="审计记录保留天数")

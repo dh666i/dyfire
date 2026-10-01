@@ -63,6 +63,24 @@ def test_recovery_retries_same_run_without_changing_next_day(case):
         assert len(db.scalars(select(TaskRun)).all())==1
         assert claim_next_due_task(db,now+timedelta(seconds=65),"other") is None
 
+@pytest.mark.parametrize("shards", [1, 4])
+def test_unbound_account_health_retry_is_cancelled_without_sending(case, shards):
+    from spark_console.health_retry import claim
+
+    first = attempt(case, Executor())
+    now, _, engine, _, task_id = case
+    with Session(engine) as db:
+        task = db.get(SparkTask, task_id)
+        task.douyin_account_id = None
+        task.enabled = False
+        db.commit()
+        assert claim(db, now + timedelta(seconds=190), "cleanup", shard=0, shards=shards) is None
+        db.commit()
+        run = db.get(TaskRun, first.id)
+        assert run.status == "failed"
+        assert run.error_code == "health_retry_cancelled"
+        assert run.submitted_at is None
+
 def test_chat_list_flake_retries_inside_window(case, monkeypatch):
     from spark_console import health_retry
     monkeypatch.setattr(health_retry, "WINDOW", timedelta(minutes=20))

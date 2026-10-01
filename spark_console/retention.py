@@ -14,7 +14,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from spark_console.models import (
@@ -48,7 +49,7 @@ ACTIVE_LOGIN_STATUSES = frozenset(
 TERMINAL_MAIL_STATUSES = frozenset({"accepted", "failed", "cancelled"})
 PROTECTED_MAIL_STATUSES = frozenset({"queued", "sending", "uncertain"})
 
-DEFAULT_RUNS_DAYS = 90
+DEFAULT_RUNS_DAYS = 365
 DEFAULT_SESSIONS_DAYS = 30
 DEFAULT_MAIL_DAYS = 30
 DEFAULT_AUDIT_DAYS = 365
@@ -58,6 +59,9 @@ MAX_RETENTION_DAYS = 36500  # 100 years; catches accidental timestamps.
 # 999-variable limit. One invocation still has a finite, predictable write
 # bound across every category.
 MAX_BATCH_SIZE = 900
+# Stable, application-specific PostgreSQL advisory-lock key.  The lock is
+# transaction-scoped, so it is released automatically on commit/rollback.
+RETENTION_ADVISORY_LOCK_KEY = 0x445946495245544E
 
 
 def _utc(value: datetime | None) -> datetime:
@@ -129,6 +133,7 @@ class RetentionReport:
     as_of: datetime
     policy: RetentionPolicy
     categories: dict[str, RetentionCategory]
+    lock_acquired: bool = True
 
     @property
     def candidate_count(self) -> int:
@@ -148,7 +153,52 @@ class RetentionReport:
             },
             "candidate_count": self.candidate_count,
             "deleted_count": self.deleted_count,
+            "lock_acquired": self.lock_acquired,
         }
+
+
+def _acquire_retention_lock(db: Session) -> bool:
+    """Serialize retention passes without holding an application mutex.
+
+    PostgreSQL uses a transaction-scoped advisory lock and returns immediately
+    when another maintenance job is active.  SQLite has no advisory locks;
+    the no-op singleton update obtains its writer lock before any candidate is
+    read, preventing a second SQLite process from deleting children selected
+    by the first process while the transaction is open.
+    """
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        return bool(
+            db.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:key)"),
+                {"key": RETENTION_ADVISORY_LOCK_KEY},
+            )
+        )
+    if dialect == "sqlite":
+        # create_schema always provisions worker_lock(id=1).  Keep the update
+        # value identical so this only claims SQLite's write transaction.
+        connection = db.connection()
+        previous_timeout = int(connection.exec_driver_sql("PRAGMA busy_timeout").scalar() or 0)
+        connection.exec_driver_sql("PRAGMA busy_timeout=0")
+        try:
+            result = db.execute(
+                text("UPDATE worker_lock SET id = id WHERE id = 1")
+            )
+            return result.rowcount in (1, -1)
+        except OperationalError:
+            # SQLite marks the failed transaction as rollback-only.  Clear it
+            # before returning a report so the caller's session_scope can
+            # close normally without raising PendingRollbackError.
+            db.rollback()
+            return False
+        finally:
+            try:
+                connection.exec_driver_sql(f"PRAGMA busy_timeout={max(0, previous_timeout)}")
+            except Exception:
+                # SQLite may invalidate the connection after a lock error;
+                # the session_scope cleanup will dispose it safely.
+                pass
+    return True
 
 
 def _count(db: Session, model: type, *criteria: Any) -> int:
@@ -156,15 +206,16 @@ def _count(db: Session, model: type, *criteria: Any) -> int:
 
 
 def _ids(db: Session, model: type, id_column: Any, *criteria: Any, batch_size: int) -> list[str]:
-    return list(
-        db.scalars(
-            select(id_column)
-            .select_from(model)
-            .where(*criteria)
-            .order_by(id_column)
-            .limit(batch_size)
-        )
+    statement = (
+        select(id_column)
+        .select_from(model)
+        .where(*criteria)
+        .order_by(id_column)
+        .limit(batch_size)
     )
+    if db.get_bind().dialect.name == "postgresql":
+        statement = statement.with_for_update(skip_locked=True)
+    return list(db.scalars(statement))
 
 
 def _delete_one_batch(
@@ -281,6 +332,17 @@ def retain(
 
     policy = policy or RetentionPolicy()
     as_of = _utc(now)
+    if not _acquire_retention_lock(db):
+        return RetentionReport(
+            dry_run=dry_run,
+            as_of=as_of,
+            policy=policy,
+            categories={
+                name: RetentionCategory()
+                for name in ("runs", "login_sessions", "web_sessions", "mail", "audits")
+            },
+            lock_acquired=False,
+        )
     cutoffs = {
         "runs": as_of - timedelta(days=policy.runs_days),
         "sessions": as_of - timedelta(days=policy.sessions_days),
@@ -380,4 +442,5 @@ def retain(
         as_of=as_of,
         policy=policy,
         categories=categories,
+        lock_acquired=True,
     )

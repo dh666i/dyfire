@@ -233,6 +233,41 @@ class RetentionTests(unittest.TestCase):
                 ),
             )
 
+    def test_busy_retention_pass_reports_without_deleting(self):
+        ids = self._seed()
+        with session_scope(self.engine) as db, patch(
+            "spark_console.retention._acquire_retention_lock", return_value=False
+        ):
+            report = retain(
+                db,
+                RetentionPolicy(runs_days=90),
+                dry_run=False,
+                now=self.now,
+            )
+            self.assertFalse(report.lock_acquired)
+            self.assertEqual(0, report.deleted_count)
+            self.assertIsNotNone(db.get(TaskRun, ids["terminal"]))
+
+    def test_sqlite_writer_lock_is_fail_fast_and_leaves_rows_untouched(self):
+        ids = self._seed()
+        blocker = self.engine.connect()
+        blocker.exec_driver_sql("BEGIN IMMEDIATE")
+        try:
+            with session_scope(self.engine) as db:
+                report = retain(
+                    db,
+                    RetentionPolicy(runs_days=90),
+                    dry_run=False,
+                    now=self.now,
+                )
+                self.assertFalse(report.lock_acquired)
+                self.assertEqual(0, report.deleted_count)
+            with session_scope(self.engine) as db:
+                self.assertIsNotNone(db.get(TaskRun, ids["terminal"]))
+        finally:
+            blocker.rollback()
+            blocker.close()
+
     def test_apply_records_maintenance_audit_after_deletion(self):
         self._seed()
         with session_scope(self.engine) as db:
@@ -268,7 +303,8 @@ class RetentionTests(unittest.TestCase):
             self.assertEqual(0, command_retention(args))
         report = json.loads(output[0])
         self.assertTrue(report["dry_run"])
-        self.assertEqual(1, report["categories"]["runs"]["remaining"])
+        self.assertEqual(365, report["policy"]["runs_days"])
+        self.assertEqual(0, report["categories"]["runs"]["remaining"])
 
     def test_cli_apply_deletes_at_most_one_configured_batch_per_category(self):
         self._seed()
@@ -284,7 +320,7 @@ class RetentionTests(unittest.TestCase):
                 db.add(TaskRun(task_id=task.id, scheduled_for=created, status="success", stage="finished", finished_at=created))
 
         args = build_parser().parse_args([
-            "retention", "--apply", "--batch-size", "2", "--as-of", self.now.isoformat()
+            "retention", "--apply", "--runs-days", "90", "--batch-size", "2", "--as-of", self.now.isoformat()
         ])
         output = []
         with patch("spark_console.cli.runtime", return_value=(self.settings, self.engine)), patch(
@@ -295,6 +331,14 @@ class RetentionTests(unittest.TestCase):
         self.assertFalse(report["dry_run"])
         self.assertEqual(2, report["categories"]["runs"]["deleted"])
         self.assertEqual(2, report["categories"]["runs"]["remaining"])
+
+    def test_default_retention_preserves_the_full_year_of_home_activity(self):
+        ids = self._seed()
+        with session_scope(self.engine) as db:
+            report = retain(db, dry_run=False, now=self.now)
+            self.assertEqual(365, report.policy.runs_days)
+            self.assertEqual(0, report.categories["runs"].deleted)
+            self.assertIsNotNone(db.get(TaskRun, ids["terminal"]))
 
     def test_cli_rejects_naive_as_of_before_opening_database(self):
         args = build_parser().parse_args(["retention", "--as-of", "2026-01-01T00:00:00"])

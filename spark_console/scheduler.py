@@ -47,19 +47,44 @@ def _expired_lease(now_utc: datetime):
     )
 
 
-def _protect_expired_submissions(session: Session, now_utc: datetime) -> None:
+def _protect_expired_submissions(
+    session: Session,
+    now_utc: datetime,
+    *,
+    shard: int = 0,
+    shards: int = 1,
+) -> None:
     """Never resend a run that crossed the submit boundary before a crash."""
-    session.execute(
-        update(TaskRun)
-        .where(
-            TaskRun.status == "running",
-            or_(
-                TaskRun.submitted_at.is_not(None),
-                TaskRun.stage == "submitted",
-            ),
-            _expired_lease(now_utc),
+    shard, shards = validate_shard(shard, shards)
+    statement = update(TaskRun).where(
+        TaskRun.status == "running",
+        or_(
+            TaskRun.submitted_at.is_not(None),
+            TaskRun.stage == "submitted",
+        ),
+        _expired_lease(now_utc),
+    )
+    if shards > 1:
+        owned_run_ids = (
+            select(TaskRun.id)
+            .join(SparkTask, SparkTask.id == TaskRun.task_id)
+            .outerjoin(
+                DouyinAccount,
+                DouyinAccount.id == SparkTask.douyin_account_id,
+            )
+            .where(
+                or_(
+                    DouyinAccount.dispatch_key % shards == shard,
+                    and_(
+                        shard == 0,
+                        DouyinAccount.dispatch_key.is_(None),
+                    ),
+                )
+            )
         )
-        .values(
+        statement = statement.where(TaskRun.id.in_(owned_run_ids))
+    session.execute(
+        statement.values(
             status="submitted_unconfirmed",
             stage="submitted",
             finished_at=now_utc,
@@ -123,7 +148,13 @@ def _reclaim_expired_run(
     return session.get(TaskRun, candidate_id)
 
 
-def _close_superseded_retries(session: Session, now_utc: datetime) -> None:
+def _close_superseded_retries(
+    session: Session,
+    now_utc: datetime,
+    *,
+    shard: int = 0,
+    shards: int = 1,
+) -> None:
     """Close retry rows that already have a later execution for the task.
 
     Generic retries create one ``TaskRun`` per attempt, while health retries
@@ -131,10 +162,29 @@ def _close_superseded_retries(session: Session, now_utc: datetime) -> None:
     state), the older generic rows must stop appearing as active queue work.
     They are still retained as failed attempts and are never replayed.
     """
+    shard, shards = validate_shard(shard, shards)
+    statement = select(TaskRun).where(
+        TaskRun.status == "retrying", TaskRun.submitted_at.is_(None)
+    )
+    if shards > 1:
+        statement = (
+            statement.outerjoin(SparkTask, SparkTask.id == TaskRun.task_id)
+            .outerjoin(
+                DouyinAccount,
+                DouyinAccount.id == SparkTask.douyin_account_id,
+            )
+            .where(
+                or_(
+                    DouyinAccount.dispatch_key % shards == shard,
+                    and_(
+                        shard == 0,
+                        DouyinAccount.dispatch_key.is_(None),
+                    ),
+                )
+            )
+        )
     retrying = session.scalars(
-        select(TaskRun)
-        .where(TaskRun.status == "retrying", TaskRun.submitted_at.is_(None))
-        .order_by(TaskRun.scheduled_for, TaskRun.id)
+        statement.order_by(TaskRun.scheduled_for, TaskRun.id)
     ).all()
     for run in retrying:
         later = session.scalar(
@@ -248,10 +298,10 @@ def claim_next_due_task(
 ) -> TaskRun | None:
     shard, shards = validate_shard(shard, shards)
     now_utc = _utc(now)
-    _close_superseded_retries(session, now_utc)
+    _close_superseded_retries(session, now_utc, shard=shard, shards=shards)
     from spark_console.health_retry import queue_blocked_tasks
-    queue_blocked_tasks(session, now_utc)
-    _protect_expired_submissions(session, now_utc)
+    queue_blocked_tasks(session, now_utc, shard=shard, shards=shards)
+    _protect_expired_submissions(session, now_utc, shard=shard, shards=shards)
     from spark_console.health_retry import claim as claim_health_retry
     recovery = claim_health_retry(session, now_utc, worker_id, shard=shard, shards=shards)
     if recovery is not None:
