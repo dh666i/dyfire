@@ -30,6 +30,10 @@ def host(tmp_path,monkeypatch):
     calls=[]
     module._real_compose = module.compose
     monkeypatch.setattr(module,'compose',lambda *args:calls.append(args))
+    # Install tests stub the host-only Docker/API verification. Dedicated
+    # runtime tests below exercise that read-only check with mocked commands.
+    module._real_verify_runtime = module.verify_runtime
+    monkeypatch.setattr(module, 'verify_runtime', lambda *args, **kwargs: {})
     return module,previous,target,calls
 
 
@@ -189,3 +193,65 @@ def test_rejects_data_mount_outside_canonical_root(host,monkeypatch,tmp_path):
     monkeypatch.setattr(module.subprocess,'run',lambda *args,**kwargs:next(responses))
     with pytest.raises(ValueError,match='标准部署目录'):
         module._resolve_data_dir()
+
+
+def test_runtime_report_detects_recorded_image_drift(host, monkeypatch):
+    module, previous, _target, _calls = host
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *exc): return None
+        def read(self): return b'{"version":"0.1.0"}'
+
+    monkeypatch.setattr(module.urllib.request, 'urlopen', lambda *args, **kwargs: Response())
+    monkeypatch.setattr(module, '_container_for_service', lambda service: service + '-id')
+    monkeypatch.setattr(module, '_inspect_container', lambda container_id: {
+        'container_id': container_id[:12], 'running': True,
+        'image': module.IMAGE + '@sha256:' + ('b' * 64), 'repo_digests': [],
+    })
+    report = module.runtime_report(previous['version'], previous['image'], ['spark-web'])
+    assert report['api_version'] == previous['version']
+    assert report['drift'] is True
+    assert report['services']['spark-web']['running'] is True
+
+
+def test_runtime_report_marks_missing_or_stopped_service(host, monkeypatch):
+    module, previous, _target, _calls = host
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *exc): return None
+
+    monkeypatch.setattr(module.urllib.request, 'urlopen', lambda *args, **kwargs: Response())
+    monkeypatch.setattr(module.json, 'load', lambda _response: {'version': previous['version']})
+    monkeypatch.setattr(module, '_container_for_service', lambda _service: 'service-id')
+    monkeypatch.setattr(module, '_inspect_container', lambda _container: {
+        'container_id': 'service-id', 'running': False, 'image': previous['image'],
+        'repo_digests': [],
+    })
+    report = module.runtime_report(previous['version'], previous['image'], ['spark-web'])
+    assert report['drift'] is True
+
+
+def test_verify_runtime_raises_before_install_record_on_drift(host, monkeypatch):
+    module, _previous, _target, _calls = host
+    monkeypatch.setattr(module, 'runtime_report', lambda *args, **kwargs: {'drift': True})
+    with pytest.raises(RuntimeError, match='运行容器版本或镜像'):
+        module._real_verify_runtime('0.2.0', module.IMAGE + '@sha256:' + 'b' * 64, ['spark-web'])
+
+
+def test_install_runtime_drift_restores_old_record_and_image(host, monkeypatch):
+    module, previous, target, calls = host
+
+    def verify(expected_version, *_args, **_kwargs):
+        if expected_version == target['version']:
+            raise RuntimeError('运行容器版本或镜像与部署记录不一致')
+
+    monkeypatch.setattr(module, 'ready', lambda _version: None)
+    monkeypatch.setattr(module, 'verify_runtime', verify)
+    with pytest.raises(RuntimeError, match='运行容器版本或镜像'):
+        module.install(target['version'])
+    assert calls[-2:] == [
+        (target['image'], 'up', '-d', '--no-build', *module.SERVICES),
+        (previous['image'], 'up', '-d', '--no-build', *module.SERVICES),
+    ]
+    assert json.loads((module.ROOT / 'installed.json').read_text()) == previous

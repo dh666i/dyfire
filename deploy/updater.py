@@ -33,6 +33,116 @@ IMAGE_PULL_TIMEOUT_SECONDS = 60 * 60
 _RELEASE_CACHE = {}
 
 
+def _compose_base():
+    """Return the read-only Compose command for the canonical project."""
+    return [
+        'docker', 'compose', '--project-name', COMPOSE_PROJECT,
+        '--env-file', str(ROOT / '.env.console'), '--file',
+        str(ROOT / 'compose.console.yml'),
+    ]
+
+
+def _container_for_service(service):
+    """Resolve exactly one running container for a Compose service.
+
+    This deliberately uses ``docker compose ps`` instead of a broad Docker
+    label query. An old Compose project must not be mistaken for the service
+    managed by this updater.
+    """
+    result = subprocess.run(
+        [*_compose_base(), 'ps', '-q', service], cwd=ROOT,
+        capture_output=True, text=True, timeout=30, check=True,
+    )
+    ids = [value.strip() for value in result.stdout.splitlines() if value.strip()]
+    if len(ids) != 1:
+        raise ValueError(f'无法唯一定位 {service} 运行容器')
+    return ids[0]
+
+
+def _inspect_container(container_id):
+    result = subprocess.run(
+        ['docker', 'inspect', container_id], capture_output=True,
+        text=True, timeout=30, check=True,
+    )
+    values = json.loads(result.stdout)
+    if len(values) != 1 or not isinstance(values[0], dict):
+        raise ValueError('容器检查结果无效')
+    item = values[0]
+    state = item.get('State') or {}
+    config = item.get('Config') or {}
+    image = str(config.get('Image') or '')
+    repo_digests = [str(value) for value in (item.get('RepoDigests') or []) if value]
+    return {
+        'container_id': container_id[:12],
+        'running': bool(state.get('Running')),
+        'image': image,
+        'repo_digests': repo_digests,
+    }
+
+
+def _image_matches(actual, expected):
+    """Match a pinned image against Docker's Config.Image or RepoDigests."""
+    if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', expected or ''):
+        return False
+    values = [actual.get('image', ''), *(actual.get('repo_digests') or [])]
+    return expected in values
+
+
+def runtime_report(expected_version=None, expected_image=None, services=None):
+    """Read the canonical Compose runtime without changing host state.
+
+    The report is safe to persist in the admin-only update status. ``drift``
+    means the recorded version/image is not what the running containers and
+    local API report; it also covers a missing or stopped container.
+    """
+    services = list(services or SERVICES)
+    report = {
+        'expected_version': expected_version,
+        'expected_image': expected_image,
+        'api_version': None,
+        'services': {},
+        'drift': False,
+    }
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:8899/api/version', timeout=3) as response:
+            payload = json.load(response)
+        report['api_version'] = payload.get('version') if isinstance(payload, dict) else None
+    except (OSError, ValueError, KeyError):
+        report['api_error'] = '无法读取本机 API 版本'
+
+    for service in services:
+        try:
+            item = _inspect_container(_container_for_service(service))
+        except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+            item = {'running': False, 'error': type(error).__name__.lower()}
+        report['services'][service] = item
+
+    api_expected_version = (
+        expected_version.get('spark-web')
+        if isinstance(expected_version, dict)
+        else expected_version
+    )
+    if api_expected_version is not None and report['api_version'] != api_expected_version:
+        report['drift'] = True
+    for service, item in report['services'].items():
+        expected = (
+            expected_image.get(service)
+            if isinstance(expected_image, dict)
+            else expected_image
+        )
+        if not item.get('running') or (expected and not _image_matches(item, expected)):
+            report['drift'] = True
+    return report
+
+
+def verify_runtime(expected_version, expected_image, services=None):
+    """Strict post-switch verification; raises before install records are written."""
+    report = runtime_report(expected_version, expected_image, services)
+    if report['drift']:
+        raise RuntimeError('运行容器版本或镜像与部署记录不一致')
+    return report
+
+
 def version(value):
     if not isinstance(value, str) or not re.fullmatch(r'\d+\.\d+\.\d+', value):
         raise ValueError('发行版本格式无效')
@@ -302,6 +412,7 @@ def install(target, operation_id=''):
         write_state(phase='installing', message='正在启动新版本')
         compose(release['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(target)
+        verify_runtime(target, release['image'], SERVICES)
         temp = ROOT / 'installed.tmp'
         temp.write_text(json.dumps(release))
         temp.replace(current_file)
@@ -315,6 +426,7 @@ def install(target, operation_id=''):
         # Never automatically overwrite the live database with an older backup.
         compose(current['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(current['version'])
+        verify_runtime(current['version'], current['image'], SERVICES)
         write_state(phase='failed', message='更新失败，已恢复原版本')
         raise
 
@@ -343,6 +455,7 @@ def install_web(target, operation_id=''):
         write_state(phase='web_installing', message='正在切换 Web 服务，发送服务保持运行')
         compose(release['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
         ready(target)
+        verify_runtime(target, release['image'], WEB_SERVICES)
         temp = ROOT / 'web-installed.tmp'
         temp.write_text(json.dumps(release))
         temp.replace(ROOT / 'web-installed.json')
@@ -372,6 +485,7 @@ def rollback(target='', operation_id=''):
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
         compose(selected['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(selected['version'])
+        verify_runtime(selected['version'], selected['image'], SERVICES)
         temp = ROOT / 'installed.tmp'
         record = {'version': selected['version'], 'schema': 1, 'image': selected['image']}
         temp.write_text(json.dumps(record), encoding='utf-8')
@@ -384,6 +498,7 @@ def rollback(target='', operation_id=''):
         write_state(phase='rollback_failed', message='回滚未通过健康检查，正在恢复当前版本')
         compose(current['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(current['version'])
+        verify_runtime(current['version'], current['image'], SERVICES)
         raise
 
 
@@ -406,8 +521,17 @@ def main():
                     if data['action'] == 'check':
                         item = latest()
                         current = json.loads((ROOT / 'installed.json').read_text())
+                        web_file = ROOT / 'web-installed.json'
+                        web_current = json.loads(web_file.read_text()) if web_file.is_file() else current
+                        runtime = runtime_report(
+                            web_current.get('version'),
+                            {service: (web_current if service == 'spark-web' else current).get('image')
+                             for service in SERVICES},
+                        )
                         write_state(phase='checked', latest=item['version'], message='版本检查完成', **item,
-                                    rollback_versions=rollback_versions(current['version']))
+                                    rollback_versions=rollback_versions(current['version']),
+                                    runtime=runtime,
+                                    runtime_drift=runtime.get('drift', True))
                     elif data['action'] == 'install':
                         install(data['version'], operation_id)
                     elif data['action'] == 'install-web':

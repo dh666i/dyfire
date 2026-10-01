@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
 from spark_console.worker_sharding import validate_shard
+
+
+_REDIS_KEY_PREFIX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,63}$")
 
 
 def _env_bool(value: str, *, name: str) -> bool:
@@ -58,6 +62,15 @@ class Settings:
     database_max_overflow: int = 20
     database_pool_timeout_seconds: int = 30
     database_pool_recycle_seconds: int = 1800
+    # Redis is an optional preparation layer for distributed primitives.  It
+    # is deliberately disabled by default so SQLite deployments never open a
+    # Redis connection or change their existing request/queue behavior.
+    redis_enabled: bool = False
+    redis_url: str | None = None
+    redis_key_prefix: str = "dyfire"
+    redis_socket_timeout_seconds: float = 1.0
+    redis_connect_timeout_seconds: float = 1.0
+    redis_max_connections: int = 20
 
     def __post_init__(self) -> None:
         for cidr in self.trusted_proxy_cidrs:
@@ -75,6 +88,18 @@ class Settings:
             raise ValueError("database pool timeout must be positive")
         if self.database_pool_recycle_seconds < 0:
             raise ValueError("database pool recycle must be non-negative")
+        if self.redis_enabled and not self.redis_url:
+            raise ValueError("redis URL is required when Redis is enabled")
+        if not _REDIS_KEY_PREFIX.fullmatch(self.redis_key_prefix):
+            raise ValueError(
+                "redis key prefix must contain 1-64 safe ASCII characters"
+            )
+        if self.redis_socket_timeout_seconds <= 0:
+            raise ValueError("redis socket timeout must be positive")
+        if self.redis_connect_timeout_seconds <= 0:
+            raise ValueError("redis connect timeout must be positive")
+        if self.redis_max_connections < 1:
+            raise ValueError("redis max connections must be positive")
         validate_shard(self.worker_shard, self.worker_shards)
 
     @classmethod
@@ -137,5 +162,20 @@ class Settings:
             ),
             database_pool_recycle_seconds=int(
                 environ.get("SPARK_DATABASE_POOL_RECYCLE_SECONDS", "1800")
+            ),
+            redis_enabled=_env_bool(
+                environ.get("SPARK_REDIS_ENABLED", "false"),
+                name="SPARK_REDIS_ENABLED",
+            ),
+            redis_url=(environ.get("SPARK_REDIS_URL") or None),
+            redis_key_prefix=environ.get("SPARK_REDIS_KEY_PREFIX", "dyfire"),
+            redis_socket_timeout_seconds=float(
+                environ.get("SPARK_REDIS_SOCKET_TIMEOUT_SECONDS", "1")
+            ),
+            redis_connect_timeout_seconds=float(
+                environ.get("SPARK_REDIS_CONNECT_TIMEOUT_SECONDS", "1")
+            ),
+            redis_max_connections=int(
+                environ.get("SPARK_REDIS_MAX_CONNECTIONS", "20")
             ),
         )

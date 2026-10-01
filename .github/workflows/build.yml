@@ -79,3 +79,20 @@ jobs:
       - run: python -m pytest tests/console/test_postgres_schema.py tests/console/test_postgres_migration.py tests/console/test_postgres_scale_baseline.py tests/console/test_postgres_claim_concurrency.py -q -s
         env:
           TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/dyfire
+  redis:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements.txt -r requirements-console.txt pytest
+      - run: python -m pytest tests/console/test_redis_backend.py -q -s
+        env:
+          TEST_REDIS_URL: redis://localhost:6379/15

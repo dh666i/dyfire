@@ -16,12 +16,34 @@ x-common: &common
     - ./secrets/session.key:/run/secrets/session.key:ro
   networks: [spark-private]
   read_only: true
-  security_opt: [no-new-privileges:true]
+  security_opt: ['no-new-privileges:true']
   logging:
     driver: json-file
     options: {max-size: 10m, max-file: "3"}
 
 services:
+  # Optional preparation service. It is never started by the default compose
+  # invocation; enable it explicitly with --profile redis after setting
+  # SPARK_REDIS_ENABLED=true and SPARK_REDIS_URL=redis://redis:6379/0.
+  redis:
+    image: redis:7.4-alpine
+    profiles: [redis]
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes", --save, "60", "1"]
+    networks: [spark-private]
+    volumes:
+      - redis-data:/data
+    read_only: true
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 128m
+    cpus: 0.20
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
   spark-web:
     <<: *common
     environment:
@@ -97,6 +119,7 @@ services:
 
 volumes:
   spark-data:
+  redis-data:
 networks:
   spark-private:
     driver: bridge

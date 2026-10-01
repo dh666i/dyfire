@@ -57,6 +57,23 @@ python -m spark_console.cli migrate-sqlite-postgres /data/spark.db \
 
 使用反向代理提供 HTTPS；默认仅在 127.0.0.1:8899 监听。绑定账号和发送任务需要 auth、worker 服务在线。新部署先创建管理员，再登录；不会预置默认密码。
 
+### 可选 Redis 预备层
+
+当前 Web、登录和发送任务仍以数据库为唯一事实来源，默认不会连接 Redis。Redis 适配器只提供后续分布式限流、幂等和队列迁移所需的原子原语，未接入现有发送路径，因此保持 `SPARK_REDIS_ENABLED=false` 即可继续使用现有 SQLite 部署。需要在隔离环境验证时，可在 `.env.console` 设置：
+
+```sh
+SPARK_REDIS_ENABLED=true
+SPARK_REDIS_URL=redis://redis:6379/0
+```
+
+然后显式启动 profile：
+
+```sh
+docker compose --env-file .env.console -f compose.console.yml --profile redis up -d redis
+```
+
+正式启用前仍需单独完成 Redis 持久化、访问控制、故障降级和队列重复投递演练；不要仅因为 profile 能启动就把它切入生产发送链路。
+
 迁移已有站点时，必须同时保留数据库、cookie.key、session.key。不要对旧站直接执行新站初始化，也不要将新空目录替换已有数据卷。
 
 ## 更新机制
