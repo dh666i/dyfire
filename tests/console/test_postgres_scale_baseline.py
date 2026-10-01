@@ -28,6 +28,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, insert, select, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.engine import make_url
 
 from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
@@ -83,6 +84,17 @@ def _schema_name() -> str:
     return "scale_api_" + uuid.uuid4().hex
 
 
+def _assert_local_test_url(url: str) -> None:
+    """Refuse an accidental remote/production database target."""
+
+    host = (make_url(url).host or "").strip("[]").lower()
+    if host not in {"localhost", "127.0.0.1", "::1", "postgres"}:
+        pytest.fail(
+            "TEST_POSTGRES_URL must target the local CI PostgreSQL service; "
+            f"refusing remote host {host or '<empty>'!r}"
+        )
+
+
 def _postgres_engine(url: str, schema: str, **pool_options) -> Engine:
     return create_engine(
         url,
@@ -97,6 +109,7 @@ def postgres_scale_fixture(tmp_path_factory: pytest.TempPathFactory) -> Postgres
     """Load 500 users, 500 accounts, 2,500 tasks, and 75,000 task runs."""
 
     url = os.environ["TEST_POSTGRES_URL"]
+    _assert_local_test_url(url)
     schema = _schema_name()
     admin_engine = create_engine(url, pool_pre_ping=True)
     quoted_schema = admin_engine.dialect.identifier_preparer.quote(schema)
