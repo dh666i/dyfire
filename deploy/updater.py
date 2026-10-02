@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import subprocess
 import time
 import urllib.request
@@ -368,17 +369,33 @@ def assert_no_active_operations(data_dir):
     the updater cannot mutate production task, account, or login state while
     it is deciding whether a switch is safe.
     """
-    import sqlite3
-
     database = Path(data_dir) / 'spark.db'
-    with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as db:
-        active = db.execute(
-            "SELECT count(*) FROM task_runs WHERE status='running'"
-        ).fetchone()[0]
-        active += db.execute(
-            "SELECT count(*) FROM douyin_login_sessions "
-            "WHERE status NOT IN ('succeeded','failed','expired','cancelled')"
-        ).fetchone()[0]
+    last_error = None
+    # A live SQLite WAL can briefly be busy while the worker commits a
+    # heartbeat or run transition. Retry the read-only guard so a transient
+    # checkpoint race does not abort an otherwise safe image update. A real
+    # malformed database still fails after the bounded retry window.
+    for attempt in range(5):
+        try:
+            with sqlite3.connect(
+                f'{database.as_uri()}?mode=ro', uri=True, timeout=5
+            ) as db:
+                db.execute('PRAGMA busy_timeout=5000')
+                active = db.execute(
+                    "SELECT count(*) FROM task_runs WHERE status='running'"
+                ).fetchone()[0]
+                active += db.execute(
+                    "SELECT count(*) FROM douyin_login_sessions "
+                    "WHERE status NOT IN ('succeeded','failed','expired','cancelled')"
+                ).fetchone()[0]
+            break
+        except sqlite3.DatabaseError as error:
+            last_error = error
+            if attempt == 4:
+                raise
+            time.sleep(0.5)
+    else:  # pragma: no cover - the loop either breaks or raises
+        raise last_error
     if active:
         raise ValueError('当前仍有扫码或发送操作，请完成后再更新')
 

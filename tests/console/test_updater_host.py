@@ -62,6 +62,22 @@ def test_busy_accounts_block_update_before_stop(host):
     assert calls==[]
 
 
+def test_active_operation_guard_retries_transient_sqlite_database_errors(host, monkeypatch):
+    module, _, _, _ = host
+    real_connect = sqlite3.connect
+    attempts = {'count': 0}
+
+    def flaky_connect(*args, **kwargs):
+        attempts['count'] += 1
+        if attempts['count'] < 3:
+            raise sqlite3.DatabaseError('database disk image is malformed')
+        return real_connect(*args, **kwargs)
+
+    monkeypatch.setattr(module.sqlite3, 'connect', flaky_connect)
+    module.assert_no_active_operations(module.DATA_DIR)
+    assert attempts['count'] == 3
+
+
 def test_success_records_actual_install(host,monkeypatch):
     module,_,target,calls=host
     monkeypatch.setattr(module,'ready',lambda _:None)
