@@ -110,6 +110,11 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     admin_note: Mapped[str | None] = mapped_column(String(500))
+    # Per-user first-run guide state. These fields are nullable for additive
+    # upgrades so existing users keep working without a data rewrite.
+    onboarding_dismissed: Mapped[bool | None] = mapped_column(Boolean)
+    onboarding_steps: Mapped[str | None] = mapped_column(Text)
+    onboarding_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     failed_login_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

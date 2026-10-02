@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 16
+SQLITE_SCHEMA_VERSION = 17
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -101,6 +101,16 @@ def create_schema(engine: Engine) -> None:
         ):
             connection.execute(text(
                 f"ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS {name} {definition}"
+            ))
+        # User onboarding state is additive and nullable. Existing accounts
+        # therefore keep their normal login/session behavior during upgrades.
+        for name, definition in (
+            ("onboarding_dismissed", "BOOLEAN"),
+            ("onboarding_steps", "TEXT"),
+            ("onboarding_updated_at", "TIMESTAMP WITH TIME ZONE"),
+        ):
+            connection.execute(text(
+                f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {definition}"
             ))
         connection.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
@@ -191,6 +201,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (14, "admin_totp_credentials", _upgrade_sqlite_admin_totp_credentials),
         (15, "audit_request_context", _upgrade_sqlite_audit_request_context),
         (16, "admin_totp_recovery_codes", _upgrade_sqlite_admin_totp_recovery_codes),
+        (17, "user_onboarding_state", _upgrade_sqlite_user_onboarding_state),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -412,6 +423,23 @@ def _upgrade_sqlite_admin_totp_recovery_codes(connection: Connection) -> None:
         "CREATE INDEX IF NOT EXISTS ix_admin_totp_recovery_codes_user_used "
         "ON admin_totp_recovery_codes (user_id, used_at)"
     )
+
+
+def _upgrade_sqlite_user_onboarding_state(connection: Connection) -> None:
+    """Add the per-user first-run guide state without rewriting user rows."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+    }
+    for name, definition in (
+        ("onboarding_dismissed", "BOOLEAN"),
+        ("onboarding_steps", "TEXT"),
+        ("onboarding_updated_at", "DATETIME"),
+    ):
+        if name not in columns:
+            connection.exec_driver_sql(
+                f"ALTER TABLE users ADD COLUMN {name} {definition}"
+            )
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:

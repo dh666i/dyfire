@@ -4,6 +4,7 @@ The existing command and automation endpoints remain the source of truth.  These
 small read models keep the browser shell independent from the legacy templates
 without duplicating any task or account mutation logic.
 """
+import json
 import math
 from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -90,6 +91,62 @@ def _date_value(value):
     return value.isoformat() if value is not None else None
 
 
+ONBOARDING_STEP_KEYS = ("subscription", "account", "friends", "runs")
+
+
+def _decode_onboarding_steps(value) -> set[str]:
+    """Decode the bounded JSON step list, ignoring malformed legacy values."""
+    if not value:
+        return set()
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError):
+        return set()
+    if not isinstance(decoded, list):
+        return set()
+    return {
+        item for item in decoded
+        if isinstance(item, str) and item in ONBOARDING_STEP_KEYS
+    }
+
+
+def _onboarding_payload(
+    user,
+    *,
+    membership,
+    account_total: int,
+    task_total: int,
+    has_any_run: bool,
+):
+    """Merge server progress with observable product state.
+
+    Observable state wins for steps that are already complete. Explicitly
+    stored steps are retained so a user can finish a guide step on another
+    device before the next full bootstrap reflects it.
+    """
+    persisted = _decode_onboarding_steps(user.onboarding_steps)
+    actual = set()
+    if membership.get("active"):
+        actual.add("subscription")
+    if account_total:
+        actual.add("account")
+    if task_total:
+        actual.add("friends")
+    if has_any_run:
+        actual.add("runs")
+    completed = persisted | actual
+    return {
+        "version": 1,
+        "dismissed": bool(user.onboarding_dismissed),
+        "completed_steps": [key for key in ONBOARDING_STEP_KEYS if key in completed],
+        "steps": [
+            {"key": key, "done": key in completed, "status": "done" if key in completed else "pending"}
+            for key in ONBOARDING_STEP_KEYS
+        ],
+        "updated_at": _date_value(user.onboarding_updated_at),
+    }
+
+
 def _aware(value):
     if value is None:
         return None
@@ -141,6 +198,12 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 )
                 or 0
             )
+            has_any_run = db.scalar(
+                select(TaskRun.id)
+                .join(SparkTask, SparkTask.id == TaskRun.task_id)
+                .where(SparkTask.owner_user_id == user.id)
+                .limit(1)
+            ) is not None
             health = account_health_views(db, accounts)
             profiles = profile_map(db, [a.id for a in accounts])
             now = datetime.now(timezone.utc)
@@ -214,6 +277,13 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 for offset in range(364, -1, -1)
             ]
             membership = membership_summary(db, user)
+            onboarding = _onboarding_payload(
+                user,
+                membership=membership,
+                account_total=int(account_total),
+                task_total=int(task_total),
+                has_any_run=has_any_run,
+            )
             account_rows = []
             for account in accounts:
                 h = health.get(account.id, {})
@@ -295,6 +365,67 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "activity": {"period_days": 365, "total": sum(item["count"] for item in activity_days), "days": activity_days},
                 "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "can_add_task")},
                 "plans": pricing_plans(),
+                "onboarding": onboarding,
+            }
+
+    @router.patch("/api/app/onboarding")
+    async def update_onboarding(request: Request):
+        """Persist guide dismissal/progress for the signed-in user."""
+        try:
+            values = await request.json()
+        except Exception:
+            return JSONResponse({"detail": "请求格式无效"}, status_code=400)
+        if not isinstance(values, dict):
+            return JSONResponse({"detail": "请求格式无效"}, status_code=400)
+        step = values.get("step")
+        if "completed" in values:
+            completed = values["completed"]
+        elif "status" in values:
+            status = values["status"]
+            if status not in {"done", "pending"}:
+                return JSONResponse({"detail": "完成状态无效"}, status_code=400)
+            completed = status == "done"
+        else:
+            # A step-only PATCH is the ergonomic "mark done" form. A request
+            # that only changes dismissal has no step and therefore has no
+            # effect on the stored completion set.
+            completed = step is not None
+        dismissed = values.get("dismissed")
+        if step is not None and (
+            not isinstance(step, str) or step not in ONBOARDING_STEP_KEYS
+        ):
+            return JSONResponse({"detail": "引导步骤无效"}, status_code=400)
+        if not isinstance(completed, bool):
+            return JSONResponse({"detail": "完成状态无效"}, status_code=400)
+        if dismissed is not None and not isinstance(dismissed, bool):
+            return JSONResponse({"detail": "关闭状态无效"}, status_code=400)
+        with session_scope(engine) as db:
+            user, record = auth.current(request, db)
+            auth.csrf(record, str(values.get("csrf_token", "")))
+            steps = _decode_onboarding_steps(user.onboarding_steps)
+            if step is not None:
+                if completed:
+                    steps.add(step)
+                else:
+                    steps.discard(step)
+            if dismissed is not None:
+                user.onboarding_dismissed = dismissed
+            user.onboarding_steps = json.dumps(
+                [key for key in ONBOARDING_STEP_KEYS if key in steps],
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            user.onboarding_updated_at = datetime.now(timezone.utc)
+            return {
+                "ok": True,
+                "onboarding": {
+                    "version": 1,
+                    "dismissed": bool(user.onboarding_dismissed),
+                    "completed_steps": [
+                        key for key in ONBOARDING_STEP_KEYS if key in steps
+                    ],
+                    "updated_at": _date_value(user.onboarding_updated_at),
+                },
             }
 
     @router.get("/api/app/tasks")

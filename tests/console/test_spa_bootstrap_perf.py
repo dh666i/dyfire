@@ -16,6 +16,60 @@ from spark_console.security import PasswordService, SessionService
 from spark_console.web.app import create_app
 
 
+def test_app_onboarding_is_persisted_per_user_and_requires_csrf(tmp_path):
+    cookie_key = tmp_path / "cookie.key"
+    cookie_key.write_bytes(b"c" * 32)
+    session_key = tmp_path / "session.key"
+    session_key.write_bytes(b"s" * 32)
+    settings = Settings(tmp_path, f"sqlite:///{tmp_path}/onboarding.db", cookie_key, session_key)
+    engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
+    create_schema(engine)
+    with session_scope(engine) as db:
+        owner = User(
+            username="onboarding-owner",
+            password_hash=PasswordService().hash("test-only"),
+            role="user",
+            must_change_password=False,
+        )
+        db.add(owner)
+        db.flush()
+        token, record = SessionService(session_key.read_bytes()).create_record(owner.id)
+        db.add(record)
+
+    with TestClient(create_app(settings, engine), base_url="https://testserver") as client:
+        client.cookies.set("spark_session", token)
+        first = client.get("/api/app/bootstrap")
+        assert first.status_code == 200, first.text
+        assert first.json()["onboarding"]["dismissed"] is False
+        assert first.json()["onboarding"]["completed_steps"] == []
+        csrf = first.json()["csrf"]
+        assert client.patch(
+            "/api/app/onboarding",
+            json={"dismissed": True, "step": "account", "completed": True},
+        ).status_code == 403
+        updated = client.patch(
+            "/api/app/onboarding",
+            json={
+                "csrf_token": csrf,
+                "dismissed": True,
+                "step": "account",
+                "completed": True,
+            },
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["onboarding"]["dismissed"] is True
+        assert updated.json()["onboarding"]["completed_steps"] == ["account"]
+        invalid_status = client.patch(
+            "/api/app/onboarding",
+            json={"csrf_token": csrf, "step": "account", "status": "broken"},
+        )
+        assert invalid_status.status_code == 400
+        second = client.get("/api/app/bootstrap")
+        assert second.json()["onboarding"]["dismissed"] is True
+        assert second.json()["onboarding"]["steps"][1]["done"] is True
+    engine.dispose()
+
+
 def test_app_bootstrap_aggregates_local_days_and_batches_task_identities(tmp_path):
     cookie_key = tmp_path / "cookie.key"
     cookie_key.write_bytes(b"c" * 32)
