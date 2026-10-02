@@ -20,6 +20,26 @@ class CommercialWorkflowTests(unittest.TestCase):
         with session_scope(self.f.engine) as db:self.assertEqual(0,db.scalar(select(func.count()).select_from(SparkTask)))
         payload['account_id']='not-owned';self.assertEqual(404,self.client.post('/tasks/preview',json=payload).status_code)
         payload['account_id']=self.f.account;payload['targets'][0]['sec_uid']='unknown';self.assertEqual(400,self.client.post('/tasks/preview',json=payload).status_code)
+
+        malformed = self.client.post(
+            '/tasks/preview',
+            content=b'not-json',
+            headers={'Content-Type': 'application/json'},
+        )
+        self.assertEqual(400, malformed.status_code)
+        self.assertEqual('请求格式不正确', malformed.json()['detail'])
+
+        non_object = self.client.post('/tasks/preview', json=['not', 'an', 'object'])
+        self.assertEqual(400, non_object.status_code)
+        self.assertEqual('请求格式不正确', non_object.json()['detail'])
+
+        malformed_batch = self.client.post(
+            '/tasks/batch',
+            content=b'not-json',
+            headers={'Content-Type': 'application/json'},
+        )
+        self.assertEqual(400, malformed_batch.status_code)
+        self.assertEqual('请求格式不正确', malformed_batch.json()['detail'])
     def test_duplicate_preview_and_idempotent_pause(self):
         with session_scope(self.f.engine) as db:
             task=TaskService(db,AccountService(db,self.f.cipher,AuditService(db)),AuditService(db)).create(self.f.owner,self.f.account,'好友','12:00','续火');db.flush();tid=task.id
@@ -72,5 +92,21 @@ class CommercialWorkflowTests(unittest.TestCase):
         self.assertEqual(200,value.status_code)
         self.assertTrue(value.json()['membership']['active'])
         self.assertEqual(20,value.json()['membership']['max_tasks'])
+
+    def test_subscription_redeem_rejects_malformed_json_with_client_error(self):
+        response = self.client.post(
+            '/api/subscription/redeem',
+            content=b'not-json',
+            headers={'Content-Type': 'application/json'},
+        )
+        self.assertEqual(400, response.status_code)
+        self.assertEqual('请求格式无效', response.json()['detail'])
+
+        response = self.client.post(
+            '/api/subscription/redeem',
+            json=['not', 'an', 'object'],
+        )
+        self.assertEqual(400, response.status_code)
+        self.assertEqual('请求格式无效', response.json()['detail'])
     def test_admin_diagnostics_denied_for_user(self):
         self.assertIn(self.client.get('/admin/diagnostics').status_code,(403,404))

@@ -27,7 +27,17 @@ def build_health_router(engine, auth):
                 db.execute(text('BEGIN IMMEDIATE'))
             user, session = auth.current(request, db)
             auth.csrf(session, csrf_token)
-            account = db.scalar(select(DouyinAccount).where(DouyinAccount.id == account_id, DouyinAccount.owner_user_id == user.id))
+            # SQLite is serialized by BEGIN IMMEDIATE above. PostgreSQL needs
+            # an explicit account-row lock so two rapid clicks cannot both
+            # pass the cooldown check and enqueue duplicate rechecks.
+            account = db.scalar(
+                select(DouyinAccount)
+                .where(
+                    DouyinAccount.id == account_id,
+                    DouyinAccount.owner_user_id == user.id,
+                )
+                .with_for_update()
+            )
             if not account:
                 raise HTTPException(404, '账号不存在')
             if user.role != 'admin' and not SubscriptionService(db, AuditService(db)).active(user.id):

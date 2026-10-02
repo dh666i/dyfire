@@ -15,6 +15,16 @@ from spark_console.services.subscriptions import SubscriptionService
 
 def build_reliability_router(engine,auth,cipher):
     router=APIRouter()
+
+    async def json_object(request: Request) -> dict:
+        try:
+            value = await request.json()
+        except (TypeError, ValueError):
+            raise HTTPException(400, '请求格式不正确') from None
+        if not isinstance(value, dict):
+            raise HTTPException(400, '请求格式不正确')
+        return value
+
     @router.get('/admin/diagnostics')
     def diagnostics(request:Request):
         with session_scope(engine) as db:
@@ -37,8 +47,7 @@ def build_reliability_router(engine,auth,cipher):
             return JSONResponse({'items':items},headers={'Cache-Control':'no-store'})
     @router.post('/tasks/preview')
     async def preview(request:Request):
-        data=await request.json()
-        if not isinstance(data,dict):raise HTTPException(400,'请求格式不正确')
+        data=await json_object(request)
         with session_scope(engine) as db:
             user,record=auth.current(request,db);auth.csrf(record,data.get('csrf_token',''))
             service=TaskService(db,AccountService(db,cipher,AuditService(db)),AuditService(db))
@@ -67,8 +76,7 @@ def build_reliability_router(engine,auth,cipher):
 
     @router.post('/tasks/batch')
     async def batch(request:Request):
-        data=await request.json()
-        if not isinstance(data,dict):raise HTTPException(400,'请求格式不正确')
+        data=await json_object(request)
         with session_scope(engine) as db:
             if engine.dialect.name=='sqlite':db.execute(text('BEGIN IMMEDIATE'))
             user,record=auth.current(request,db);auth.csrf(record,data.get('csrf_token',''))

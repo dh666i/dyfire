@@ -3,7 +3,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, func, text, update
 from spark_console.db import session_scope
-from spark_console.models import ContactDirectoryJob, utc_now
+from spark_console.models import ContactDirectoryJob, DouyinAccount, utc_now
 from spark_console.services import NotFound
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -25,6 +25,22 @@ def build_directory_router(engine, auth, cipher):
             try:
                 AccountService(db, cipher, AuditService(db)).get_owned(user.id, account_id)
             except NotFound:
+                raise HTTPException(404, "账号不存在")
+            # Serialize the active-job check with another request for this
+            # account. SQLite already holds BEGIN IMMEDIATE above; PostgreSQL
+            # needs the row lock so two clicks cannot both enqueue a sync
+            # before either transaction observes the other's job.
+            locked_account = db.scalar(
+                select(DouyinAccount)
+                .where(
+                    DouyinAccount.id == account_id,
+                    DouyinAccount.owner_user_id == user.id,
+                )
+                .with_for_update()
+            )
+            if locked_account is None:
+                # The account could have been deleted between the ownership
+                # check and the row lock. Do not enqueue a dangling job.
                 raise HTTPException(404, "账号不存在")
             # Search is intentionally local-only. The directory job only
             # refreshes recent conversations; the UI filters that snapshot.

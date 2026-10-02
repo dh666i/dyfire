@@ -202,6 +202,18 @@ class SubscriptionService:
         if code is None:
             raise ValidationError(INVALID_CODE)
 
+        # A browser can lose the response after the transaction has committed
+        # and submit the same code again.  Treat that retry as a read-only
+        # replay for the user who redeemed it, instead of reporting a false
+        # failure.  A missing subscription is intentionally not considered a
+        # replay: it indicates an inconsistent historical row and should fail
+        # closed rather than granting anything implicitly.
+        if code.redeemed_at is not None:
+            replay = self._redeem_replay(user_id, code)
+            if replay is not None:
+                return replay
+            raise ValidationError(INVALID_CODE)
+
         current = self._now()
         result = self.session.execute(
             update(RedemptionCode)
@@ -217,6 +229,14 @@ class SubscriptionService:
             .execution_options(synchronize_session="fetch")
         )
         if result.rowcount != 1:
+            # Another request may have won the atomic reservation after the
+            # initial lookup. Refresh the row and apply the same-user replay
+            # rule so a lost response does not become a false error even under
+            # concurrent requests.
+            self.session.refresh(code)
+            replay = self._redeem_replay(user_id, code)
+            if replay is not None:
+                return replay
             raise ValidationError(INVALID_CODE)
 
         subscription, grant = self._extend_subscription(
@@ -242,6 +262,32 @@ class SubscriptionService:
             f"{self._detail(code.duration_days, code.max_accounts, code.max_tasks)}",
         )
         self.session.flush()
+        return subscription
+
+    def _redeem_replay(
+        self, user_id: str, code: RedemptionCode
+    ) -> UserSubscription | None:
+        """Return an already-created grant for a safe same-user retry."""
+        if code.redeemed_by_user_id != user_id:
+            return None
+        grant = self.session.scalar(
+            select(SubscriptionGrant).where(
+                SubscriptionGrant.redemption_code_id == code.id,
+                SubscriptionGrant.user_id == user_id,
+            )
+        )
+        if grant is None:
+            return None
+        subscription = self._get_subscription(user_id)
+        if subscription is None:
+            return None
+        self.audit.write(
+            user_id,
+            "subscription.redeem_replayed",
+            "user_subscription",
+            user_id,
+            f"redemption_code_id={code.id};grant_id={grant.id}",
+        )
         return subscription
 
     def extend(

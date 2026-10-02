@@ -113,7 +113,12 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
 
     @router.post("/api/subscription/redeem")
     async def redeem_subscription_api(request: Request):
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except (TypeError, ValueError):
+            raise HTTPException(400, "请求格式无效") from None
+        if not isinstance(payload, dict):
+            raise HTTPException(400, "请求格式无效")
         code = str(payload.get("code") or "").strip()
         with session_scope(engine) as db:
             user, record = auth.current(request, db)

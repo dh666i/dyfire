@@ -2,7 +2,7 @@ import hashlib
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from spark_console.db import create_schema
@@ -262,6 +262,31 @@ class SubscriptionServiceTests(unittest.TestCase):
             self.service.revoke_redemption_code(
                 self.admin.id, "00000000-0000-0000-0000-000000000000"
             )
+
+    def test_same_user_redeem_retry_is_read_only_and_does_not_extend_again(self):
+        code, plaintext = self.create_code(duration_days=30)
+
+        first = self.service.redeem(self.user.id, plaintext)
+        first_expiry = aware(first.valid_until)
+        first_version = first.version
+
+        replay = self.service.redeem(self.user.id, plaintext)
+
+        self.assertEqual(first.user_id, replay.user_id)
+        self.assertEqual(first_expiry, aware(replay.valid_until))
+        self.assertEqual(first_version, replay.version)
+        self.assertEqual(
+            1,
+            self.session.scalar(
+                select(func.count()).select_from(SubscriptionGrant).where(
+                    SubscriptionGrant.redemption_code_id == code.id
+                )
+            ),
+        )
+        self.assertIn(
+            "subscription.redeem_replayed",
+            set(self.session.scalars(select(AuditEvent.action)).all()),
+        )
 
     def test_expired_code_is_rejected_without_creating_subscription(self):
         _code, plaintext = self.create_code(lifetime=timedelta(minutes=1))

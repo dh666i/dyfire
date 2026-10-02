@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createPortal} from 'react-dom';
 import {BrowserRouter, Link, useLocation, useNavigate} from 'react-router-dom';
+import {focusTrapTarget, getMobileDockRoutes, resetRouteScroll} from './navigation.js';
 // Lightweight motion primitives — avoids motion/react subpath import issues with Vite 8 Rolldown
 function AnimatePresence({children}) { return children; }
 function RouteMotionDiv({children, locationKey}) {
@@ -401,6 +402,7 @@ function OnboardingGuide({membership, accounts, tasks, onNavigate}) {
 }
 function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=false}) {
   const closeRef=useRef(null);
+  const dialogRef=useRef(null);
   const restoreRef=useRef(null);
   const onCloseRef=useRef(onClose);
   const closeTimerRef=useRef(null);
@@ -423,14 +425,23 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
     restoreRef.current=document.activeElement;
     const previous=document.body.style.overflow;
     document.body.style.overflow='hidden';
-    const onKey=e=>{if(e.key==='Escape')onCloseRef.current?.()};
+    const onKey=e=>{
+      if(e.key==='Escape'){onCloseRef.current?.();return;}
+      if(e.key!=='Tab')return;
+      const dialog=dialogRef.current;
+      if(!dialog)return;
+      const focusable=[...dialog.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+        .filter(element=>{const style=window.getComputedStyle(element);return element.getAttribute('aria-hidden')!=='true'&&style.display!=='none'&&style.visibility!=='hidden';});
+      const next=focusTrapTarget({key:e.key,shiftKey:e.shiftKey,activeElement:document.activeElement,focusable,contains:element=>dialog.contains(element)});
+      if(next){e.preventDefault();next.focus();}
+    };
     window.addEventListener('keydown',onKey);
     const focusTimer=window.setTimeout(()=>closeRef.current?.focus(),0);
     return ()=>{window.clearTimeout(focusTimer);document.body.style.overflow=previous;document.body.classList.remove('drawer-open');window.removeEventListener('keydown',onKey);restoreRef.current?.focus?.()};
   },[open]);
   const requestClose=()=>{setClosing(true);if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false);onCloseRef.current?.()},220)};
   if (!mounted) return null;
-  const drawer = <div className={`drawer-backdrop ${centered?'drawer-centered-backdrop':''} ${closing?'is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&requestClose()}><aside className={`drawer ${wide?'drawer-wide':''} ${centered?'drawer-centered':''} ${closing?'is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="drawer-title"><header className="drawer-head"><div><span className="eyebrow">{eyebrow}</span><h2 id="drawer-title">{title}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={requestClose} aria-label="关闭">×</button></header>{children}</aside></div>;
+  const drawer = <div className={`drawer-backdrop ${centered?'drawer-centered-backdrop':''} ${closing?'is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&requestClose()}><aside ref={dialogRef} className={`drawer ${wide?'drawer-wide':''} ${centered?'drawer-centered':''} ${closing?'is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="drawer-title"><header className="drawer-head"><div><span className="eyebrow">{eyebrow}</span><h2 id="drawer-title">{title}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={requestClose} aria-label="关闭">×</button></header>{children}</aside></div>;
   return createPortal(drawer, document.body);
 }
 function Toast({message, onClose}) { useEffect(()=>{if(!message)return;const timer=window.setTimeout(onClose,4200);return()=>window.clearTimeout(timer)},[message,onClose]); if (!message) return null; return <div className="toast" role="status" aria-live="polite"><span>{message}</span><button type="button" onClick={onClose} aria-label="关闭提示">×</button></div>; }
@@ -455,13 +466,14 @@ function AppShell({data, children, refresh}) {
   const userName = displayName(user.name, '用户');
   const admin = user.role === 'admin';
   const isActive = href => location.pathname === href || (href === '/studio' && location.pathname.startsWith('/tasks')) || (href === '/admin/users' && (['/admin/subscriptions','/admin/tasks'].includes(location.pathname)||location.pathname.startsWith('/admin/tasks/groups/')||location.pathname.startsWith('/admin/customers/'))) || (href === '/admin/runs' && location.pathname==='/admin/today') || (href === '/admin/operations' && ['/admin/diagnostics','/admin/audit'].includes(location.pathname));
-  const dockRoutes=admin?adminRoutes.slice(0,4):[routes[0],routes[4],routes[1],routes[2],routes[3]];
+  const dockRoutes=getMobileDockRoutes(routes,adminRoutes,admin);
   // Keep the purchase path next to the home entry so new users can reach it
   // before setting up accounts or tasks.
   const topRoutes=admin?[...routes.slice(0,3),...adminRoutes]:[routes[0],routes[4],...routes.slice(1,4)];
   const activeTopRoute=topRoutes.find(([href])=>isActive(href))?.[0] || topRoutes[0]?.[0];
   const topNavItems=topRoutes.map(([href,label,IconComp])=>({value:href,label,icon:<span className="fire-nav-segment-icon" aria-hidden="true"><IconComp/></span>}));
   useEffect(()=>{document.documentElement.dataset.theme=theme; localStorage.setItem('dyfire-theme',theme)},[theme]);
+  useEffect(()=>{resetRouteScroll(location)},[location.pathname]);
   useEffect(()=>{if (location.state?.toast) { setToast(location.state.toast); navigate(location.pathname,{replace:true,state:{}}); }},[location,navigate]);
   const logout = () => { const form=document.createElement('form'); form.method='POST'; form.action='/logout'; const input=document.createElement('input'); input.name='csrf_token'; input.value=data?.csrf||''; form.append(input); document.body.append(form); form.submit(); };
   const navLink=([href,label,IconComp])=><Link key={href} className={isActive(href)?'active':''} aria-current={isActive(href)?'page':undefined} to={href}><IconComp/>{label}</Link>;
@@ -556,6 +568,20 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const [taskPagination,setTaskPagination]=useState(()=>data?.tasks_pagination||null);
   const [loadingMoreTasks,setLoadingMoreTasks]=useState(false);
   const tasks=taskRows;
+  useEffect(()=>{
+    const trigger=document.querySelector('.friend-trigger');
+    if(!trigger)return;
+    trigger.setAttribute('role','button');
+    trigger.setAttribute('tabindex',accountId?'0':'-1');
+    trigger.setAttribute('aria-haspopup','dialog');
+    trigger.setAttribute('aria-expanded',String(picker));
+    trigger.setAttribute('aria-disabled',String(!accountId));
+    const onKey=event=>{
+      if((event.key==='Enter'||event.key===' ')&&accountId){event.preventDefault();setPicker(true);}
+    };
+    trigger.addEventListener('keydown',onKey);
+    return()=>trigger.removeEventListener('keydown',onKey);
+  },[accountId,picker]);
   useEffect(()=>{
     setTaskRows(asList(data?.tasks));
     setTaskPage(data?.tasks_pagination?.page||1);

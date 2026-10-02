@@ -40,6 +40,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/dyfire-ui-tests" --no-save --package-lock=false jsdom@26.1.0
           export NODE_PATH="$RUNNER_TEMP/dyfire-ui-tests/node_modules"
           node tests/console/ui_select_js_harness.js
+          node --test frontend/src/navigation.test.js
           node tests/console/design_system_harness.cjs
           node tests/console/task_workspace_harness.cjs
           node tests/console/commercial_ui_harness.cjs
