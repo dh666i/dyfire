@@ -515,6 +515,15 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     def ready():
         with engine.connect() as connection:
             connection.exec_driver_sql("SELECT 1")
+        # Redis is optional, but once explicitly enabled it is a required
+        # dependency for the shared authentication and scan limiters. Report
+        # the instance as unready instead of serving requests that will all
+        # fail closed when Redis is unavailable.
+        if redis_backend.enabled:
+            try:
+                redis_backend.ping()
+            except Exception as error:
+                raise HTTPException(503, "Redis 依赖暂时不可用") from error
         return {"status": "ready"}
 
     @app.get("/")

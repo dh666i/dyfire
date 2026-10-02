@@ -2,8 +2,10 @@ import asyncio
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
+from fastapi.testclient import TestClient
 
 from spark_console.config import Settings
 from spark_console.db import create_schema
@@ -212,3 +214,43 @@ class HstsProxyIntegrationTests(unittest.TestCase):
         self.assertEqual(headers[b"cross-origin-opener-policy"], b"same-origin")
         self.assertEqual(headers[b"cross-origin-resource-policy"], b"same-origin")
         self.assertEqual(headers[b"x-permitted-cross-domain-policies"], b"none")
+
+
+class RedisReadinessTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.settings = Settings(
+            data_dir=root,
+            database_url=f"sqlite:///{root / 'test.db'}",
+            cookie_key_file=root / "cookie.key",
+            session_key_file=root / "session.key",
+            redis_enabled=True,
+            redis_url="redis://redis.invalid/0",
+        )
+        self.settings.cookie_key_file.write_bytes(b"c" * 32)
+        self.settings.session_key_file.write_bytes(b"s" * 32)
+        self.engine = create_engine(
+            self.settings.database_url,
+            connect_args={"check_same_thread": False},
+        )
+        create_schema(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+        self.temp.cleanup()
+
+    def test_enabled_redis_failure_marks_instance_unready(self):
+        with patch("spark_console.web.app.RedisBackend.ping", side_effect=RuntimeError("down")):
+            with TestClient(create_app(self.settings, self.engine)) as client:
+                response = client.get("/health/ready")
+        self.assertEqual(503, response.status_code)
+        self.assertEqual("Redis 依赖暂时不可用", response.json()["detail"])
+
+    def test_enabled_redis_success_keeps_instance_ready(self):
+        with patch("spark_console.web.app.RedisBackend.ping", return_value=True) as ping:
+            with TestClient(create_app(self.settings, self.engine)) as client:
+                response = client.get("/health/ready")
+        self.assertEqual(200, response.status_code)
+        self.assertEqual({"status": "ready"}, response.json())
+        ping.assert_called_once_with()
