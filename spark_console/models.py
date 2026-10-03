@@ -347,6 +347,15 @@ class UserSubscription(Base):
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     max_accounts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     max_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    # A lower plan selected while the current term is active is staged here
+    # and becomes effective at ``pending_valid_from``.  Keeping the current
+    # entitlement in max_* preserves existing tasks and execution state until
+    # the paid term ends.
+    pending_max_accounts: Mapped[int | None] = mapped_column(Integer)
+    pending_max_tasks: Mapped[int | None] = mapped_column(Integer)
+    pending_valid_from: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
@@ -415,6 +424,10 @@ class SubscriptionGrant(Base):
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     max_accounts: Mapped[int] = mapped_column(Integer, nullable=False)
     max_tasks: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Future grants can be superseded by an immediate upgrade. The original
+    # grant remains visible for billing/audit history but no longer controls
+    # the entitlement timeline.
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 17
+SQLITE_SCHEMA_VERSION = 19
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -112,6 +112,18 @@ def create_schema(engine: Engine) -> None:
             connection.execute(text(
                 f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {name} {definition}"
             ))
+        for name, definition in (
+            ("pending_max_accounts", "INTEGER"),
+            ("pending_max_tasks", "INTEGER"),
+            ("pending_valid_from", "TIMESTAMP WITH TIME ZONE"),
+        ):
+            connection.execute(text(
+                f"ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS {name} {definition}"
+            ))
+        connection.execute(text(
+            "ALTER TABLE subscription_grants ADD COLUMN IF NOT EXISTS superseded_at "
+            "TIMESTAMP WITH TIME ZONE"
+        ))
         connection.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
             "ON audit_events (request_id)"
@@ -202,6 +214,8 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (15, "audit_request_context", _upgrade_sqlite_audit_request_context),
         (16, "admin_totp_recovery_codes", _upgrade_sqlite_admin_totp_recovery_codes),
         (17, "user_onboarding_state", _upgrade_sqlite_user_onboarding_state),
+        (18, "subscription_deferred_limits", _upgrade_sqlite_subscription_deferred_limits),
+        (19, "subscription_grant_supersession", _upgrade_sqlite_subscription_grant_supersession),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -440,6 +454,40 @@ def _upgrade_sqlite_user_onboarding_state(connection: Connection) -> None:
             connection.exec_driver_sql(
                 f"ALTER TABLE users ADD COLUMN {name} {definition}"
             )
+
+
+def _upgrade_sqlite_subscription_deferred_limits(connection: Connection) -> None:
+    """Add nullable next-term limits without rewriting subscription rows."""
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(user_subscriptions)"
+        ).fetchall()
+    }
+    for name, definition in (
+        ("pending_max_accounts", "INTEGER"),
+        ("pending_max_tasks", "INTEGER"),
+        ("pending_valid_from", "DATETIME"),
+    ):
+        if name not in columns:
+            connection.exec_driver_sql(
+                f"ALTER TABLE user_subscriptions ADD COLUMN {name} {definition}"
+            )
+
+
+def _upgrade_sqlite_subscription_grant_supersession(connection: Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.exec_driver_sql(
+            "PRAGMA table_info(subscription_grants)"
+        ).fetchall()
+    }
+    if "superseded_at" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE subscription_grants ADD COLUMN superseded_at DATETIME"
+        )
+
+
 
 
 def _upgrade_sqlite_task_runs(connection: Connection) -> None:

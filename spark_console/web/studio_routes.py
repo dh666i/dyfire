@@ -120,7 +120,11 @@ def build_studio_router(engine, auth, cipher):
                                'time': t.send_time, 'kind': '续火花表情' if t.message_kind == 'douyin_sticker' else '文字消息',
                                'message': t.message_template, 'enabled': t.enabled, 'avatar': avatars.get(t.id),
                                'confirmed': latest.get(t.id) == 'success', 'status': latest.get(t.id, 'scheduled')} for t in tasks],
-                    'subscription': {k: membership[k] for k in ('active','status_label','days_remaining','max_accounts','max_tasks','can_add_task')}}
+                    'subscription': {k: membership[k] for k in (
+                        'active','status_label','days_remaining','max_accounts','max_tasks',
+                        'can_add_task','task_count','enabled_task_count','paused_task_count',
+                        'task_overage','pending_max_tasks','pending_valid_from',
+                    )}}
 
     @router.get('/api/studio/schedule')
     def schedule(request: Request, account_id: str = '', count: int = Query(1, ge=1, le=100), preferred: str = Query('09:30', max_length=5)):
@@ -165,11 +169,15 @@ def build_studio_router(engine, auth, cipher):
             auth.csrf(record, request.headers.get('X-CSRF-Token',''))
             audit = AuditService(db)
             try:
-                if payload.enabled and user.role!='admin':SubscriptionService(db,audit).require_active(user.id)
                 owned=db.scalar(select(SparkTask).where(SparkTask.id==task_id,SparkTask.owner_user_id==user.id))
                 if not owned:raise NotFound('任务不存在')
                 if db.scalar(select(TaskRun.id).where(TaskRun.task_id==task_id,TaskRun.status=='running').limit(1)):raise Conflict('任务正在执行，请稍后修改')
-                TaskService(db,AccountService(db,cipher,audit),audit).set_enabled_owned(user.id,task_id,payload.enabled)
+                TaskService(db,AccountService(db,cipher,audit),audit).set_enabled_owned(
+                    user.id,
+                    task_id,
+                    payload.enabled,
+                    enforce_capacity=user.role != 'admin',
+                )
             except NotFound:
                 raise HTTPException(404, '任务不存在')
             except ValidationError as error:

@@ -24,6 +24,7 @@ from spark_console.services.subscriptions import (
     pricing_plans,
     task_limit_label,
 )
+from spark_console.web.membership import membership_summary
 
 
 def aware(value):
@@ -115,6 +116,7 @@ class SubscriptionServiceTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(len(plaintext), 24)
+        self.assertRegex(plaintext, r"^[A-Z0-9]{24}$")
         self.assertEqual(
             hashlib.sha256(plaintext.encode("utf-8")).hexdigest(), code.code_hash
         )
@@ -230,16 +232,159 @@ class SubscriptionServiceTests(unittest.TestCase):
             ),
         )
 
+    def test_active_downgrade_is_staged_until_current_term_boundary(self):
+        _code, current_code = self.create_code(max_tasks=10)
+        subscription = self.service.redeem(self.user.id, current_code)
+        current_expiry = aware(subscription.valid_until)
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="customer-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
+        for index in range(7):
+            self.session.add(
+                SparkTask(
+                    owner_user_id=self.user.id,
+                    douyin_account_id=account.id,
+                    target_name=f"好友{index}",
+                    send_time=f"{index:02}:00",
+                    message_template="今日火花",
+                    enabled=True,
+                )
+            )
+        self.session.flush()
+
+        self.now += timedelta(days=5)
+        _renewal, lower_code = self.create_code(max_tasks=5)
+        self.service.redeem(self.user.id, lower_code)
+
+        self.assertEqual(10, subscription.max_tasks)
+        self.assertEqual(current_expiry + timedelta(days=30), aware(subscription.valid_until))
+        self.assertEqual(5, subscription.pending_max_tasks)
+        self.assertEqual(current_expiry, aware(subscription.pending_valid_from))
+        before_boundary = membership_summary(self.session, self.user, self.now)
+        self.assertEqual(10, before_boundary["max_tasks"])
+        self.assertEqual(5, before_boundary["pending_max_tasks"])
+        self.assertEqual(7, before_boundary["enabled_task_count"])
+        self.assertEqual(0, before_boundary["task_overage"])
+
+        self.now = current_expiry
+        at_boundary = membership_summary(self.session, self.user, self.now)
+        self.assertEqual(5, at_boundary["max_tasks"])
+        self.assertEqual(5, subscription.max_tasks)
+        self.assertEqual(2, at_boundary["task_overage"])
+        self.assertEqual(7, at_boundary["enabled_task_count"])
+        self.assertIsNone(subscription.pending_valid_from)
+        self.assertEqual(
+            7,
+            self.session.scalar(
+                select(func.count()).select_from(SparkTask).where(
+                    SparkTask.owner_user_id == self.user.id
+                )
+            ),
+        )
+
+    def test_stacked_downgrades_activate_in_paid_period_order(self):
+        _code, current_code = self.create_code(max_tasks=10)
+        subscription = self.service.redeem(self.user.id, current_code)
+        first_boundary = aware(subscription.valid_until)
+
+        self.now += timedelta(days=2)
+        _code, first_lower = self.create_code(max_tasks=5)
+        self.service.redeem(self.user.id, first_lower)
+        second_boundary = aware(subscription.valid_until)
+
+        self.now += timedelta(days=2)
+        _code, second_lower = self.create_code(max_tasks=7)
+        self.service.redeem(self.user.id, second_lower)
+
+        self.assertEqual(first_boundary, aware(subscription.pending_valid_from))
+        self.assertEqual(5, subscription.pending_max_tasks)
+        self.now = first_boundary
+        self.assertEqual(5, membership_summary(self.session, self.user, self.now)["max_tasks"])
+        self.assertEqual(second_boundary, aware(subscription.pending_valid_from))
+        self.assertEqual(7, subscription.pending_max_tasks)
+
+        self.now = second_boundary
+        self.assertEqual(7, membership_summary(self.session, self.user, self.now)["max_tasks"])
+        self.assertIsNone(subscription.pending_valid_from)
+
+    def test_upgrade_supersedes_a_previously_queued_downgrade(self):
+        _code, current_code = self.create_code(max_tasks=10)
+        subscription = self.service.redeem(self.user.id, current_code)
+        first_boundary = aware(subscription.valid_until)
+
+        self.now += timedelta(days=2)
+        lower_redemption, lower_code = self.create_code(max_tasks=5)
+        self.service.redeem(self.user.id, lower_code)
+        old_grant = self.session.scalar(
+            select(SubscriptionGrant).where(
+                SubscriptionGrant.redemption_code_id == lower_redemption.id
+            )
+        )
+        later_boundary = aware(subscription.valid_until)
+
+        self.now += timedelta(days=2)
+        _code, upgrade_code = self.create_code(max_tasks=20)
+        self.service.redeem(self.user.id, upgrade_code)
+
+        self.assertEqual(20, subscription.max_tasks)
+        self.assertIsNotNone(old_grant.superseded_at)
+        self.assertIsNone(subscription.pending_max_tasks)
+        self.assertIsNone(subscription.pending_valid_from)
+        self.now = first_boundary
+        self.assertEqual(20, membership_summary(self.session, self.user, self.now)["max_tasks"])
+        self.assertIsNone(subscription.pending_max_tasks)
+        self.now = later_boundary
+        self.assertEqual(20, membership_summary(self.session, self.user, self.now)["max_tasks"])
+        self.assertIsNone(subscription.pending_valid_from)
+
+    def test_active_guard_reconciles_downgrade_at_exact_boundary(self):
+        _code, current_code = self.create_code(max_tasks=10)
+        subscription = self.service.redeem(self.user.id, current_code)
+        boundary = aware(subscription.valid_until)
+        self.now += timedelta(days=1)
+        _code, lower_code = self.create_code(max_tasks=5)
+        self.service.redeem(self.user.id, lower_code)
+
+        self.now = boundary
+        current = self.service.require_active(self.user.id)
+
+        self.assertIs(subscription, current)
+        self.assertEqual(5, current.max_tasks)
+        self.assertIsNone(current.pending_valid_from)
+
+    def test_upgrade_is_immediate_and_same_plan_renewal_keeps_entitlement(self):
+        _code, starter = self.create_code(max_tasks=5)
+        subscription = self.service.redeem(self.user.id, starter)
+        self.now += timedelta(days=1)
+
+        _code, upgrade = self.create_code(max_tasks=10)
+        self.service.redeem(self.user.id, upgrade)
+        self.assertEqual(10, subscription.max_tasks)
+        self.assertIsNone(subscription.pending_max_tasks)
+        self.assertIsNone(subscription.pending_valid_from)
+
+        _code, same_plan = self.create_code(max_tasks=10)
+        self.service.redeem(self.user.id, same_plan)
+        self.assertEqual(10, subscription.max_tasks)
+        self.assertIsNone(subscription.pending_max_tasks)
+
     def test_expired_renewal_restarts_from_now(self):
-        _code, plaintext = self.create_code(duration_days=1)
+        _code, plaintext = self.create_code(duration_days=1, max_tasks=20)
         self.service.redeem(self.user.id, plaintext)
         self.now += timedelta(days=2)
-        _renewal, renewal_plaintext = self.create_code(duration_days=3)
+        _renewal, renewal_plaintext = self.create_code(duration_days=3, max_tasks=5)
 
         subscription = self.service.redeem(self.user.id, renewal_plaintext)
 
         self.assertEqual(self.now, aware(subscription.valid_from))
         self.assertEqual(self.now + timedelta(days=3), aware(subscription.valid_until))
+        self.assertEqual(5, subscription.max_tasks)
+        self.assertIsNone(subscription.pending_valid_from)
 
     def test_code_can_be_redeemed_once_and_revoked_code_cannot_be_redeemed(self):
         used_code, used_plaintext = self.create_code()

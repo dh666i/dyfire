@@ -97,13 +97,19 @@ def build_reliability_router(engine,auth,cipher):
                     with db.begin_nested():
                         running=db.scalar(select(TaskRun.id).where(TaskRun.task_id==task.id,TaskRun.status=='running').limit(1))
                         if running: raise Conflict('任务正在执行，请稍后再修改')
-                        if action=='enable' and user.role!='admin': SubscriptionService(db,AuditService(db)).require_active(user.id)
+                        if action=='enable' and user.role!='admin':
+                            SubscriptionService(db,AuditService(db)).require_active(user.id)
                         if action=='time':
                             binding=db.get(SparkTaskTargetIdentity,task.id)
                             service.update_owned(user.id,task.id,task.douyin_account_id,task.target_name,send_time,task.message_template,binding.sec_uid if binding else None,task.message_kind)
                         else:
                             was_enabled=task.enabled
-                            service.set_enabled_owned(user.id,task.id,action=='enable')
+                            service.set_enabled_owned(
+                                user.id,
+                                task.id,
+                                action=='enable',
+                                enforce_capacity=user.role != 'admin',
+                            )
                             if action=='enable' and not was_enabled:
                                 now=datetime.now(ZoneInfo('Asia/Shanghai'));hour,minute=map(int,task.send_time.split(':'))
                                 next_at=now.replace(hour=hour,minute=minute,second=0,microsecond=0)

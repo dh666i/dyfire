@@ -100,13 +100,16 @@ class ElevationWebTests(unittest.TestCase):
                 .count(),
             )
 
-    def test_admin_write_is_blocked_until_step_up(self):
+    def test_admin_write_does_not_require_step_up(self):
         bootstrap = self._login()
         response = self.client.post(
             "/api/admin/users/missing/role",
             json={"csrf_token": bootstrap["csrf"], "role": "admin"},
         )
-        self.assertEqual(428, response.status_code)
+        # The authenticated admin session and CSRF token authorize the write.
+        # A missing target is a normal resource error, not a password prompt.
+        self.assertEqual(404, response.status_code)
+        self.assertNotEqual(428, response.status_code)
 
 
 if __name__ == "__main__":

@@ -56,6 +56,8 @@ class Settings:
     trusted_proxy_cidrs: tuple[str, ...] = ()
     hsts_max_age_seconds: int = 31536000
     hsts_include_subdomains: bool = False
+    # Retained for configuration compatibility; normal admin writes no longer
+    # require a second password step.
     require_admin_step_up: bool = False
     # PostgreSQL pool settings. SQLite keeps its existing file/WAL behavior.
     database_pool_size: int = 10

@@ -17,9 +17,8 @@
 - 转发头由应用层按 `SPARK_TRUSTED_PROXY_CIDRS` 严格限制：未配置时忽略 `X-Forwarded-For/Proto`；只有直接对端属于配置的 IP/CIDR 时才解析最近的客户端地址和 HTTPS scheme。HSTS 可通过 `SPARK_HSTS_MAX_AGE_SECONDS` 与 `SPARK_HSTS_INCLUDE_SUBDOMAINS` 配置。
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
-- 管理员提供当前浏览器会话范围的 15 分钟密码 step-up 接口 `/api/auth/elevate`，失败尝试审计并限流；高风险后台动作仍需逐项接入并完成 UI 引导后再强制启用。
-- 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存（使用部署的 `session.key`，轮换该密钥会同时使网页会话和 TOTP 密文失效，需重新 enrollment），setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；确认后生成 10 个一次性恢复码，只保存带独立盐的 PBKDF2-SHA256 校验值，支持查看剩余数量、双重验证后轮换；管理员在已验证会话中可用密码加恢复码停用丢失的 TOTP 设备，恢复码明文只在生成/轮换响应中返回。默认不会改变登录、现有 WebSession、密码 step-up、抖音 Cookie 或任务执行。启用 MFA 强制策略前，仍需把恢复码接入未登录挑战、完善丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
-- `SPARK_REQUIRE_ADMIN_STEP_UP=true` 时，后台写接口统一要求 step-up；前端会在 428 响应后请求密码并重试原操作。生产部署该开关前应确认管理员已使用包含验证面板的前端版本。
+- 管理员仍提供当前浏览器会话范围的 15 分钟密码 step-up 兼容接口 `/api/auth/elevate`，失败尝试审计并限流；普通后台写操作只要求已登录管理员会话和 CSRF，不再弹出二次密码验证。该接口保留给旧客户端和明确的安全设置流程。
+- 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存（使用部署的 `session.key`，轮换该密钥会同时使网页会话和 TOTP 密文失效，需重新 enrollment），setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；确认后生成 10 个一次性恢复码，只保存带独立盐的 PBKDF2-SHA256 校验值，支持查看剩余数量、双重验证后轮换；管理员在已验证会话中可用密码加恢复码停用丢失的 TOTP 设备，恢复码明文只在生成/轮换响应中返回。默认不会改变登录、现有 WebSession、普通后台写操作、抖音 Cookie 或任务执行。启用 MFA 强制策略前，仍需把恢复码接入未登录挑战、完善丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
 - `queue-preflight` CLI 会只读检查数据库领取表、字段和 worker 分片配置；在显式传入 `--probe-stream` 时，才对 Redis 使用随机临时 Stream 做发布、消费、确认和清理。它不接管生产任务，也不改变默认数据库领取路径，可作为 PostgreSQL/Redis 分阶段切换前的运维门禁。
 - Compose 提供默认关闭的 `postgres` 隔离 profile，带 PostgreSQL 16 健康检查和持久卷；它只用于迁移回放、schema/claim 预检，默认 SQLite 服务不会自动连接或切换。
 - 已提供默认 dry-run 的 retention CLI，可分批清理终态执行、登录会话、邮件和审计记录，并保护活跃/待核实数据。

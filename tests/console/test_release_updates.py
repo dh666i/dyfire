@@ -54,7 +54,7 @@ def test_queue_is_exclusive_and_validates_version(setup):
     assert len(queued['operation_id']) == 32
 
 
-def test_install_requires_current_session_step_up(setup):
+def test_install_does_not_require_current_session_step_up(setup):
     client, root = setup
     client.app.state.test_auth.elevated = False
     response = client.post(
@@ -62,8 +62,8 @@ def test_install_requires_current_session_step_up(setup):
         json={'version': '0.2.0'},
         headers={'Role': 'admin', 'X-CSRF-Token': 'csrf'},
     )
-    assert response.status_code == 428
-    assert not (root / 'requests/request.json').exists()
+    assert response.status_code == 200
+    assert json.loads((root / 'requests/request.json').read_text())['action'] == 'install'
 
 
 def test_web_only_action_is_available(setup):

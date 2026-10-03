@@ -1,6 +1,6 @@
 import hashlib
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -21,6 +21,7 @@ from spark_console.models import (
     SparkTaskTargetIdentity,
     TaskRun,
     User,
+    UserSubscription,
 )
 from spark_console.security import PasswordService
 from spark_console.services import Conflict, NotFound, ValidationError
@@ -66,6 +67,16 @@ class ServiceTests(unittest.TestCase):
         self.tasks = TaskService(self.session, self.accounts, self.audit)
         self.owner, _ = self.users.create("friend", "Temporary-123!", "user")
         self.other, _ = self.users.create("other", "Temporary-456!", "user")
+        now = datetime.now(timezone.utc)
+        self.session.add(
+            UserSubscription(
+                user_id=self.owner.id,
+                valid_from=now - timedelta(days=1),
+                valid_until=now + timedelta(days=30),
+                max_accounts=5,
+                max_tasks=100,
+            )
+        )
         self.account = self.accounts.create(
             self.owner.id, "我的账号", b'[{"name":"sid","value":"secret"}]'
         )

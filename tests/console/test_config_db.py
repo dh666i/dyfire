@@ -599,7 +599,41 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual((15, "audit_request_context"), migrations[14][:2])
         self.assertEqual((16, "admin_totp_recovery_codes"), migrations[15][:2])
         self.assertEqual((17, "user_onboarding_state"), migrations[16][:2])
+        self.assertEqual((18, "subscription_deferred_limits"), migrations[17][:2])
+        self.assertEqual((19, "subscription_grant_supersession"), migrations[18][:2])
         self.assertTrue(all(row[2] is not None for row in migrations))
+
+    def test_deferred_subscription_columns_are_additive_and_idempotent(self):
+        create_schema(self.engine)
+        create_schema(self.engine)
+
+        with self.engine.connect() as connection:
+            columns = {
+                row[1]
+                for row in connection.exec_driver_sql(
+                    "PRAGMA table_info(user_subscriptions)"
+                ).fetchall()
+            }
+            migration_count = connection.exec_driver_sql(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version = 18"
+            ).scalar_one()
+            grant_columns = {
+                row[1]
+                for row in connection.exec_driver_sql(
+                    "PRAGMA table_info(subscription_grants)"
+                ).fetchall()
+            }
+            grant_migration_count = connection.exec_driver_sql(
+                "SELECT COUNT(*) FROM schema_migrations WHERE version = 19"
+            ).scalar_one()
+
+        self.assertTrue(
+            {"pending_max_accounts", "pending_max_tasks", "pending_valid_from"}
+            <= columns
+        )
+        self.assertEqual(1, migration_count)
+        self.assertIn("superseded_at", grant_columns)
+        self.assertEqual(1, grant_migration_count)
 
     def test_scale_query_migration_installs_all_expected_indexes(self):
         expected = {
@@ -750,7 +784,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((17, "user_onboarding_state"), migrations[-1])
+            self.assertEqual((19, "subscription_grant_supersession"), migrations[-1])
         finally:
             engine.dispose()
 

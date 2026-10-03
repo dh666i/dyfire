@@ -412,6 +412,10 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .bell-icon { width: 20px; height: 20px; display:block; }
 .single-simple-grid { grid-template-columns: minmax(0,1fr); max-width: 860px; }
 .redeem-form { display:grid; gap:12px; max-width:520px; margin-top:20px; }
+.redeem-form .redemption-input { color:#fffaf5; background:rgba(255,255,255,.1); border-color:rgba(255,219,198,.28); font-weight:500; letter-spacing:.035em; }
+.redeem-form .redemption-input::placeholder { color:rgba(255,225,207,.62); letter-spacing:0; }
+html[data-theme="light"] .redeem-form .redemption-input { color:#1a1c1f; background:#fff; border-color:rgba(30,32,35,.28); }
+html[data-theme="light"] .redeem-form .redemption-input::placeholder { color:#656b72; }
 .utility-account > b { display:inline-block; width:7px; height:7px; margin-left:4px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg) translateY(-2px); font-size:0; }
 .mosaic-card-head h2 em { font:500 12px var(--mono); color:var(--ink-soft); font-style:normal; margin-left:6px; }
 .mosaic-task-list, .mosaic-contact-list { scrollbar-width:none; }
@@ -849,6 +853,28 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .workspace-limit-controls label { display:grid; gap:6px; color:var(--muted); font-size:10px; }
 .workspace-limit-controls .input { height:36px; }
 .workspace-limit-controls .button { min-height:36px; }
+.membership-plan-notices { display:grid; gap:8px; margin:14px 0 2px; }
+.membership-plan-notice { display:grid; grid-template-columns:22px minmax(0,1fr); gap:9px; align-items:start; padding:11px 12px; border:1px solid var(--line); background:color-mix(in srgb,var(--surface) 74%,transparent); }
+.membership-plan-notice-mark { display:grid; width:20px; height:20px; place-items:center; border:1px solid currentColor; border-radius:50%; font:600 11px var(--mono); }
+.membership-plan-notice b { display:block; color:var(--ink); font-size:12px; font-weight:600; }
+.membership-plan-notice p { margin:4px 0 0; color:var(--muted); font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.membership-plan-notice small { display:block; margin-top:5px; color:var(--muted); font-size:10px; line-height:1.45; overflow-wrap:anywhere; }
+.membership-plan-notice.pending { border-color:color-mix(in srgb,var(--accent) 42%,var(--line)); }
+.membership-plan-notice.pending .membership-plan-notice-mark { color:var(--accent); }
+.membership-plan-notice.over-limit { border-color:color-mix(in srgb,var(--red) 45%,var(--line)); background:color-mix(in srgb,var(--red) 7%,transparent); }
+.membership-plan-notice.over-limit .membership-plan-notice-mark { color:var(--red); }
+.membership-plan-notice.capacity .membership-plan-notice-mark { color:var(--muted); }
+.membership-plan-notices.is-compact .membership-plan-notice { grid-template-columns:18px minmax(0,1fr); gap:7px; padding:8px; }
+.membership-plan-notices.is-compact .membership-plan-notice-mark { width:17px; height:17px; font-size:9px; }
+.membership-plan-notices.is-compact .membership-plan-notice b { font-size:10px; }
+.membership-plan-notices.is-compact .membership-plan-notice p { font-size:9px; }
+.membership-plan-notices.is-compact .membership-plan-notice small { font-size:9px; }
+.workspace-plan-summary { display:grid; grid-template-columns:auto auto minmax(0,1fr); align-items:baseline; gap:8px 12px; margin-top:10px; padding:10px 12px; border-left:2px solid var(--accent); background:color-mix(in srgb,var(--surface) 62%,transparent); }
+.workspace-plan-summary span, .workspace-plan-summary small { color:var(--muted); font-size:10px; }
+.workspace-plan-summary b { font-size:12px; font-weight:600; }
+.workspace-plan-summary small { overflow-wrap:anywhere; }
+.admin-pending-plan { color:var(--accent)!important; }
+.admin-over-limit { color:var(--red)!important; }
 .audit-row { width:100%; border-right:0; border-bottom:0; border-left:0; background:transparent; color:inherit; text-align:left; cursor:pointer; }
 .audit-row:hover { background:var(--surface); }
 .audit-row span small { display:block; max-width:180px; margin-top:3px; overflow:hidden; text-overflow:ellipsis; color:var(--muted); font:10px var(--mono); }
@@ -892,6 +918,8 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .admin-bulk-bar > span { flex-basis:100%; }
   .workspace-limit-controls { grid-template-columns:1fr 1fr; }
   .workspace-limit-controls .button { width:100%; }
+  .workspace-plan-summary { grid-template-columns:auto minmax(0,1fr); }
+  .workspace-plan-summary small { grid-column:1 / -1; }
   .admin-pagination { align-items:flex-start; flex-direction:column; }
   .user-workbench-head, .subscription-workbench-head, .task-group-head, .task-detail-head, .audit-table-head { display:none; }
   .user-workbench-row, .subscription-workbench-row, .task-group-row, .task-detail-row, .audit-row { grid-template-columns:24px minmax(0,1fr) auto; grid-template-areas:"check primary status" ". secondary actions"; gap:6px 8px; padding:12px 0; }

@@ -283,32 +283,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     passwords = PasswordService()
     sessions = SessionService(settings.session_key_file.read_bytes())
     auth = WebAuth(sessions)
-    @app.middleware("http")
-    async def admin_step_up_guard(request: Request, call_next):
-        """Optionally require recent password step-up for admin writes.
-
-        The deployment endpoint has its own unconditional guard. This opt-in
-        middleware extends the same protection to legacy/admin write routes
-        once their UI is ready, while leaving reads and ordinary user traffic
-        untouched.
-        """
-        path = request.url.path
-        write_method = request.method in {"POST", "PUT", "PATCH", "DELETE"}
-        protected_path = path.startswith("/api/admin/") or path.startswith("/admin/")
-        exempt = path == "/api/admin/updates/check"
-        if settings.require_admin_step_up and write_method and protected_path and not exempt:
-            try:
-                with session_scope(engine) as db:
-                    user, record = auth.current(request, db)
-                    if user.role == "admin":
-                        auth.require_elevated(record)
-            except HTTPException as error:
-                if error.status_code == 428:
-                    return JSONResponse(
-                        {"detail": str(error.detail)}, status_code=error.status_code
-                    )
-                raise
-        return await call_next(request)
+    # Administrative writes are authorized by the authenticated admin session
+    # and CSRF token. A second password step-up is intentionally not part of
+    # the product workflow; keep the elevation endpoint available only for
+    # compatibility with older clients.
     from spark_console.web.update_routes import build_update_router
     app.include_router(build_update_router(engine, auth))
     @app.get('/api/version')
@@ -1176,22 +1154,22 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             auth.csrf(record, csrf_token)
             service = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db))
             task = service.get_owned(user.id, task_id)
-            if not task.enabled and user.role != "admin":
-                try:
-                    SubscriptionService(db, AuditService(db)).require_active(
-                        user.id
-                    )
-                except ValidationError:
-                    return RedirectResponse(
-                        "/subscription?required=1", status_code=303
-                    )
             enabled = not task.enabled
             try:
-                service.set_enabled_owned(user.id, task_id, enabled)
+                service.set_enabled_owned(
+                    user.id,
+                    task_id,
+                    enabled,
+                    enforce_capacity=user.role != "admin",
+                )
             except ValidationError as error:
                 if "重新登录" in str(error):
                     return RedirectResponse(
                         "/accounts?notice=account-relogin", status_code=303
+                    )
+                if "会员未开通或已过期" in str(error):
+                    return RedirectResponse(
+                        "/subscription?required=1", status_code=303
                     )
                 raise
             except Conflict as error:

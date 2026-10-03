@@ -349,12 +349,29 @@ class TaskService:
             self.audit.write(owner_id, "task.created", "spark_task", task.id)
         return tasks
 
-    def set_enabled_owned(self, owner_id: str, task_id: str, enabled: bool) -> SparkTask:
+    def set_enabled_owned(
+        self,
+        owner_id: str,
+        task_id: str,
+        enabled: bool,
+        *,
+        enforce_capacity: bool = True,
+    ) -> SparkTask:
         task = self.get_owned(owner_id, task_id)
         if enabled and task.douyin_account_id is None:
             raise ValidationError("账号已删除，无法启用任务")
         enabled_target_key: str | None = None
         if enabled:
+            # A paused task remains retained but does not consume quota. The
+            # capacity check belongs here as well as at creation so every
+            # resume path (API, legacy form and batch actions) has the same
+            # rule. Administrators may intentionally repair over-limit users.
+            if enforce_capacity and not task.enabled:
+                from spark_console.services.subscriptions import SubscriptionService
+
+                SubscriptionService(
+                    self.session, self.audit
+                ).require_task_capacity(owner_id)
             account = self.accounts.get_owned(owner_id, task.douyin_account_id)
             if account.validation_state == "invalid":
                 raise ValidationError("抖音账号登录状态已失效，请先重新登录")

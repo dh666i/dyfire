@@ -6,8 +6,19 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from spark_console.models import DouyinAccount, SparkTask, User, UserSubscription, utc_now
-from spark_console.services.subscriptions import task_limit_label
+from spark_console.models import (
+    DouyinAccount,
+    SparkTask,
+    SubscriptionGrant,
+    User,
+    UserSubscription,
+    utc_now,
+)
+from spark_console.services.subscriptions import (
+    is_unlimited_tasks,
+    reconcile_subscription,
+    task_limit_label,
+)
 
 
 def _aware(value: datetime) -> datetime:
@@ -36,7 +47,22 @@ def membership_summary(
         )
         or 0
     )
+    enabled_task_count = int(
+        session.scalar(
+            select(func.count())
+            .select_from(SparkTask)
+            .where(
+                SparkTask.owner_user_id == user.id,
+                SparkTask.enabled.is_(True),
+            )
+        )
+        or 0
+    )
     subscription = session.get(UserSubscription, user.id)
+    if subscription is not None:
+        # Apply a queued lower plan at its paid period boundary. Reads and
+        # write guards then use the same effective entitlement.
+        reconcile_subscription(session, subscription, current)
 
     if user.status != "active":
         status = "disabled"
@@ -83,6 +109,38 @@ def membership_summary(
         max_tasks = subscription.max_tasks
         is_admin = False
 
+    pending_subscription = None
+    if subscription is not None and subscription.pending_valid_from is not None:
+        pending_from = _aware(subscription.pending_valid_from)
+        pending_grant = session.scalar(
+            select(SubscriptionGrant)
+            .where(
+                SubscriptionGrant.user_id == user.id,
+                SubscriptionGrant.valid_from == pending_from,
+                SubscriptionGrant.valid_until > pending_from,
+                SubscriptionGrant.superseded_at.is_(None),
+            )
+            .order_by(SubscriptionGrant.created_at.desc())
+        )
+        pending_max_tasks = subscription.pending_max_tasks
+        pending_max_accounts = subscription.pending_max_accounts
+        pending_subscription = {
+            "valid_from": pending_from,
+            "valid_until": pending_grant.valid_until if pending_grant else None,
+            "max_accounts": pending_max_accounts or max_accounts or 1,
+            "max_tasks": pending_max_tasks or max_tasks or 10,
+            "task_limit_label": task_limit_label(
+                pending_max_tasks if pending_max_tasks is not None else max_tasks
+            ),
+            "status_label": "下期生效",
+        } if pending_max_tasks is not None or pending_max_accounts is not None else None
+    if max_tasks is None or is_admin or is_unlimited_tasks(max_tasks):
+        task_overage = 0
+        task_capacity_status = "unlimited" if active else "inactive"
+    else:
+        task_overage = max(0, enabled_task_count - int(max_tasks or 0))
+        task_capacity_status = "over_limit" if task_overage else ("available" if active else "inactive")
+
     return {
         "subscription": subscription,
         "active": active,
@@ -97,6 +155,27 @@ def membership_summary(
         "task_count": task_count,
         "can_add_account": active
         and (is_admin or account_count < int(max_accounts or 0)),
-        "can_add_task": active and (is_admin or task_count < int(max_tasks or 0)),
+        # Paused tasks are retained history/configuration and do not consume
+        # the live plan quota. Existing enabled tasks are deliberately left
+        # running when a later plan is lower; only new/resumed tasks are
+        # blocked once the active count reaches the effective limit.
+        "enabled_task_count": enabled_task_count,
+        "paused_task_count": max(0, task_count - enabled_task_count),
+        "pending_max_accounts": subscription.pending_max_accounts if subscription else None,
+        "pending_max_tasks": subscription.pending_max_tasks if subscription else None,
+        "pending_valid_from": subscription.pending_valid_from if subscription else None,
+        "task_overage": task_overage,
+        "over_limit_task_count": task_overage,
+        "over_limit_enabled_tasks": task_overage,
+        "task_capacity_status": task_capacity_status,
+        "task_capacity_label": f"超出当前额度 {task_overage} 个" if task_overage else ("不限任务" if task_capacity_status == "unlimited" else "额度可用"),
+        "task_capacity_message": f"已有 {enabled_task_count} 个启用任务，当前上限为 {task_limit_label(max_tasks)}。" if task_overage else "暂停任务不会占用额度；恢复和新增任务会按当前套餐检查。",
+        "pending_subscription": pending_subscription,
+        "pending_plan": pending_subscription,
+        "can_add_task": active and (
+            is_admin
+            or is_unlimited_tasks(max_tasks)
+            or enabled_task_count < int(max_tasks or 0)
+        ),
         "is_admin": is_admin,
     }

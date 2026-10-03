@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import string
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from spark_console.models import (
@@ -58,6 +59,8 @@ MAX_SUBSCRIPTION_DAYS = 36_500
 INVALID_CODE = "兑换码无效或已使用"
 INACTIVE_SUBSCRIPTION = "会员未开通或已过期"
 NEVER_EXPIRES_AT = datetime.max.replace(tzinfo=timezone.utc)
+REDEMPTION_CODE_ALPHABET = string.ascii_uppercase + string.digits
+REDEMPTION_CODE_LENGTH = 24
 
 
 def pricing_plans() -> tuple[dict[str, object], ...]:
@@ -122,6 +125,120 @@ def _duration_days(value: int) -> int:
     return value
 
 
+def reconcile_subscription(
+    session: Session, subscription: UserSubscription, now: datetime
+) -> UserSubscription:
+    """Apply a queued lower plan once its paid term begins.
+
+    Grant periods form the source of truth for future limits. Superseded grants
+    remain in history but no longer participate in the entitlement timeline.
+    ``pending_*`` points at the next boundary so reads can reconcile lazily.
+    """
+    current = _aware(now)
+    boundary = subscription.pending_valid_from
+    if boundary is None or current < _aware(boundary):
+        return subscription
+    if current >= _aware(subscription.valid_until):
+        subscription.pending_max_accounts = None
+        subscription.pending_max_tasks = None
+        subscription.pending_valid_from = None
+        return subscription
+
+    grant = session.scalar(
+        select(SubscriptionGrant)
+        .where(
+            SubscriptionGrant.user_id == subscription.user_id,
+            SubscriptionGrant.valid_from >= _aware(boundary),
+            SubscriptionGrant.valid_from <= current,
+            SubscriptionGrant.valid_until > current,
+            SubscriptionGrant.superseded_at.is_(None),
+        )
+        .order_by(SubscriptionGrant.valid_from.desc(), SubscriptionGrant.created_at.desc())
+    )
+    if grant is None:
+        # Do not leave a stale pending marker if an old database has a
+        # partially migrated grant history. The current entitlement remains
+        # valid and no task is removed.
+        subscription.pending_max_accounts = None
+        subscription.pending_max_tasks = None
+        subscription.pending_valid_from = None
+        return subscription
+
+    changed = (
+        subscription.max_accounts != grant.max_accounts
+        or subscription.max_tasks != grant.max_tasks
+    )
+    subscription.max_accounts = grant.max_accounts
+    subscription.max_tasks = grant.max_tasks
+    next_grant = _next_distinct_grant(session, subscription, current)
+    if next_grant is None:
+        subscription.pending_max_accounts = None
+        subscription.pending_max_tasks = None
+        subscription.pending_valid_from = None
+    else:
+        subscription.pending_max_accounts = next_grant.max_accounts
+        subscription.pending_max_tasks = next_grant.max_tasks
+        subscription.pending_valid_from = _aware(next_grant.valid_from)
+    if changed:
+        subscription.version += 1
+        subscription.updated_at = current
+    return subscription
+
+
+def _refresh_pending_subscription(
+    session: Session, subscription: UserSubscription, now: datetime
+) -> None:
+    """Point the compact pending fields at the next append-only grant."""
+    current = _aware(now)
+    next_grant = _next_distinct_grant(session, subscription, current)
+    if next_grant is None:
+        subscription.pending_max_accounts = None
+        subscription.pending_max_tasks = None
+        subscription.pending_valid_from = None
+    else:
+        subscription.pending_max_accounts = next_grant.max_accounts
+        subscription.pending_max_tasks = next_grant.max_tasks
+        subscription.pending_valid_from = _aware(next_grant.valid_from)
+
+
+def _next_distinct_grant(
+    session: Session, subscription: UserSubscription, now: datetime
+) -> SubscriptionGrant | None:
+    current = _aware(now)
+    grants = session.scalars(
+        select(SubscriptionGrant)
+        .where(
+            SubscriptionGrant.user_id == subscription.user_id,
+            SubscriptionGrant.valid_from > current,
+            SubscriptionGrant.valid_until > SubscriptionGrant.valid_from,
+            SubscriptionGrant.superseded_at.is_(None),
+            or_(
+                SubscriptionGrant.max_accounts != subscription.max_accounts,
+                SubscriptionGrant.max_tasks != subscription.max_tasks,
+            ),
+        )
+        .order_by(SubscriptionGrant.valid_from.asc(), SubscriptionGrant.created_at.desc())
+        .limit(1)
+    ).all()
+    return grants[0] if grants else None
+
+
+def _supersede_future_grants(
+    session: Session, user_id: str, now: datetime
+) -> None:
+    current = _aware(now)
+    grants = session.scalars(
+        select(SubscriptionGrant).where(
+            SubscriptionGrant.user_id == user_id,
+            SubscriptionGrant.valid_from > current,
+            SubscriptionGrant.valid_until > current,
+            SubscriptionGrant.superseded_at.is_(None),
+        )
+    ).all()
+    for grant in grants:
+        grant.superseded_at = current
+
+
 class SubscriptionService:
     def __init__(self, session: Session, audit: AuditService, now=utc_now):
         self.session = session
@@ -153,7 +270,13 @@ class SubscriptionService:
         ):
             raise ValidationError("兑换码有效期必须大于 0")
         current = self._now()
-        plaintext = secrets.token_urlsafe(24)
+        # Keep newly issued codes easy to copy and enter: uppercase letters
+        # and digits only. Existing rows are never rewritten, so legacy codes
+        # containing URL-safe punctuation remain valid.
+        plaintext = "".join(
+            secrets.choice(REDEMPTION_CODE_ALPHABET)
+            for _ in range(REDEMPTION_CODE_LENGTH)
+        )
         expires_at = None
         if lifetime is not None:
             try:
@@ -353,8 +476,13 @@ class SubscriptionService:
             raise NotFound("会员订阅不存在")
 
         current = self._now()
+        reconcile_subscription(self.session, subscription, current)
+        _supersede_future_grants(self.session, user_id, current)
         subscription.max_accounts = max_accounts
         subscription.max_tasks = max_tasks
+        subscription.pending_max_accounts = None
+        subscription.pending_max_tasks = None
+        subscription.pending_valid_from = None
         subscription.updated_at = current
         subscription.version += 1
         grant = SubscriptionGrant(
@@ -370,6 +498,7 @@ class SubscriptionService:
         )
         self.session.add(grant)
         self.session.flush()
+        _refresh_pending_subscription(self.session, subscription, current)
         self.audit.write(
             actor_id,
             "subscription.limits_updated",
@@ -390,11 +519,16 @@ class SubscriptionService:
             raise NotFound("会员订阅不存在")
 
         current = self._now()
+        reconcile_subscription(self.session, subscription, current)
         if _aware(subscription.valid_until) <= current:
             raise Conflict("会员订阅已过期或已撤销")
         valid_from = min(_aware(subscription.valid_from), current)
         subscription.valid_from = valid_from
         subscription.valid_until = current
+        _supersede_future_grants(self.session, user_id, current)
+        subscription.pending_max_accounts = None
+        subscription.pending_max_tasks = None
+        subscription.pending_valid_from = None
         subscription.updated_at = current
         subscription.version += 1
         grant = SubscriptionGrant(
@@ -462,6 +596,7 @@ class SubscriptionService:
         if subscription is None:
             return False
         current = self._now()
+        reconcile_subscription(self.session, subscription, current)
         return (
             _aware(subscription.valid_from)
             <= current
@@ -477,6 +612,8 @@ class SubscriptionService:
         user = self.session.get(User, user_id)
         subscription = self._get_subscription(user_id, for_update=for_update)
         current = self._now()
+        if subscription is not None:
+            reconcile_subscription(self.session, subscription, current)
         if (
             user is None
             or user.status != "active"
@@ -508,7 +645,10 @@ class SubscriptionService:
         count = self.session.scalar(
             select(func.count())
             .select_from(SparkTask)
-            .where(SparkTask.owner_user_id == user_id)
+            .where(
+                SparkTask.owner_user_id == user_id,
+                SparkTask.enabled.is_(True),
+            )
         )
         if not is_unlimited_tasks(subscription.max_tasks) and int(count or 0) + additional_tasks > subscription.max_tasks:
             raise Conflict("续火任务数量已达套餐上限")
@@ -547,16 +687,45 @@ class SubscriptionService:
             self.session.add(subscription)
         else:
             persisted_until = _aware(subscription.valid_until)
+            reconcile_subscription(self.session, subscription, current)
+            # Re-read the effective limits after a boundary transition. The
+            # period end is intentionally retained so queued grants continue
+            # to append after it.
+            persisted_until = _aware(subscription.valid_until)
             period_start = max(current, persisted_until)
             if persisted_until <= current:
                 subscription.valid_from = current
+                subscription.pending_max_accounts = None
+                subscription.pending_max_tasks = None
+                subscription.pending_valid_from = None
             resolved_accounts = (
                 subscription.max_accounts if max_accounts is None else max_accounts
             )
             resolved_tasks = subscription.max_tasks if max_tasks is None else max_tasks
             subscription.valid_until = period_start + timedelta(days=duration_days)
-            subscription.max_accounts = resolved_accounts
-            subscription.max_tasks = resolved_tasks
+            active = persisted_until > current
+            is_downgrade = active and (
+                resolved_accounts < subscription.max_accounts
+                or resolved_tasks < subscription.max_tasks
+            )
+            if not is_downgrade:
+                future_lower_grants = self.session.scalars(
+                    select(SubscriptionGrant).where(
+                        SubscriptionGrant.user_id == user_id,
+                        SubscriptionGrant.valid_from > current,
+                        SubscriptionGrant.valid_from <= period_start,
+                        SubscriptionGrant.valid_until > current,
+                        SubscriptionGrant.superseded_at.is_(None),
+                        or_(
+                            SubscriptionGrant.max_accounts < resolved_accounts,
+                            SubscriptionGrant.max_tasks < resolved_tasks,
+                        ),
+                    )
+                ).all()
+                for future_grant in future_lower_grants:
+                    future_grant.superseded_at = current
+                subscription.max_accounts = resolved_accounts
+                subscription.max_tasks = resolved_tasks
             subscription.updated_at = current
             subscription.version += 1
 
@@ -574,6 +743,7 @@ class SubscriptionService:
         )
         self.session.add(grant)
         self.session.flush()
+        _refresh_pending_subscription(self.session, subscription, current)
         return subscription, grant
 
     def _get_subscription(

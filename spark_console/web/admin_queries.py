@@ -18,7 +18,11 @@ from spark_console.models import (
     User,
     UserSubscription,
 )
-from spark_console.services.subscriptions import task_limit_label
+from spark_console.services.subscriptions import (
+    is_unlimited_tasks,
+    reconcile_subscription,
+    task_limit_label,
+)
 
 
 ADMIN_PAGE_SIZE = 20
@@ -55,6 +59,7 @@ class AdminUserRow:
     account_count: int
     task_count: int
     now: datetime
+    enabled_task_count: int = 0
     invalid_account_count: int = 0
     today_success_count: int = 0
     today_failed_count: int = 0
@@ -102,6 +107,35 @@ class AdminUserRow:
     @property
     def task_limit_label(self) -> str:
         return task_limit_label(self.max_tasks)
+
+    @property
+    def pending_subscription(self) -> dict[str, object] | None:
+        subscription = self.subscription
+        if subscription is None or subscription.pending_valid_from is None:
+            return None
+        pending_tasks = subscription.pending_max_tasks
+        pending_accounts = subscription.pending_max_accounts
+        if pending_tasks is None and pending_accounts is None:
+            return None
+        pending_from = _aware(subscription.pending_valid_from)
+        return {
+            "valid_from": pending_from,
+            "valid_until": None,
+            "max_accounts": pending_accounts or self.max_accounts or 1,
+            "max_tasks": pending_tasks or self.max_tasks or 10,
+            "task_limit_label": task_limit_label(
+                pending_tasks if pending_tasks is not None else self.max_tasks
+            ),
+            "status_label": "下期生效",
+        }
+
+    @property
+    def task_overage(self) -> int:
+        if self.user.role == "admin" or self.max_tasks is None:
+            return 0
+        if is_unlimited_tasks(self.max_tasks):
+            return 0
+        return max(0, self.enabled_task_count - int(self.max_tasks or 0))
 
     @property
     def membership_status(self) -> str:
@@ -156,6 +190,13 @@ class AdminUserRow:
             "task_limit_label": self.task_limit_label,
             "account_count": self.account_count,
             "task_count": self.task_count,
+            "enabled_task_count": self.enabled_task_count,
+            "task_overage": self.task_overage,
+            "over_limit_task_count": self.task_overage,
+            "over_limit_enabled_tasks": self.task_overage,
+            "task_capacity_status": "over_limit" if self.task_overage else "available",
+            "pending_subscription": self.pending_subscription,
+            "pending_plan": self.pending_subscription,
             "is_admin": self.user.role == "admin",
         }
 
@@ -297,33 +338,54 @@ def _user_aggregate_statement(now: datetime):
         .group_by(SparkTask.owner_user_id)
         .subquery()
     )
+    enabled_task_counts = (
+        select(
+            SparkTask.owner_user_id.label("owner_id"),
+            func.count(SparkTask.id).label("enabled_task_count"),
+        )
+        .where(SparkTask.enabled.is_(True))
+        .group_by(SparkTask.owner_user_id)
+        .subquery()
+    )
     return (
         select(
             User,
             UserSubscription,
             func.coalesce(account_counts.c.account_count, 0),
             func.coalesce(task_counts.c.task_count, 0),
+            func.coalesce(enabled_task_counts.c.enabled_task_count, 0),
         )
         .outerjoin(UserSubscription, UserSubscription.user_id == User.id)
         .outerjoin(account_counts, account_counts.c.owner_id == User.id)
         .outerjoin(task_counts, task_counts.c.owner_id == User.id)
+        .outerjoin(enabled_task_counts, enabled_task_counts.c.owner_id == User.id)
     )
 
 
-def _to_user_rows(rows, now: datetime, activity: dict[str, dict[str, int]] | None = None) -> list[AdminUserRow]:
+def _to_user_rows(
+    rows,
+    now: datetime,
+    activity: dict[str, dict[str, int]] | None = None,
+    db: Session | None = None,
+) -> list[AdminUserRow]:
     activity = activity or {}
+    if db is not None:
+        for _user, subscription, *_counts in rows:
+            if subscription is not None:
+                reconcile_subscription(db, subscription, now)
     return [
         AdminUserRow(
             user=user,
             subscription=subscription,
             account_count=int(account_count or 0),
             task_count=int(task_count or 0),
+            enabled_task_count=int(enabled_task_count or 0),
             now=now,
             invalid_account_count=activity.get(user.id, {}).get("invalid_accounts", 0),
             today_success_count=activity.get(user.id, {}).get("today_success", 0),
             today_failed_count=activity.get(user.id, {}).get("today_failed", 0),
         )
-        for user, subscription, account_count, task_count in rows
+        for user, subscription, account_count, task_count, enabled_task_count in rows
     ]
 
 
@@ -375,9 +437,9 @@ def list_users(
         .limit(ADMIN_PAGE_SIZE)
         .offset((int(pagination["page"]) - 1) * ADMIN_PAGE_SIZE)
     ).all()
-    user_rows = _to_user_rows(rows, now)
+    user_rows = _to_user_rows(rows, now, db=db)
     activity = _user_activity(db, [row.id for row in user_rows], now)
-    return _to_user_rows(rows, now, activity), pagination
+    return _to_user_rows(rows, now, activity, db), pagination
 
 
 def list_subscriptions(
@@ -438,7 +500,7 @@ def list_subscriptions(
         .limit(ADMIN_PAGE_SIZE)
         .offset((int(pagination["page"]) - 1) * ADMIN_PAGE_SIZE)
     ).all()
-    return _to_user_rows(rows, now), pagination
+    return _to_user_rows(rows, now, db=db), pagination
 
 
 def list_tasks(
@@ -604,7 +666,7 @@ def overview_expiring_users(db: Session, limit: int = 8) -> list[AdminUserRow]:
         .order_by(UserSubscription.valid_until.asc())
         .limit(limit)
     ).all()
-    return _to_user_rows(rows, now)
+    return _to_user_rows(rows, now, db=db)
 
 
 def admin_stats(db: Session) -> dict[str, int]:

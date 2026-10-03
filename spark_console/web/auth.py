@@ -69,7 +69,13 @@ class WebAuth:
     def require_elevated(
         cls, record: WebSession, now: datetime | None = None
     ) -> None:
-        """Require a recent password step-up for a sensitive admin action."""
+        """Require a recent step-up for legacy callers.
+
+        Normal administrator routes are authorized by the authenticated admin
+        session and CSRF token.  Keep this helper for explicit security
+        settings and older integrations; it is deliberately not part of the
+        normal admin write path.
+        """
         if not cls.is_elevated(record, now=now):
             raise HTTPException(428, "需要重新验证管理员密码")
 
@@ -77,7 +83,7 @@ class WebAuth:
     def require_elevated_if_configured(
         cls, record: WebSession, now: datetime | None = None
     ) -> None:
-        """Opt-in guard for legacy admin surfaces during UI migration."""
+        """Compatibility guard for legacy integrations during migration."""
         if REQUIRE_ADMIN_STEP_UP:
             cls.require_elevated(record, now=now)
 

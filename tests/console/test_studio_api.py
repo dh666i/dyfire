@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 
 from spark_console.config import Settings
 from spark_console.db import create_schema, session_scope
@@ -56,6 +56,73 @@ def test_create_owned_and_idempotent_enabled(site):
     assert runs['total']==0 and runs['items']==[]
     assert client.get('/api/studio/runs?page=0').status_code==422
     assert client.get('/api/studio/runs?status=bogus').status_code==400
+
+
+def test_paused_tasks_do_not_consume_capacity_and_resume_checks_it(site):
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    headers={'X-CSRF-Token':state['csrf']}
+    created=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':[{'name':'保留任务'}],'send_time':'09:30',
+    },headers=headers)
+    assert created.status_code==200
+    paused_id=created.json()['ids'][0]
+    assert client.post(f'/api/studio/tasks/{paused_id}/enabled',json={'enabled':False},headers=headers).status_code==200
+
+    # Three enabled tasks fit the fixture's limit even though a fourth paused
+    # task remains stored and visible to the user.
+    batch=client.post('/api/studio/tasks',json={
+        'account_id':owned,
+        'targets':[{'name':'新任务甲'},{'name':'新任务乙'},{'name':'新任务丙'}],
+        'send_time':'10:00',
+    },headers=headers)
+    assert batch.status_code==200, batch.text
+    blocked=client.post(f'/api/studio/tasks/{paused_id}/enabled',json={'enabled':True},headers=headers)
+    assert blocked.status_code==409
+    assert '套餐上限' in blocked.json()['detail']
+
+    enabled_id=batch.json()['ids'][0]
+    assert client.post(f'/api/studio/tasks/{enabled_id}/enabled',json={'enabled':False},headers=headers).status_code==200
+    assert client.post(f'/api/studio/tasks/{paused_id}/enabled',json={'enabled':True},headers=headers).status_code==200
+
+
+def test_downgrade_overage_keeps_tasks_but_blocks_create_and_resume(site):
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    headers={'X-CSRF-Token':state['csrf']}
+    created=client.post('/api/studio/tasks',json={
+        'account_id':owned,
+        'targets':[{'name':'继续运行甲'},{'name':'继续运行乙'}],
+        'send_time':'09:30',
+    },headers=headers)
+    assert created.status_code==200, created.text
+    task_ids=created.json()['ids']
+
+    with session_scope(client.app.state.engine) as db:
+        user=db.scalar(select(User).where(User.username=='fixture'))
+        subscription=db.get(UserSubscription,user.id)
+        subscription.max_tasks=1
+
+    current=client.get('/api/studio').json()
+    assert current['subscription']['enabled_task_count']==2
+    assert current['subscription']['task_overage']==1
+    assert current['subscription']['can_add_task'] is False
+    assert len(current['tasks'])==2
+    assert all(task['enabled'] for task in current['tasks'])
+
+    denied=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':[{'name':'不能新增'}],'send_time':'11:00',
+    },headers=headers)
+    assert denied.status_code==409
+    assert '套餐上限' in denied.json()['detail']
+
+    assert client.post(f'/api/studio/tasks/{task_ids[0]}/enabled',json={'enabled':False},headers=headers).status_code==200
+    restored=client.get('/api/studio').json()
+    assert restored['subscription']['task_overage']==0
+    assert restored['subscription']['can_add_task'] is False
+    resumed=client.post(f'/api/studio/tasks/{task_ids[0]}/enabled',json={'enabled':True},headers=headers)
+    assert resumed.status_code==409
+    assert len(client.get('/api/studio').json()['tasks'])==2
 
 
 def test_expired_auth_returns_json(site):

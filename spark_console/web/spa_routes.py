@@ -363,7 +363,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     for r, task in recent_run_rows
                 ],
                 "activity": {"period_days": 365, "total": sum(item["count"] for item in activity_days), "days": activity_days},
-                "membership": {k: membership.get(k) for k in ("active", "status_label", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "can_add_task")},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "enabled_task_count", "paused_task_count", "task_overage", "over_limit_task_count", "over_limit_enabled_tasks", "task_capacity_status", "task_capacity_label", "task_capacity_message", "pending_subscription", "pending_plan", "can_add_task")},
                 "plans": pricing_plans(),
                 "onboarding": onboarding,
             }
@@ -534,7 +534,10 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                      "membership_status": row.membership_status,
                      "membership_label": row.membership_label,
                      "account_health_status": row.account_health_status, "account_health_label": row.account_health_label,
-                     "today_success": row.today_success_count, "today_failed": row.today_failed_count}
+                     "today_success": row.today_success_count, "today_failed": row.today_failed_count,
+                     "enabled_task_count": row.enabled_task_count, "task_overage": row.task_overage,
+                     "over_limit_task_count": row.task_overage, "pending_subscription": row.pending_subscription,
+                     "pending_plan": row.pending_subscription}
                     for row in user_rows
                 ],
                 "recentRuns": [
@@ -711,7 +714,14 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "valid_until": _date_value(row.valid_until), "days_remaining": row.days_remaining,
                 "max_accounts": row.max_accounts, "max_tasks": row.max_tasks,
                 "task_limit_label": row.task_limit_label,
-                "account_count": row.account_count, "task_count": row.task_count} for row in rows], "pagination": pagination}
+                "account_count": row.account_count, "task_count": row.task_count,
+                "enabled_task_count": row.membership.get("enabled_task_count"),
+                "task_overage": row.task_overage,
+                "over_limit_task_count": row.task_overage,
+                "over_limit_enabled_tasks": row.task_overage,
+                "task_capacity_status": row.membership.get("task_capacity_status"),
+                "pending_subscription": row.pending_subscription,
+                "pending_plan": row.pending_subscription} for row in rows], "pagination": pagination}
 
     @router.get("/api/admin/task-groups")
     def admin_task_groups(request: Request, q: str = Query("", max_length=100), status: str = Query("", max_length=24), page: int = Query(1, ge=1)):
@@ -878,7 +888,12 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             service = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db))
             try:
                 for task in tasks:
-                    service.set_enabled_owned(task.owner_user_id, task.id, action == "resume")
+                    service.set_enabled_owned(
+                        task.owner_user_id,
+                        task.id,
+                        action == "resume",
+                        enforce_capacity=False,
+                    )
             except (NotFound, ValidationError, Conflict) as error:
                 db.rollback()
                 return JSONResponse({"detail": str(error)}, status_code=409)
@@ -1011,7 +1026,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             membership = membership_summary(db, user)
             return {
                 "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at), "admin_note": user.admin_note or ""},
-                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "is_admin")},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "enabled_task_count", "paused_task_count", "task_overage", "over_limit_task_count", "over_limit_enabled_tasks", "task_capacity_status", "task_capacity_label", "task_capacity_message", "pending_subscription", "pending_plan", "is_admin")},
                 "resource_limits": {
                     "page_size": WORKSPACE_LIST_PAGE_SIZE,
                     "accounts_total": account_total,
@@ -1164,7 +1179,12 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             if task is None:
                 return JSONResponse({"detail": "任务不存在"}, status_code=404)
             try:
-                updated = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).set_enabled_owned(task.owner_user_id, task.id, bool(values.get("enabled")))
+                updated = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db)).set_enabled_owned(
+                    task.owner_user_id,
+                    task.id,
+                    bool(values.get("enabled")),
+                    enforce_capacity=False,
+                )
             except (NotFound, ValidationError, Conflict) as error:
                 return JSONResponse({"detail": str(error)}, status_code=409)
             AuditService(db).write(admin.id, "admin.task.enabled" if updated.enabled else "admin.task.disabled", "spark_task", updated.id)

@@ -102,8 +102,6 @@ def build_update_router(engine, auth):
         with session_scope(engine) as db:
             user, record, _ = auth.admin_context(request, db)
             auth.csrf(record, request.headers.get('X-CSRF-Token', ''))
-            if action in ('install', 'install-web', 'rollback'):
-                auth.require_elevated(record)
             target = body.get('version', '')
             if target is None:
                 target = ''
