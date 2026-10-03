@@ -21,6 +21,7 @@ import './react.css';
 import './react-polish.css';
 import './react-fire.css';
 import RubberSegment from './components/RubberSegment';
+import {cloudFrameOverlay, createCloudFrameState, frameLoadError, frameLoaded, retryCloudFrame} from './cloud-frame-state.js';
 
 const asList = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const displayText = (value, fallback='') => typeof value === 'string' && value.trim() ? value : fallback;
@@ -772,8 +773,9 @@ function CloudInteraction({scan,data}) {
 }
 
 function CloudFrame({scan,data,onError,onReady}) {
-  const [state,setState]=useState('loading'); const [attempt,setAttempt]=useState(0); const [frameError,setFrameError]=useState(''); const [pointer,setPointer]=useState({x:50,y:50}); const [keyboardActive,setKeyboardActive]=useState(false); const preview=scan?.id==='preview-scan'; const maxAttempts=5;
-  useEffect(()=>{setState('loading');setAttempt(0);setFrameError('');setPointer({x:50,y:50});setKeyboardActive(false)},[scan?.id]);
+  const [frame,setFrame]=useState(()=>createCloudFrameState(scan?.id)); const [pointer,setPointer]=useState({x:50,y:50}); const [keyboardActive,setKeyboardActive]=useState(false); const preview=scan?.id==='preview-scan';
+  const state=frame.status; const attempt=frame.attempt; const frameError=frame.error;
+  useEffect(()=>{setFrame(createCloudFrameState(scan?.id));setPointer({x:50,y:50});setKeyboardActive(false)},[scan?.id]);
   const sendClick=async (x,y)=>{if(!scan?.id||state!=='ready'||frameError)return;const fd=new FormData();fd.append('csrf_token',data?.csrf||'');fd.append('kind','click');fd.append('x',String(Math.max(0,Math.min(1,x/100))));fd.append('y',String(Math.max(0,Math.min(1,y/100))));try{await api(`/accounts/scan/${scan.id}/interact`,{method:'POST',body:fd})}catch(err){onError?.(err.message)}};
   const click=async e=>{const rect=e.currentTarget.getBoundingClientRect();if(!rect.width||!rect.height)return;const x=Math.max(0,Math.min(100,(e.clientX-rect.left)/rect.width*100));const y=Math.max(0,Math.min(100,(e.clientY-rect.top)/rect.height*100));setPointer({x,y});await sendClick(x,y)};
   const keyDown=e=>{
@@ -790,16 +792,17 @@ function CloudFrame({scan,data,onError,onReady}) {
   };
   useEffect(()=>{
     if(preview||state==='ready'||frameError||!scan?.id)return;
-    if(scan.remaining_seconds===0){setFrameError('expired');return;}
-    if(attempt>=maxAttempts){setFrameError('timeout');return;}
-    const timer=window.setTimeout(()=>setAttempt(value=>value+1),Math.min(5000,1600+attempt*500));
+    const timer=window.setTimeout(()=>setFrame(current=>frameLoadError(current,{remainingSeconds:scan.remaining_seconds})),Math.min(5000,1600+attempt*500));
     return ()=>window.clearTimeout(timer);
   },[preview,state,frameError,attempt,scan?.id,scan?.remaining_seconds]);
   if(preview) return <div className="scan-stage frame-ready"><div className="preview-qr" aria-label="预览二维码"><span>DYFIRE</span><b>扫码预览</b></div></div>;
   const revision=scan?.frame_revision||'';
-  const retry=()=>{setFrameError('');setState('loading');setAttempt(0)};
-  const failureCopy=frameError==='expired'?['二维码已失效','当前扫码会话已过期，请重新发起绑定。']:frameError==='timeout'?['云端画面加载超时','登录会话仍在保留，可以继续重试加载画面。']:['云端画面暂时不可用','登录会话仍在保留，请重试加载；如果持续失败再取消本次绑定。'];
-  return <div className={`scan-stage ${state==='ready'?'frame-ready':''} ${frameError?'scan-frame-error':''}`}><img className="scan-frame-image" onLoad={()=>{setState('ready');setFrameError('');onReady?.();document.body.dataset.dyfireFrameReady='true';document.dispatchEvent(new CustomEvent('dyfire-frame-ready'))}} onError={()=>{setState('loading');if(attempt>=maxAttempts)setFrameError('unavailable');else setAttempt(value=>value+1)}} onClick={click} onKeyDown={keyDown} onFocus={()=>setKeyboardActive(true)} onBlur={()=>setKeyboardActive(false)} role="button" tabIndex="0" aria-label="抖音云端登录页面。使用方向键移动远程点击位置，按 Enter 或空格点击" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Space" src={`/accounts/scan/${scan.id}/qr?attempt=${attempt}${revision?`&revision=${encodeURIComponent(revision)}`:''}`} alt="抖音云端登录页面"/>{keyboardActive&&<span className="scan-keyboard-pointer" aria-hidden="true" style={{left:`${pointer.x}%`,top:`${pointer.y}%`}}/>}<div className="scan-loading-overlay" aria-live="polite">{frameError?<><b>{failureCopy[0]}</b><small>{failureCopy[1]}</small>{frameError!=='expired'&&<Button type="button" variant="quiet" onClick={retry}>重试加载画面</Button>}</>:<><span className="scan-loading-spinner"/><b>{attempt>3?'正在等待登录环境就绪':'正在准备安全登录环境'}</b><small>云端容器启动后会自动显示，请稍候，不需要重复点击。</small></>}</div></div>;
+  const retry=()=>setFrame(current=>retryCloudFrame(current));
+  const sessionStatus=String(scan?.status||'').toLowerCase();
+  const sessionActive=!['succeeded','failed','expired','cancelled'].includes(sessionStatus)&&Number(scan?.remaining_seconds??1)>0;
+  const overlay=cloudFrameOverlay(frame);
+  const frameClass=overlay.kind==='error'?'scan-frame-error':state==='loading'&&attempt>3?'scan-frame-waiting':'';
+  return <div className={`scan-stage ${state==='ready'?'frame-ready':''} ${frameClass}`}><img className="scan-frame-image" onLoad={()=>{setFrame(current=>frameLoaded(current));onReady?.();document.body.dataset.dyfireFrameReady='true';document.dispatchEvent(new CustomEvent('dyfire-frame-ready'))}} onError={()=>setFrame(current=>frameLoadError(current,{remainingSeconds:scan?.remaining_seconds}))} onClick={click} onKeyDown={keyDown} onFocus={()=>setKeyboardActive(true)} onBlur={()=>setKeyboardActive(false)} role="button" tabIndex="0" aria-label="抖音云端登录页面。使用方向键移动远程点击位置，按 Enter 或空格点击" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Space" src={`/accounts/scan/${scan.id}/qr?attempt=${attempt}${revision?`&revision=${encodeURIComponent(revision)}`:''}`} alt="抖音云端登录页面"/>{keyboardActive&&<span className="scan-keyboard-pointer" aria-hidden="true" style={{left:`${pointer.x}%`,top:`${pointer.y}%`}}/>}<div className="scan-loading-overlay" aria-live="polite">{overlay.kind==='error'?<><b>{overlay.title}</b><small>{overlay.detail}</small>{overlay.title!=='二维码已失效'&&<Button type="button" variant="quiet" onClick={retry}>重试加载画面</Button>}</>:<><span className="scan-loading-spinner"/><b>{overlay.title}</b><small>{overlay.detail|| (sessionActive?'云端容器启动后会自动显示，请稍候。':'正在确认登录会话状态，请稍候。')}</small></>}</div></div>;
 }
 
 function BindingProgress({scan}) { const status=String(scan?.status||'').toLowerCase(); const current=scan?.status==='succeeded'?4:scan?.needs_verification?3:['queued','starting','initializing','pending','created'].includes(status)?1:2; const labels=['准备环境','扫码确认','验证输入','绑定完成']; return <div className="scan-progress scan-progress-four" aria-label={`绑定进度：${labels[current-1]}`}>{labels.map((label,index)=><React.Fragment key={label}><span className={`scan-progress-step ${index+1<current?'complete':''} ${index+1===current?'active':''}`}><i className="scan-progress-dot"/><span>{label}</span></span>{index<labels.length-1&&<span className={`scan-progress-line ${index+1<current?'complete':''}`} aria-hidden="true"/>}</React.Fragment>)}</div>; }
