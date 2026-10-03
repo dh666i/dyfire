@@ -6,7 +6,7 @@
       <nav class="studio-auth-tabs" aria-label="账户入口"><a href="/login">登录</a><a href="/register" aria-current="page">注册</a></nav>
       <div class="auth-card-heading">
         <h1>创建账号</h1>
-        <p class="muted">邀请码为选填项；开通会员后即可绑定抖音账号。</p>
+        <p class="muted">注册后登录，即可开通会员并绑定抖音账号。</p>
       </div>
       {% if error %}<div class="form-error auth-feedback" role="alert"><span aria-hidden="true">!</span><span>{{ error }}</span></div>{% endif %}
       <form method="post" class="stack auth-form" data-submit-lock data-submitting-label="正在创建账号…">
@@ -26,7 +26,6 @@
             <button class="password-visibility-toggle" type="button" data-password-toggle aria-controls="register-password-confirmation" aria-label="显示密码" aria-pressed="false" title="显示密码"><span class="password-eye-show">{{ icon('eye', 18) }}</span><span class="password-eye-hide">{{ icon('eye-off', 18) }}</span></button>
           </span>
         </div>
-        <label class="auth-field">注册邀请码（选填）<input name="invite_code" value="{{ form.invite_code if form is defined else '' }}" autocomplete="off" placeholder="有邀请码时填写"><small class="muted">由管理员提供时填写</small></label>
         <button class="auth-submit" type="submit"><span>注册并返回登录</span>{{ icon('arrow', 18) }}</button>
       </form>
       <div class="auth-card-footer">
