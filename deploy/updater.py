@@ -375,7 +375,10 @@ def assert_no_active_operations(data_dir):
     # heartbeat or run transition. Retry the read-only guard so a transient
     # checkpoint race does not abort an otherwise safe image update. A real
     # malformed database still fails after the bounded retry window.
-    for attempt in range(5):
+    # A busy worker may hold a WAL checkpoint across several seconds. Keep
+    # the guard conservative, but allow the read-only check enough time to
+    # observe a stable snapshot before refusing an otherwise safe update.
+    for attempt in range(20):
         try:
             with sqlite3.connect(
                 f'{database.as_uri()}?mode=ro', uri=True, timeout=5
@@ -391,9 +394,9 @@ def assert_no_active_operations(data_dir):
             break
         except sqlite3.DatabaseError as error:
             last_error = error
-            if attempt == 4:
+            if attempt == 19:
                 raise
-            time.sleep(0.5)
+            time.sleep(1)
     else:  # pragma: no cover - the loop either breaks or raises
         raise last_error
     if active:
