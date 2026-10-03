@@ -888,18 +888,107 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .admin-trend-legend small { flex-basis:100%; margin-left:0; }
   .admin-toolbar { display:flex; }
   .admin-toolbar .input { flex:1 1 140px; max-width:none; }
+  .admin-toolbar .muted-copy { flex:1 0 100%; margin-left:0; text-align:right; }
   .admin-bulk-bar > span { flex-basis:100%; }
   .workspace-limit-controls { grid-template-columns:1fr 1fr; }
   .workspace-limit-controls .button { width:100%; }
   .admin-pagination { align-items:flex-start; flex-direction:column; }
   .user-workbench-head, .subscription-workbench-head, .task-group-head, .task-detail-head, .audit-table-head { display:none; }
   .user-workbench-row, .subscription-workbench-row, .task-group-row, .task-detail-row, .audit-row { grid-template-columns:24px minmax(0,1fr) auto; grid-template-areas:"check primary status" ". secondary actions"; gap:6px 8px; padding:12px 0; }
-  .user-workbench-row > input, .subscription-workbench-row > input, .task-detail-row > input { grid-area:check; align-self:start; margin-top:5px; }
+  /* Keep selection controls in the dedicated first grid area.  The generic
+     `.admin-row > :nth-child(1)` mobile rule is intentionally broad, so this
+     same-specificity override must target the first child rather than the
+     input element type alone. */
+  .user-workbench-row > :nth-child(1),
+  .subscription-workbench-row > :nth-child(1),
+  .task-detail-row > :nth-child(1) { grid-area:check; align-self:start; justify-self:start; margin-top:5px; }
   .user-workbench-row > :nth-child(2), .subscription-workbench-row > :nth-child(2), .task-group-row > :nth-child(1), .task-detail-row > :nth-child(2), .audit-row > :nth-child(1) { grid-area:primary; }
   .user-workbench-row > :nth-child(3), .subscription-workbench-row > :nth-child(4), .task-group-row > :nth-child(2), .task-detail-row > :nth-child(3), .audit-row > :nth-child(2) { grid-area:secondary; justify-self:start; }
   .user-workbench-row > :nth-child(4), .subscription-workbench-row > :nth-child(3), .task-group-row > :nth-child(4), .task-detail-row > :nth-child(4) { grid-area:status; justify-self:end; }
   .user-workbench-row > :nth-child(5), .subscription-workbench-row > :nth-child(5), .task-group-row > :nth-child(5), .task-detail-row > :nth-child(5), .audit-row > :nth-child(4) { grid-area:actions; justify-self:end; }
   .audit-row > :nth-child(3) { grid-area:secondary; }
+
+  /* User workbench rows have a leading checkbox. Keep it in its own column
+     so the username, health state, and actions cannot collide on phones. */
+  .user-workbench-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-areas: "check primary status" ". secondary actions";
+    column-gap: 9px;
+    row-gap: 7px;
+    padding: 14px 0;
+  }
+  /* `.admin-row > :nth-child(1)` above is more specific than a single-class
+     selector, so keep the row class in this override. Without it the
+     checkbox falls into the identity column and appears beside the username
+     on narrow screens (the issue visible in the mobile customer screenshot).
+     The same specificity fix applies to subscription and task rows. */
+  .admin-row.user-workbench-row > input,
+  .admin-row.subscription-workbench-row > input,
+  .admin-row.task-detail-row > input { grid-area: check; justify-self: start; width: 18px; height: 18px; margin-top: 4px; }
+  .user-workbench-row > :nth-child(2) { grid-area: primary; min-width: 0; }
+  .user-workbench-row > :nth-child(3) { grid-area: secondary; min-width: 0; overflow-wrap: anywhere; }
+  .user-workbench-row > :nth-child(4) { grid-area: status; min-width: 0; justify-self: end; text-align: right; }
+  .user-workbench-row > :nth-child(5) { grid-area: actions; justify-self: end; min-width: 0; }
+  .user-workbench-row .admin-cell-button b,
+  .user-workbench-row .admin-cell-button small,
+  .user-workbench-row > :nth-child(3) small,
+  .user-workbench-row > :nth-child(4) small { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
+  .user-workbench-row .row-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+  .user-workbench-row .row-actions .button { min-height: 36px; padding-inline: 10px; }
+  .user-workbench-row > :nth-child(4) .badge,
+  .subscription-workbench-row > :nth-child(3) .badge,
+  .task-group-row > :nth-child(4) .badge,
+  .task-detail-row > :nth-child(4) .badge { max-width: 100%; white-space: normal; text-align: right; }
+
+  .subscription-workbench-row > :nth-child(2),
+  .subscription-workbench-row > :nth-child(4),
+  .subscription-workbench-row > :nth-child(5),
+  .task-detail-row > :nth-child(2),
+  .task-detail-row > :nth-child(3),
+  .task-detail-row > :nth-child(5) { min-width: 0; overflow-wrap: anywhere; }
+  .subscription-workbench-row > :nth-child(2) b,
+  .subscription-workbench-row > :nth-child(2) small,
+  .subscription-workbench-row > :nth-child(4) small,
+  .task-detail-row > :nth-child(2) b,
+  .task-detail-row > :nth-child(2) small { white-space: normal; line-height: 1.45; overflow-wrap: anywhere; }
+  .subscription-workbench-row .row-actions,
+  .task-detail-row .row-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+  .subscription-workbench-row .row-actions .button,
+  .task-detail-row .row-actions .button { min-height:36px; padding-inline:9px; }
+
+  /* Task groups have no selection control. Remove the generic empty check
+     column and keep the two counters on one readable secondary line. */
+  .task-group-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "primary status" "count enabled" "actions actions";
+    column-gap: 9px;
+    row-gap: 7px;
+    padding: 14px 0;
+  }
+  .task-group-row > :nth-child(1) { grid-area: primary; min-width: 0; }
+  .task-group-row > :nth-child(2) { grid-area: count; justify-self: start; min-width: 0; }
+  .task-group-row > :nth-child(3) { grid-area: enabled; justify-self: end; min-width: 0; }
+  .task-group-row > :nth-child(4) { grid-area: status; justify-self: end; min-width: 0; }
+  .task-group-row > :nth-child(5) { grid-area: actions; justify-self: end; min-width: 0; }
+  .task-group-row b, .task-group-row small { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
+
+  /* Audit rows have a timestamp rather than an action column. Keep actor and
+     resource side by side below the event, with no overlapping grid areas. */
+  .audit-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "primary status" "actor resource";
+    column-gap: 9px;
+    row-gap: 7px;
+    padding: 14px 0;
+  }
+  .audit-row > :nth-child(1) { grid-area: primary; min-width: 0; }
+  .audit-row > :nth-child(2) { grid-area: actor; justify-self: start; min-width: 0; }
+  .audit-row > :nth-child(3) { grid-area: resource; justify-self: end; min-width: 0; text-align: right; }
+  .audit-row > :nth-child(4) { grid-area: status; justify-self: end; min-width: 0; }
+  .audit-row b, .audit-row span, .audit-row time { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
+
+  /* The fixed dock must not cover the last customer row or pagination. */
+  .admin-table, .admin-pagination { padding-bottom: 16px; }
 }
 /* Canonical admin workbench controls and run ledger. */
 .admin-subview-tabs{display:flex;align-items:center;gap:5px;width:max-content;max-width:100%;margin:-8px 0 24px;padding:4px;border:1px solid var(--line);background:var(--surface);}

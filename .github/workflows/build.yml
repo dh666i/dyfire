@@ -46,6 +46,7 @@ jobs:
           node tests/console/commercial_ui_harness.cjs
           node tests/console/motion_harness.cjs
           node tests/console/mobile_workspace_harness.cjs
+          node tests/console/admin_mobile_layout_harness.cjs
       - name: Verify customer capacity and account-state preservation
         run: python -m pytest tests/console/test_scale_baseline.py tests/console/test_account_scan_web.py tests/console/test_request_context.py tests/console/test_request_limits.py tests/console/test_proxy_headers.py -q
       - uses: docker/setup-buildx-action@v3
