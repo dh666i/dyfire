@@ -24,7 +24,7 @@ async function main(scenario) {
     let state = createCloudFrameState('scan-transient', 1_000);
     state = frameLoadError(state, {now: 1_001, remainingSeconds: 299});
     state = frameLoadError(state, {now: 8_000, remainingSeconds: 292});
-    state = frameLoadError(state, {now: 29_000, remainingSeconds: 271});
+    state = frameLoadError(state, {now: 29_000, remainingSeconds: null});
     assert.equal(state.scanId, 'scan-transient');
     assert.equal(state.status, 'loading');
     assert.equal(state.error, '');

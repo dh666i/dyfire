@@ -3,6 +3,7 @@
 export const CLOUD_FRAME_LOAD_TIMEOUT_MS = 30_000;
 
 const remainingIsExpired = remainingSeconds => {
+  if (remainingSeconds === null || remainingSeconds === undefined || remainingSeconds === '') return false;
   const value = Number(remainingSeconds);
   return Number.isFinite(value) && value <= 0;
 };
