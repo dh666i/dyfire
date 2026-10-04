@@ -43,13 +43,13 @@ export function createTaskComposerController({request, refresh, onCreated, debou
       if (token.generation !== generation || token.controller.signal.aborted) return;
       const plannedCount = token.config.targets.length ? list(plan?.targets).length : token.config.count;
       if (!plannedCount || !isReadySchedule(plan, plannedCount)) {
-        emit({status:'unavailable', plan:null, error:plan?.blocked?'当前抖音账号需要重新验证，请先到抖音账号页面处理。':plan?.reason || '暂时没有可用的发送时间，请稍后重试或调整时间。'});
+        emit({status:'unavailable', plan:null, error:plan?.blocked?'当前抖音账号需要重新验证，请先到抖音账号页面处理。':'暂时无法安排发送时间，请稍后重试。'});
         return;
       }
       emit({status:'ready', plan, error:''});
     } catch (error) {
       if (token.generation === generation && !token.controller.signal.aborted) {
-        emit({status:'error', plan:null, error:error?.message || '发送时间推荐失败，请重试。'});
+        emit({status:'error', plan:null, error:error?.message || '发送时间安排失败，请重试。'});
       }
     }
   };
@@ -111,8 +111,8 @@ export function createTaskComposerController({request, refresh, onCreated, debou
           const updatedPlan = {...detail.plan, targets:detail.plan?.targets || confirmedPlan.targets};
           const valid = isReadySchedule(updatedPlan, plannedCount);
           emit({status:valid?'ready':'unavailable', plan:valid?updatedPlan:null,
-            error:valid?'':detail.plan?.reason || '当前没有可用的发送时间，请调整后重试。',
-            conflict:detail.message || '服务器任务安排有变化，请核对更新后的好友时间，再次确认创建。'});
+            error:valid?'':'暂时无法安排发送时间，请稍后重试。',
+            conflict:'发送时间发生变化，请确认新的安排后再次创建。'});
         } else {
           emit({createError:error?.message || '任务创建失败，请稍后重试。'});
         }

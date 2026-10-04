@@ -250,13 +250,6 @@ body::before { opacity:.035; background-image:linear-gradient(rgba(255,255,255,.
 .task-created-list li small { grid-column:1/-1; color:var(--ink-soft); font-size:10px; }
 .task-success-refresh { margin:12px 0 0 40px !important; color:var(--orange-soft) !important; }
 .task-success-refresh .button { margin-left:8px; min-height:28px; padding:0 9px; }
-.schedule-mode { display:grid; gap:8px; margin:0; padding:12px; border:1px solid var(--hairline); }
-.schedule-mode legend { padding:0 4px; color:var(--muted); font-size:10px; }
-.schedule-mode label { display:flex; align-items:flex-start; gap:9px; color:var(--ink-soft); font-size:11px; cursor:pointer; }
-.schedule-mode input { accent-color:var(--orange); margin-top:2px; }
-.schedule-mode label span { display:grid; gap:3px; }
-.schedule-mode label b { color:var(--ink-dark); font-weight:500; }
-.schedule-mode label small { color:var(--muted); font-size:10px; line-height:1.5; }
 .schedule-preview { display:grid; gap:10px; padding:13px; border:1px solid var(--hairline); background:rgba(255,255,255,.025); }
 .schedule-preview-head { display:flex; justify-content:space-between; align-items:center; gap:8px; }
 .schedule-preview-head h3 { margin:0; font-size:12px; font-weight:500; }

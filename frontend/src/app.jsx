@@ -159,14 +159,14 @@ function mockApi(path, options={}) {
     const [hour,minute]=String(preferred).split(':').map(Number);
     const times=Array.from({length:count},(_,index)=>{const minutes=(hour*60+minute+index*7)%1440;return `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`});
     const entries=times.map((time,index)=>{const date=new Date();const [h,m]=time.split(':').map(Number);date.setHours(h,m,0,0);if(date<=new Date())date.setDate(date.getDate()+1);return {index,time,next_run_at:date.toISOString(),day_offset:date.getDate()===new Date().getDate()?0:1}});
-    return Promise.resolve({status:'ready',mode,times,entries,suggested:times[0],gap_minutes:5,reason:'结合已有任务分布安排，好友之间至少间隔 5 分钟。',timezone:'Asia/Shanghai'});
+    return Promise.resolve({status:'ready',mode,times,entries,suggested:times[0],gap_minutes:5,reason:'已为每位好友安排发送时间。',timezone:'Asia/Shanghai'});
   }
   if (path==='/tasks/preview' && options.method==='POST') {
     const body=JSON.parse(options.body||'{}'); const targets=Array.isArray(body.targets)?body.targets:[];
     const preferred=body.time||'14:10'; const [hour,minute]=preferred.split(':').map(Number);
     const times=targets.map((_,index)=>{const total=(hour*60+minute+index*7)%1440;return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`});
     const entries=times.map((time,index)=>({index,time,next_run_at:new Date(Date.now()+86400000+index*420000).toISOString(),day_offset:1}));
-    return Promise.resolve({status:'ready',mode:body.mode||'manual',times,entries,targets,count:targets.length,gap_minutes:5,reason:'根据已有任务安排错峰，好友之间至少间隔 5 分钟。'});
+    return Promise.resolve({status:'ready',mode:body.mode||'auto',times,entries,targets,count:targets.length,gap_minutes:5,reason:'已为每位好友安排发送时间。'});
   }
   if (path==='/api/studio/tasks'&&options.method==='POST') {
     const body=JSON.parse(options.body||'{}');
@@ -747,7 +747,6 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const accounts=asList(data?.accounts); const membership=data?.membership||{};
   const [composerStep,setComposerStep]=useState(1);
   const [accountId,setAccountId]=useState(accounts[0]?.id||'');
-  const [scheduleMode,setScheduleMode]=useState('auto'); const [manualTime,setManualTime]=useState('');
   const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState('');
   const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false);
   const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [notice,setNotice]=useState(''); const [successToast,setSuccessToast]=useState('');
@@ -768,12 +767,12 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const [schedule,setSchedule]=useState(()=>composer.getState());
   useEffect(()=>{const unsubscribe=composer.subscribe(setSchedule);return()=>{unsubscribe();composer.close()}},[composer]);
   const selectedTargets=useMemo(()=>friends.map(friend=>({name:friend.name,sec_uid:friend.sec_uid||''})),[friends]);
-  useEffect(()=>{composer.configure({accountId,count:Math.max(1,friends.length),targets:selectedTargets,csrf:data.csrf,mode:scheduleMode,preferred:scheduleMode==='manual'?manualTime:''})},[composer,accountId,selectedTargets,scheduleMode,manualTime,data.csrf]);
+  useEffect(()=>{composer.configure({accountId,count:Math.max(1,friends.length),targets:selectedTargets,csrf:data.csrf,mode:'auto',preferred:''})},[composer,accountId,selectedTargets,data.csrf]);
   useEffect(()=>{if(!accountId&&accounts[0]?.id)setAccountId(accounts[0].id)},[accountId,accounts[0]?.id]);
   useEffect(()=>{
     if(schedule.success){successRef.current?.focus({preventScroll:true});successRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'})}
   },[schedule.success]);
-  const saving=schedule.creating; const time=scheduleMode==='manual'?manualTime:schedule.plan?.times?.[0]||'';
+  const saving=schedule.creating;
   const tasks=taskRows;
   useEffect(()=>{
     const trigger=document.querySelector('.friend-trigger');
@@ -834,14 +833,13 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
         {composerStep===2&&<><label>目标好友<div className="friend-trigger" onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((friend,index)=><span key={friend?.sec_uid||friend?.name||index} className="selected-chip">{displayName(friend?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="composer-step-hint">可选择多位好友，下一步会显示每位好友的具体发送时间。已有任务的好友会自动标记。</div></>}
         {composerStep===3&&<>
           <div className="composer-summary"><span>发送账号</span><b>{displayName(account?.name,'—')}</b><span>目标好友</span><b>{scheduledFriends.length?`${scheduledFriends.length} 位好友`:'—'}</b></div>
-          <fieldset className="schedule-mode" disabled={saving}><legend>时间安排</legend><label><input type="radio" name="schedule-mode" checked={scheduleMode==='auto'} onChange={()=>setScheduleMode('auto')}/><span><b>自动推荐</b><small>根据服务器已有任务，安排较空闲的时段</small></span></label><label><input type="radio" name="schedule-mode" checked={scheduleMode==='manual'} onChange={()=>{setManualTime(previous=>previous||schedule.plan?.times?.[0]||'');setScheduleMode('manual')}}/><span><b>自己选择</b><small>保留首位好友时间，其余好友自动错峰</small></span></label></fieldset>
-          <div className="form-grid"><label>{scheduleMode==='auto'?'推荐首位好友时间':'首位好友每日发送时间'}<input className="input" type="time" aria-label="每日发送时间" value={time} disabled={saving} onChange={event=>{setManualTime(event.target.value);setScheduleMode('manual')}}/></label><label>消息类型<Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label></div>
+          <label>消息类型<Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label>
           <section className="schedule-preview" aria-label="好友发送时间安排" aria-busy={schedule.status==='loading'}>
             <div className="schedule-preview-head"><h3>每位好友的每日发送时间</h3><small>北京时间</small></div>
-            {schedule.status==='loading'&&<p role="status">正在结合已有任务安排发送时间…</p>}
+            {schedule.status==='loading'&&<p role="status">正在安排发送时间…</p>}
             {schedule.error&&<div className="inline-feedback danger-text" role="alert"><p>{schedule.error}</p><Button variant="quiet" type="button" disabled={saving} onClick={()=>composer.retry()}>重新获取时间安排</Button></div>}
             {schedule.conflict&&<div className="inline-feedback schedule-conflict" role="alert"><b>请核对新的时间安排</b><p>{schedule.conflict}</p></div>}
-            {ready&&<><p className="schedule-reason">{scheduleMode==='auto'?'优先安排未来较空闲的时段。':'首位好友使用你选择的时间。'}{scheduledFriends.length>1?'同一账号的好友至少间隔 5 分钟，后续时间会根据已有任务自动错开；创建前请核对下方安排。':'创建后每天按此时间执行。'}</p>{scheduledFriends.length<friends.length&&<p className="schedule-reason">已合并重复选择的好友，按 {scheduledFriends.length} 位好友创建任务。</p>}<ul className="schedule-friend-list">{scheduledFriends.map((friend,index)=>{const entry=schedule.plan.entries[index];const offset=(firstMinutes(entry.time)-firstMinutes(schedule.plan.times[0])+1440)%1440;return <li key={friend.sec_uid||friend.name||index}><span className="schedule-friend-name">{displayName(friend.name,'未命名好友')}</span><time>{entry.time}</time><small className="schedule-offset">{index?`＋${offset} 分钟`:'首位好友'}</small><small className="schedule-first-run">首次：{scheduleFirstRunLabel(entry)}</small></li>})}</ul></>}
+            {ready&&<><p className="schedule-reason">{scheduledFriends.length>1?'已为每位好友自动错开发送时间，请确认下方安排。':'创建后每天按此时间发送。'}</p>{scheduledFriends.length<friends.length&&<p className="schedule-reason">已合并重复选择的好友，按 {scheduledFriends.length} 位好友创建任务。</p>}<ul className="schedule-friend-list">{scheduledFriends.map((friend,index)=>{const entry=schedule.plan.entries[index];const offset=(firstMinutes(entry.time)-firstMinutes(schedule.plan.times[0])+1440)%1440;return <li key={friend.sec_uid||friend.name||index}><span className="schedule-friend-name">{displayName(friend.name,'未命名好友')}</span><time>{entry.time}</time><small className="schedule-offset">{index?`较首位晚 ${offset} 分钟`:'首位好友'}</small><small className="schedule-first-run">首次：{scheduleFirstRunLabel(entry)}</small></li>})}</ul></>}
           </section>
           {kind==='text'&&<label>发送内容<textarea className="input textarea" maxLength="300" disabled={saving} value={message} onChange={event=>setMessage(event.target.value)} placeholder="写一句日常问候"/></label>}
           <div className="message-preview"><span className="preview-mark">✦</span><div><b>{kind==='text'?'自定义文字消息':'续火花表情'}</b><small>{kind==='text'?'按以上时间发送你填写的内容。':'每天按以上时间，给选中的好友发送续火花表情。'}</small></div></div>
