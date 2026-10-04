@@ -670,15 +670,17 @@ function FriendCard({task: t, last, state, onEdit}) {
 }
 
 function ContactPicker({open,onClose,account,data,onDone}) {
-  const [items,setItems]=useState([]); const [query,setQuery]=useState(''); const [loading,setLoading]=useState(false); const [loadError,setLoadError]=useState(''); const [retryToken,setRetryToken]=useState(0); const [selected,setSelected]=useState(new Set());
+  const [items,setItems]=useState([]); const [query,setQuery]=useState(''); const [loading,setLoading]=useState(false); const [loadingMore,setLoadingMore]=useState(false); const [hasMore,setHasMore]=useState(false); const [nextOffset,setNextOffset]=useState(0); const [loadError,setLoadError]=useState(''); const [retryToken,setRetryToken]=useState(0); const [selected,setSelected]=useState(new Set());
   useEffect(()=>{
     if(!open||!account?.id)return;
     let cancelled=false;
     const controller=typeof AbortController==='function'?new AbortController():null;
     setLoading(true);setLoadError('');setItems([]);setSelected(new Set());
-    api(`/accounts/${account.id}/conversations`,controller?{signal:controller.signal}:{}).then(value=>{
+    api(`/accounts/${account.id}/conversations?offset=0&limit=100`,controller?{signal:controller.signal}:{}).then(value=>{
       if(cancelled)return;
       setItems(asList(value?.items));
+      setHasMore(Boolean(value?.has_more));
+      setNextOffset(Number(value?.next_offset ?? value?.items?.length ?? 0));
     }).catch(error=>{
       if(cancelled||error?.name==='AbortError')return;
       setLoadError(error?.message||'好友同步失败，请重试');
@@ -687,8 +689,20 @@ function ContactPicker({open,onClose,account,data,onDone}) {
   },[open,account?.id,retryToken]);
   useEffect(()=>{if(open)setSelected(new Set())},[open]);
   useEffect(()=>{if(open)document.querySelector('.search-input')?.setAttribute('aria-label','搜索已同步好友')},[open]);
+  const loadMore=async()=>{
+    if(loadingMore||!hasMore||!account?.id)return;
+    setLoadingMore(true);setLoadError('');
+    try{
+      const value=await api(`/accounts/${account.id}/conversations?offset=${nextOffset}&limit=100`);
+      const incoming=asList(value?.items);
+      setItems(current=>{const merged=new Map(current.map(item=>[item?.sec_uid||item?.name,item]));incoming.forEach(item=>{const key=item?.sec_uid||item?.name;if(key&&!merged.has(key))merged.set(key,item)});return [...merged.values()]});
+      setHasMore(Boolean(value?.has_more));
+      setNextOffset(Number(value?.next_offset ?? (nextOffset+incoming.length)));
+    }catch(error){setLoadError(error?.message||'加载更多好友失败，请重试')}
+    finally{setLoadingMore(false)}
+  };
   const existing=new Set(asList(data?.tasks).filter(t=>t?.accountId===account?.id).map(t=>t?.sec_uid||t?.name)); const visible=items.filter(i=>[i?.name,i?.nickname,i?.remark_name,i?.unique_id,i?.short_id].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()));
-  return <Drawer open={open} onClose={onClose} title="选择目标好友" eyebrow="SELECT CONNECTIONS" wide><div className="drawer-content"><input className="input search-input" autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="输入昵称或备注，搜索已同步会话"/><div className="drawer-tools"><span>{selected.size} 人已选</span><button type="button" onClick={()=>setSelected(new Set(visible.filter(i=>!existing.has(i?.sec_uid||i?.name)).map(i=>i?.sec_uid||i?.name).filter(Boolean)))} disabled={loading||Boolean(loadError)}>全选当前结果</button><button type="button" onClick={()=>setSelected(new Set())} disabled={loading||Boolean(loadError)}>清空</button></div>{loading?<div className="skeleton-stack"><div/><div/><div/></div>:loadError?<div className="picker-error" role="alert"><strong>好友同步失败</strong><p>{loadError}</p><div className="row-actions"><Button type="button" onClick={()=>setRetryToken(value=>value+1)}>重新同步</Button><Link className="button quiet" to="/accounts" onClick={onClose}>返回账号页同步</Link></div></div>:<div className="contact-list">{visible.map((item,i)=>{const id=item?.sec_uid||item?.name||`contact-${i}`;const name=displayName(item?.name,'未命名好友');const disabled=existing.has(id);return <label className={`contact-row ${disabled?'disabled':''}`} key={id}><input type="checkbox" disabled={disabled} checked={selected.has(id)} onChange={e=>setSelected(s=>{const n=new Set(s);e.target.checked?n.add(id):n.delete(id);return n})}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':item?.remark_name||item?.nickname||'已同步会话'}</small></span><span>{selected.has(id)?'✓':''}</span></label>})}</div>}{!loading&&!loadError&&!visible.length&&<Empty title="没有匹配的已同步会话" text="好友搜索只覆盖已同步的最近会话，请先在账号页同步。"/>}</div><footer className="drawer-foot"><span>{selected.size} 位好友</span><Button disabled={loading||Boolean(loadError)||!selected.size} onClick={()=>{onDone([...selected].map(id=>items.find(i=>(i?.sec_uid||i?.name)===id)).filter(Boolean));onClose()}}>完成选择 ↗</Button></footer></Drawer>;
+  return <Drawer open={open} onClose={onClose} title="选择目标好友" eyebrow="SELECT CONNECTIONS" wide><div className="drawer-content"><input className="input search-input" autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="输入昵称或备注，搜索已同步会话"/><div className="drawer-tools"><span>{selected.size} 人已选</span><button type="button" onClick={()=>setSelected(new Set(visible.filter(i=>!existing.has(i?.sec_uid||i?.name)).map(i=>i?.sec_uid||i?.name).filter(Boolean)))} disabled={loading||loadingMore||Boolean(loadError)}>全选当前结果</button><button type="button" onClick={()=>setSelected(new Set())} disabled={loading||loadingMore||Boolean(loadError)}>清空</button></div>{loading?<div className="skeleton-stack"><div/><div/><div/></div>:loadError?<div className="picker-error" role="alert"><strong>好友同步失败</strong><p>{loadError}</p><div className="row-actions"><Button type="button" onClick={()=>setRetryToken(value=>value+1)}>重新同步</Button><Link className="button quiet" to="/accounts" onClick={onClose}>返回账号页同步</Link></div></div>:<><div className="contact-list">{visible.map((item,i)=>{const id=item?.sec_uid||item?.name||`contact-${i}`;const name=displayName(item?.name,'未命名好友');const disabled=existing.has(id);return <label className={`contact-row ${disabled?'disabled':''}`} key={id}><input type="checkbox" disabled={disabled} checked={selected.has(id)} onChange={e=>setSelected(s=>{const n=new Set(s);e.target.checked?n.add(id):n.delete(id);return n})}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':item?.remark_name||item?.nickname||'已同步会话'}</small></span><span>{selected.has(id)?'✓':''}</span></label>})}</div>{hasMore&&<div className="picker-load-more"><Button type="button" variant="quiet" disabled={loadingMore} onClick={loadMore}>{loadingMore?'正在加载更多…':'加载更多好友'}</Button><small>已加载 {items.length} 位</small></div>}</>}{!loading&&!loadError&&!visible.length&&<Empty title="没有匹配的已同步会话" text="好友搜索只覆盖已同步的最近会话，请先在账号页同步。"/>}</div><footer className="drawer-foot"><span>{selected.size} 位好友</span><Button disabled={loading||loadingMore||Boolean(loadError)||!selected.size} onClick={()=>{onDone([...selected].map(id=>items.find(i=>(i?.sec_uid||i?.name)===id)).filter(Boolean));onClose()}}>完成选择 ↗</Button></footer></Drawer>;
 }
 
 function Studio({data,onRefresh,preEditId,onEditClose}) {

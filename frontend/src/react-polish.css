@@ -412,6 +412,8 @@ html[data-theme="light"] .next-card { background: #2c2926; }
 .bell-icon { width: 20px; height: 20px; display:block; }
 .single-simple-grid { grid-template-columns: minmax(0,1fr); max-width: 860px; }
 .redeem-form { display:grid; gap:12px; max-width:520px; margin-top:20px; }
+.picker-load-more { display:grid; justify-items:center; gap:7px; padding:14px 0 4px; }
+.picker-load-more small { color:var(--muted); font-size:10px; }
 .redeem-form .redemption-input { color:#fffaf5; background:rgba(255,255,255,.1); border-color:rgba(255,219,198,.28); font-weight:500; letter-spacing:.035em; }
 .redeem-form .redemption-input::placeholder { color:rgba(255,225,207,.62); letter-spacing:0; }
 html[data-theme="light"] .redeem-form .redemption-input { color:#1a1c1f; background:#fff; border-color:rgba(30,32,35,.28); }

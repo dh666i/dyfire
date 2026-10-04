@@ -125,6 +125,29 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(100, len(body["items"]))
         self.assertTrue(body["has_more"])
 
+        second = self.client.get(
+            f"/accounts/{self.account}/conversations?offset=100&limit=100"
+        )
+        self.assertEqual(200, second.status_code)
+        second_body = second.json()
+        self.assertEqual(100, second_body["offset"])
+        self.assertEqual(100, len(second_body["items"]))
+        self.assertTrue(second_body["has_more"])
+        self.assertTrue(
+            {item["name"] for item in body["items"]}.isdisjoint(
+                {item["name"] for item in second_body["items"]}
+            )
+        )
+
+        third = self.client.get(
+            f"/accounts/{self.account}/conversations?offset=200&limit=100"
+        )
+        self.assertEqual(200, third.status_code)
+        third_body = third.json()
+        self.assertEqual(50, len(third_body["items"]))
+        self.assertFalse(third_body["has_more"])
+        self.assertEqual(250, third_body["next_offset"])
+
     def test_inconclusive_search_does_not_block_healthy_account(self):
         from core.session_health import SessionEvidence, SessionUnavailable
         with session_scope(self.engine) as db:

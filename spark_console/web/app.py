@@ -897,7 +897,12 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         return RedirectResponse("/accounts", status_code=303)
 
     @app.get("/accounts/{account_id}/conversations")
-    def account_conversations(request: Request, account_id: str):
+    def account_conversations(
+        request: Request,
+        account_id: str,
+        offset: int = Query(default=0, ge=0, le=1_000_000),
+        limit: int = Query(default=ACCOUNT_CONVERSATION_PAGE_SIZE, ge=1, le=ACCOUNT_CONVERSATION_PAGE_SIZE),
+    ):
         with session_scope(engine) as db:
             user, _record = auth.current(request, db)
             service = AccountService(db, cipher, AuditService(db))
@@ -909,13 +914,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 select(DouyinConversation.display_name)
                 .where(DouyinConversation.account_id == account_id)
                 .order_by(DouyinConversation.display_name)
-                .limit(ACCOUNT_CONVERSATION_PAGE_SIZE)
             ).all()
             contacts = db.scalars(
                 select(DouyinContactIdentity)
                 .where(DouyinContactIdentity.account_id == account_id)
                 .order_by(DouyinContactIdentity.discovered_at.desc(), DouyinContactIdentity.sec_uid)
-                .limit(ACCOUNT_CONVERSATION_PAGE_SIZE)
             ).all()
             contact_ids = [contact.sec_uid for contact in contacts]
             avatars = {
@@ -983,13 +986,13 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             active = db.scalar(select(ContactDirectoryJob).where(ContactDirectoryJob.account_id == account_id,
                 ContactDirectoryJob.status.in_(['queued', 'running'])).order_by(ContactDirectoryJob.created_at.desc()).limit(1))
             sorted_items = sorted(items, key=lambda item: item["name"])
-            # Keep the historical `items` field intact while exposing enough
-            # metadata for a future paged picker to request more contacts.
-            return JSONResponse({"items": sorted_items[:ACCOUNT_CONVERSATION_PAGE_SIZE],
-                "has_more": len(sorted_items) > ACCOUNT_CONVERSATION_PAGE_SIZE
-                    or contact_count > len(contacts)
-                    or conversation_count > len(conversation_names),
-                "limit": ACCOUNT_CONVERSATION_PAGE_SIZE,
+            page = sorted_items[offset:offset + limit]
+            next_offset = offset + len(page)
+            return JSONResponse({"items": page,
+                "offset": offset,
+                "limit": limit,
+                "next_offset": next_offset,
+                "has_more": next_offset < len(sorted_items),
                 "sync": job_view(latest) if latest else None,
                 "active_sync": job_view(active) if active else None}, headers={"Cache-Control": "no-store"})
 
