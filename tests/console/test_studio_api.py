@@ -266,6 +266,23 @@ def test_preview_create_agree_and_return_new_items_without_refresh(site, monkeyp
     assert body['count']==2 and all(item['enabled'] for item in body['items'])
 
 
+def test_automatic_preview_does_not_require_a_user_time(site):
+    client, (owned, _) = site
+    state = client.get('/api/studio').json()
+    preview = client.post('/tasks/preview', json={
+        'csrf_token': state['csrf'],
+        'account_id': owned,
+        'targets': [{'name': '自动安排好友'}],
+        'mode': 'auto',
+        'time': '',
+    })
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body['mode'] == 'auto'
+    assert body['status'] == 'ready'
+    assert len(body['times']) == 1
+
+
 def test_changed_load_rejects_preview_atomically_and_returns_updated_plan(site):
     from spark_console.models import SparkTask
     client,(owned,foreign)=site
