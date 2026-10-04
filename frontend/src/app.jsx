@@ -694,7 +694,7 @@ function FriendCard({task: t, last, state, onEdit}) {
   );
 }
 
-function ContactPicker({open,onClose,account,data,onDone}) {
+function ContactPicker({open,onClose,account,data,onDone,releasedKeys=new Set()}) {
   const controllerRef=useRef(null);
   if(!controllerRef.current)controllerRef.current=createContactPickerController({request:api});
   const controller=controllerRef.current;
@@ -709,6 +709,7 @@ function ContactPicker({open,onClose,account,data,onDone}) {
   },[open,account?.id,controller,data?.csrf]);
   const {items,selected,loading,busy,error,page}=state;
   const existing=new Set(asList(data?.tasks).filter(t=>t?.accountId===account?.id).map(contactKey));
+  releasedKeys.forEach(key=>existing.delete(key));
   const visible=items.filter(i=>[i?.name,i?.nickname,i?.remark_name,i?.unique_id,i?.short_id].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()));
   const actionLabel=busy==='page'?'正在加载更多…':busy==='sync'?'正在同步好友…':page.dbHasMore?'加载更多好友':page.activeSync?'继续同步好友':page.canSyncMore?'同步更多好友':'重新同步好友';
   const coverageLabel=page.dbHasMore?`已显示 ${items.length} / ${page.total} 位已同步好友`:`已显示 ${items.length} 位已同步好友`;
@@ -755,10 +756,17 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const [taskPage,setTaskPage]=useState(()=>data?.tasks_pagination?.page||1);
   const [taskPagination,setTaskPagination]=useState(()=>data?.tasks_pagination||null);
   const [loadingMoreTasks,setLoadingMoreTasks]=useState(false); const [createdPending,setCreatedPending]=useState(0);
+  const [releasedKeys,setReleasedKeys]=useState(()=>new Set());
   const refreshRef=useRef(onRefresh); refreshRef.current=onRefresh;
   const successRef=useRef(null);
   const composer=useMemo(()=>createTaskComposerController({request:api, refresh:()=>refreshRef.current?.(), onCreated:value=>{
     const added=asList(value?.items);
+    setReleasedKeys(keys=>{
+      if(!keys.size)return keys;
+      const next=new Set(keys);
+      added.forEach(item=>next.delete(contactKey(item)));
+      return next;
+    });
     setTaskRows(rows=>mergeTaskRows(rows,added));
     setTaskPagination(page=>page?{...page,total:page.total+added.length}:page);
     setCreatedPending(count=>count+added.length);
@@ -796,6 +804,24 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const account=accounts.find(a=>a?.id===accountId);
   const shown=tasks.filter(t=>(filter==='all'||(filter==='active'?t?.enabled:!t?.enabled))&&(!search||displayName(t?.name,'').toLowerCase().includes(search.toLowerCase())));
   const closeEdit=()=>{setEditTask(null);onEditClose?.()};
+  const deleteTask=async task=>{
+    if(!task?.id)return;
+    const name=displayName(task.name,'未命名好友');
+    if(!await confirmModal({title:'删除续火任务',eyebrow:'TASK WORKBENCH',message:`确定删除发给 ${name} 的任务吗？删除后可重新选择该好友。`,confirmLabel:'确认删除'}))return;
+    try {
+      await api(`/api/studio/tasks/${task.id}`,{method:'DELETE',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf||''}});
+      setTaskRows(rows=>rows.filter(item=>item?.id!==task.id));
+      setTaskPagination(page=>page?{...page,total:Math.max(0,(page.total??1)-1)}:page);
+      setReleasedKeys(keys=>{
+        const next=new Set(keys);
+        [task?.sec_uid,task?.name].filter(Boolean).forEach(key=>next.add(key));
+        return next;
+      });
+      setEditTask(current=>current?.id===task.id?null:current);
+      setNotice(`已删除 ${name} 的续火任务，现在可以重新选择该好友。`);
+      await onRefresh?.();
+    } catch(error) { setNotice(error.message); }
+  };
   const createTask=async()=>{
     if(!friends.length)return setNotice('请选择一个或多个好友');
     if(!account)return setNotice('请选择发送账号');
@@ -824,7 +850,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     </section>}
     <div className="studio-layout"><section className="studio-list">
       <div className="toolbar"><RubberSegment className="admin-segment" items={[{value:'all',label:`全部 ${taskPagination?.total??tasks.length}`},{value:'active',label:`运行中 ${enabledTotal}`},{value:'paused',label:`已暂停 ${pausedTotal}`}]} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="任务筛选"/><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>
-      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');return <div className="task-row" key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>setEditTask(task)}>编辑</Button><Button variant="quiet" onClick={async()=>{try{await api(`/api/studio/tasks/${task?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!task?.enabled})});await onRefresh()}catch(error){setNotice(error.message)}}}>{task?.enabled?'暂停':'恢复'}</Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
+      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');return <div className="task-row" key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>setEditTask(task)}>编辑</Button><Button variant="quiet" onClick={async()=>{try{await api(`/api/studio/tasks/${task?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!task?.enabled})});await onRefresh()}catch(error){setNotice(error.message)}}}>{task?.enabled?'暂停':'恢复'}</Button><Button variant="danger" onClick={()=>deleteTask(task)}>删除</Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
       {taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}
     </section><Card className="composer-card" id="task-composer">
       <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">0{composerStep}</span></div>
@@ -851,7 +877,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
         {!membership.can_add_task&&<small className="muted">当前订阅不可创建新任务，请先查看订阅。</small>}
       </form>
     </Card></div>
-    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh}/><Toast message={successToast} onClose={closeSuccessToast}/>
+    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} releasedKeys={releasedKeys} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh}/><Toast message={successToast} onClose={closeSuccessToast}/>
   </>;
 }
 

@@ -58,6 +58,58 @@ def test_create_owned_and_idempotent_enabled(site):
     assert client.get('/api/studio/runs?status=bogus').status_code==400
 
 
+def test_delete_task_releases_friend_for_selection_and_recreation(site):
+    client, (owned, _) = site
+    state = client.get('/api/studio').json()
+    headers = {'X-CSRF-Token': state['csrf']}
+    payload = {
+        'account_id': owned,
+        'targets': [{'name': '可重新选择的好友'}],
+        'send_time': '09:30',
+    }
+    created = client.post('/api/studio/tasks', json=payload, headers=headers)
+    assert created.status_code == 200, created.text
+    task_id = created.json()['ids'][0]
+
+    deleted = client.request(
+        'DELETE',
+        f'/api/studio/tasks/{task_id}',
+        headers=headers,
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json() == {'deleted': True, 'id': task_id}
+    assert client.get('/api/studio').json()['tasks'] == []
+
+    recreated = client.post('/api/studio/tasks', json=payload, headers=headers)
+    assert recreated.status_code == 200, recreated.text
+    assert recreated.json()['count'] == 1
+
+
+def test_delete_running_task_is_rejected_by_studio_api(site):
+    from spark_console.models import TaskRun
+
+    client, (owned, _) = site
+    state = client.get('/api/studio').json()
+    headers = {'X-CSRF-Token': state['csrf']}
+    created = client.post('/api/studio/tasks', json={
+        'account_id': owned,
+        'targets': [{'name': '执行中的好友'}],
+        'send_time': '09:30',
+    }, headers=headers)
+    task_id = created.json()['ids'][0]
+    with session_scope(client.app.state.engine) as db:
+        db.add(TaskRun(task_id=task_id, scheduled_for=datetime.now(timezone.utc), status='running', stage='sending'))
+
+    deleted = client.request(
+        'DELETE',
+        f'/api/studio/tasks/{task_id}',
+        headers=headers,
+    )
+    assert deleted.status_code == 409
+    assert '正在执行' in deleted.json()['detail']
+    assert client.get('/api/studio').json()['tasks'][0]['id'] == task_id
+
+
 def test_paused_tasks_do_not_consume_capacity_and_resume_checks_it(site):
     client,(owned,_)=site
     state=client.get('/api/studio').json()

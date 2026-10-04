@@ -218,6 +218,30 @@ def build_studio_router(engine, auth, cipher):
                 raise HTTPException(409, str(error))
         return {'saved': True}
 
+    @router.delete('/api/studio/tasks/{task_id}')
+    def delete(task_id: str, request: Request):
+        with session_scope(engine) as db:
+            user, record = auth.current(request, db)
+            auth.csrf(record, request.headers.get('X-CSRF-Token', ''))
+            audit = AuditService(db)
+            task = db.scalar(
+                select(SparkTask).where(
+                    SparkTask.id == task_id,
+                    SparkTask.owner_user_id == user.id,
+                )
+            )
+            if task is None:
+                raise HTTPException(404, '任务不存在')
+            try:
+                TaskService(
+                    db, AccountService(db, cipher, audit), audit
+                ).delete_owned(user.id, task_id)
+            except Conflict as error:
+                raise HTTPException(409, str(error))
+            except NotFound:
+                raise HTTPException(404, '任务不存在')
+        return {'deleted': True, 'id': task_id}
+
     @router.get('/api/studio/runs')
     def runs(request: Request, page: int = Query(1,ge=1), q: str = Query('',max_length=100), status: str = ''):
         from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
