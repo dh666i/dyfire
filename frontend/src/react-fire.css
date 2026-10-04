@@ -255,7 +255,6 @@ body::before { opacity:.035; background-image:linear-gradient(rgba(255,255,255,.
 .schedule-preview-head h3 { margin:0; font-size:12px; font-weight:500; }
 .schedule-preview-head small { color:var(--muted); font:10px var(--mono); }
 .schedule-preview > p { margin:0; font-size:10px; color:var(--ink-soft); line-height:1.65; }
-.field-hint { color:var(--muted); font-size:10px; line-height:1.5; }
 .schedule-reason { color:var(--muted) !important; }
 .schedule-friend-list { display:grid; gap:0; margin:0; padding:0; list-style:none; }
 .schedule-friend-list li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:5px 10px; align-items:center; padding:8px 0; border-top:1px solid var(--hairline); font-size:11px; }
@@ -300,6 +299,18 @@ html[data-theme="light"] .fire-select-option[aria-selected=true] { color:#b94c20
 .task-row:hover { background:rgba(255,107,37,.05); }
 .task-row > .row-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; min-width:0; }
 .task-row > .row-actions .button { min-width:0; }
+.task-row > .row-actions .icon-action {
+  width:34px;
+  height:34px;
+  min-height:34px;
+  flex:0 0 34px;
+  padding:0;
+  border-radius:9px;
+  display:inline-grid;
+  place-items:center;
+}
+.task-row > .row-actions .icon-action svg { width:16px; height:16px; display:block; }
+.task-row > .row-actions .icon-action:focus-visible { outline:2px solid var(--orange); outline-offset:2px; }
 .composer-card { background:linear-gradient(145deg,rgba(39,25,31,.98),rgba(20,14,18,.98)); }
 .composer-steps, .composer-summary, .schedule-preview, .message-preview, .edit-target { border-radius:12px; }
 .composer-steps { overflow:hidden; }
@@ -353,7 +364,7 @@ html[data-theme="light"] .fire-select-option[aria-selected=true] { color:#b94c20
   .main-inner { padding:18px 14px calc(94px + env(safe-area-inset-bottom)); }.page-header { padding-top:5px; }.page-header h1 { font-size:clamp(31px,9vw,40px); }
   .dashboard-mosaic { gap:9px; }.mosaic-health,.mosaic-tasks,.mosaic-runs { padding:18px; }.mosaic-hero { min-height:340px; }.mosaic-actions { flex-wrap:wrap; }
   .mosaic-actions .button { flex:1 1 130px; min-width:0; }.studio-layout { gap:13px; }.toolbar { display:grid; align-items:stretch; }.segmented { overflow:auto; }.compact-search { max-width:none; }
-  .task-row { min-height:64px; padding:12px 0; }.task-row > .row-actions { padding-top:9px; }.drawer-backdrop { align-items:flex-end; }.drawer,.drawer-wide { width:100%; height:min(88dvh,720px); border-left:0; border-top:1px solid var(--hairline); border-radius:20px 20px 0 0; }
+  .task-row { min-height:64px; padding:12px 0; }.task-row > .row-actions { padding-top:9px; }.task-row > .row-actions .icon-action { width:34px; height:34px; flex-basis:34px; }.drawer-backdrop { align-items:flex-end; }.drawer,.drawer-wide { width:100%; height:min(88dvh,720px); border-left:0; border-top:1px solid var(--hairline); border-radius:20px 20px 0 0; }
   /* Centered drawer (task edit) stays centered on mobile, compact */
   .drawer-backdrop.drawer-centered-backdrop { align-items:center; }.drawer.drawer-centered { width:calc(100vw - 32px); max-width:calc(100vw - 32px); height:auto; max-height:min(82dvh,560px); border-radius:20px; border-top:0; }
   /* Home toolbar: keep compact on mobile */
@@ -701,4 +712,69 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
   .drawer-foot { padding:12px 18px calc(12px + env(safe-area-inset-bottom)); }
   html[data-theme="light"] .drawer, html[data-theme="light"] .drawer.drawer-wide, html[data-theme="light"] .drawer.drawer-centered { border-top-color:rgba(48,39,35,.14); }
   html[data-theme="light"] .drawer-head::before { background:rgba(48,39,35,.24); }
+}
+
+/* Final visual consistency pass. Keep legacy workspace primitives inside the
+   same rounded, compact language as the fire console. */
+.button,
+.card,
+.status-banner,
+.input,
+.friend-trigger,
+.task-table,
+.admin-table,
+.update-version-grid > div,
+.update-progress,
+.update-rollback,
+.admin-bulk-bar,
+.mfa-recovery-status,
+.mfa-recovery-issued,
+.onboarding-step,
+.today-board-account {
+  border-radius: 12px;
+}
+.task-table,
+.admin-table:not(.redemption-table) { overflow: hidden; }
+.table-head { background: rgba(255,255,255,.018); }
+.task-row,
+.admin-row { min-width: 0; }
+.row-actions { align-items: center; min-width: 0; }
+.row-actions .button { flex: 0 0 auto; }
+.composer-card .form-grid { align-items: start; }
+.composer-card .form-grid > label { min-width: 0; }
+.composer-card .form-grid > label > .input,
+.composer-card .form-grid > label > select { min-width: 0; }
+.setting-actions { align-items: center; }
+.update-version-grid { align-items: stretch; }
+.update-version-grid > div { min-width: 0; }
+.quick-links a { min-height: 42px; display: flex; align-items: center; }
+.workspace-section-card { overflow: hidden; }
+.workspace-section-card .admin-row { min-width: 0; }
+.composer-steps button.active,
+.admin-subview-tabs,
+.admin-subview-tabs button.active,
+.verification-panel,
+.picker-error,
+.contact-picker-error { border-radius: 10px; }
+
+@media (max-width: 700px) {
+  .card { border-radius: 14px; }
+  .task-table,
+  .admin-table:not(.redemption-table) { border-radius: 12px; }
+  .task-table { overflow: visible; }
+  .admin-table:not(.redemption-table) { overflow: visible; }
+  .table-head { border-radius: 10px 10px 0 0; }
+  .task-row,
+  .admin-row { column-gap: 10px; }
+  .task-row > .row-actions { width: 100%; }
+  .mobile-dock {
+    border-radius: 16px;
+    padding: 6px 5px calc(6px + env(safe-area-inset-bottom));
+  }
+  .mobile-dock a { border-radius: 11px; }
+  .composer-card .form-grid { gap: 12px; }
+  .setting-actions { gap: 8px; }
+  .setting-actions .button { min-height: 40px; }
+  .update-version-grid > div { padding: 13px; }
+  .quick-links a { padding-inline: 10px; }
 }
