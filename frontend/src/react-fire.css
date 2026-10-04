@@ -578,6 +578,21 @@ html[data-theme="light"] .scan-progress-four .scan-progress-line.complete { back
 .picker-error p{margin:0;color:var(--muted);font-size:11px;line-height:1.6}
 .picker-error .row-actions{justify-content:center;flex-wrap:wrap}
 .picker-error .button{min-height:36px}
+.contact-picker-footer{display:grid;gap:10px}
+.contact-picker-coverage{display:grid;gap:5px;min-width:0}
+.contact-picker-coverage b{font-size:11px;font-weight:500;color:var(--ink-dark)}
+.contact-picker-coverage small{font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.contact-picker-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-width:0}
+.contact-picker-actions>span{margin-right:auto;font-size:11px;white-space:nowrap}
+.contact-picker-actions .button{min-width:0;white-space:normal;text-align:center}
+.contact-picker-error{display:flex;align-items:center;gap:8px;min-width:0;color:var(--red);font-size:11px;line-height:1.5}
+.contact-picker-error span{overflow-wrap:anywhere}
+.contact-picker-error button{flex-shrink:0;background:none;border:0;padding:4px;color:var(--orange-soft);font:inherit;cursor:pointer}
+@media(max-width:480px){
+  .contact-picker-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .contact-picker-actions>span{grid-column:1/-1;margin:0}
+  .contact-picker-actions .button{width:100%;min-height:42px;padding-left:10px;padding-right:10px;font-size:11px}
+}
 .scan-stage{position:relative;overflow:hidden}
 .scan-loading-overlay{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:9px;padding:24px;background:rgba(255,255,255,.86);color:#3d3531;transition:opacity .2s ease}
 .scan-stage.frame-ready .scan-loading-overlay{opacity:0;pointer-events:none}

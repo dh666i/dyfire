@@ -1,8 +1,9 @@
 import asyncio
+import json
 import unittest
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from spark_console.db import session_scope
 from spark_console.crypto import CookieCipher
 from spark_console.models import (User, DouyinAccount, DouyinAccountProfile, ContactDirectoryJob,
@@ -124,6 +125,7 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(100, body["limit"])
         self.assertEqual(100, len(body["items"]))
         self.assertTrue(body["has_more"])
+        self.assertEqual(250, body["total"])
 
         second = self.client.get(
             f"/accounts/{self.account}/conversations?offset=100&limit=100"
@@ -147,6 +149,108 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(50, len(third_body["items"]))
         self.assertFalse(third_body["has_more"])
         self.assertEqual(250, third_body["next_offset"])
+
+    def test_missing_sync_history_keeps_cached_directory_sync_available(self):
+        """Retained contacts must remain discoverable after job cleanup."""
+        for count, next_limit in ((0, 20), (8, 20), (18, 20), (20, 40),
+                                  (40, 60), (41, 60), (100, 100), (125, 100)):
+            with self.subTest(cached_contacts=count):
+                with session_scope(self.engine) as db:
+                    db.execute(delete(ContactDirectoryJob))
+                    db.execute(delete(DouyinContactIdentity))
+                    db.add_all(
+                        DouyinContactIdentity(account_id=self.account,
+                                              sec_uid=f"sec-{index}",
+                                              nickname=f"好友-{index:03d}")
+                        for index in range(count)
+                    )
+                response = self.client.get(f"/accounts/{self.account}/conversations")
+                self.assertEqual("no-store", response.headers["cache-control"])
+                body = response.json()
+                self.assertEqual(count, body["total"])
+                self.assertIsNone(body["sync"])
+                self.assertIsNone(body["sync_has_more"])
+                self.assertEqual(0, body["sync_limit"])
+                self.assertTrue(body["can_sync_more"])
+                self.assertEqual(next_limit, body["sync_next_limit"])
+                # In particular, counts such as 41 may never be passed as
+                # the job limit: the creation endpoint rejects them.
+                created = self.post(limit=body["sync_next_limit"])
+                self.assertEqual(202, created.status_code, created.text)
+
+    def test_successful_sync_controls_next_bound_and_exhaustion(self):
+        for requested_limit, has_more, next_limit in ((20, True, 40),
+                                                     (40, True, 60),
+                                                     (20, False, None),
+                                                     (100, True, None),
+                                                     (100, False, None)):
+            with self.subTest(limit=requested_limit, has_more=has_more):
+                with session_scope(self.engine) as db:
+                    db.execute(delete(ContactDirectoryJob))
+                    db.add(ContactDirectoryJob(
+                        account_id=self.account, owner_user_id=self.owner,
+                        limit=requested_limit, status="succeeded",
+                        finished_at=utc_now(),
+                        result_json=json.dumps({"items": [], "has_more": has_more}),
+                    ))
+                body = self.client.get(f"/accounts/{self.account}/conversations").json()
+                self.assertIs(has_more, body["sync_has_more"])
+                self.assertEqual(requested_limit, body["sync_limit"])
+                self.assertEqual(next_limit is not None, body["can_sync_more"])
+                self.assertEqual(next_limit, body["sync_next_limit"])
+
+    def test_successful_legacy_result_without_more_flag_is_unknown(self):
+        with session_scope(self.engine) as db:
+            db.add(ContactDirectoryJob(
+                account_id=self.account, owner_user_id=self.owner,
+                limit=20, status="succeeded", finished_at=utc_now(),
+                result_json=json.dumps({"items": []}),
+            ))
+        body = self.client.get(f"/accounts/{self.account}/conversations").json()
+        self.assertIsNone(body["sync_has_more"])
+        self.assertTrue(body["can_sync_more"])
+        self.assertEqual(40, body["sync_next_limit"])
+
+    def test_active_directory_sync_is_returned_for_resume(self):
+        for status in ("queued", "running"):
+            with self.subTest(status=status):
+                with session_scope(self.engine) as db:
+                    db.execute(delete(ContactDirectoryJob))
+                    job = ContactDirectoryJob(
+                        account_id=self.account, owner_user_id=self.owner,
+                        limit=40, status=status,
+                    )
+                    db.add(job)
+                    db.flush()
+                    job_id = job.id
+                body = self.client.get(f"/accounts/{self.account}/conversations").json()
+                self.assertEqual(job_id, body["active_sync"]["id"])
+                self.assertEqual(status, body["active_sync"]["status"])
+                self.assertEqual(40, body["active_sync"]["limit"])
+                self.assertFalse(body["can_sync_more"])
+                self.assertIsNone(body["sync_next_limit"])
+
+    def test_expired_active_job_does_not_block_more_sync(self):
+        with session_scope(self.engine) as db:
+            db.add_all(DouyinContactIdentity(account_id=self.account,
+                                           sec_uid=f"sec-{index}",
+                                           nickname=f"好友-{index:03d}")
+                       for index in range(41))
+            job = ContactDirectoryJob(
+                account_id=self.account, owner_user_id=self.owner,
+                limit=40, status="running",
+                created_at=utc_now() - timedelta(minutes=6),
+            )
+            db.add(job)
+            db.flush()
+            job_id = job.id
+        body = self.client.get(f"/accounts/{self.account}/conversations").json()
+        self.assertEqual(job_id, body["active_sync"]["id"])
+        self.assertEqual("failed", body["active_sync"]["status"])
+        self.assertTrue(body["can_sync_more"])
+        self.assertEqual(60, body["sync_next_limit"])
+        with session_scope(self.engine) as db:
+            self.assertEqual("running", db.get(ContactDirectoryJob, job_id).status)
 
     def test_inconclusive_search_does_not_block_healthy_account(self):
         from core.session_health import SessionEvidence, SessionUnavailable

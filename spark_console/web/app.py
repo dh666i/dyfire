@@ -988,13 +988,36 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             sorted_items = sorted(items, key=lambda item: item["name"])
             page = sorted_items[offset:offset + limit]
             next_offset = offset + len(page)
+            sync_view = job_view(latest) if latest else None
+            active_view = job_view(active) if active else None
+            # Successful jobs expire after seven days, but their cached
+            # contacts remain. No retained result therefore means unknown,
+            # rather than a directory that has been exhausted.
+            sync_has_more = (sync_view or {}).get("has_more")
+            sync_limit = int((sync_view or {}).get("limit") or 0)
+            sync_running = (active_view or {}).get("status") in ("queued", "running")
+            can_sync_more = not sync_running and (
+                sync_has_more is None or (sync_has_more is True and sync_limit < 100)
+            )
+            sync_next_limit = None
+            if can_sync_more:
+                known_limit = sync_limit if sync_has_more is True else max(sync_limit, len(sorted_items))
+                # Cached aliases need not total a multiple of 20. Only send
+                # a limit accepted by the directory-job endpoint, including
+                # one final 100-contact probe when completeness is unknown.
+                sync_next_limit = min(100, (max(known_limit, 0) // 20 + 1) * 20)
             return JSONResponse({"items": page,
                 "offset": offset,
                 "limit": limit,
                 "next_offset": next_offset,
+                "total": len(sorted_items),
                 "has_more": next_offset < len(sorted_items),
-                "sync": job_view(latest) if latest else None,
-                "active_sync": job_view(active) if active else None}, headers={"Cache-Control": "no-store"})
+                "sync_has_more": sync_has_more,
+                "sync_limit": sync_limit,
+                "can_sync_more": can_sync_more,
+                "sync_next_limit": sync_next_limit,
+                "sync": sync_view,
+                "active_sync": active_view}, headers={"Cache-Control": "no-store"})
 
     @app.get("/tasks")
     def tasks_page(request: Request):
