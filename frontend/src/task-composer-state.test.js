@@ -24,6 +24,38 @@ test('a stale preview cannot replace the current selection', async () => {
   controller.close();
 });
 
+test('automatic default keeps an empty anchor and an edited time switches to manual', async () => {
+  const requests = [];
+  const target = {name:'甲',sec_uid:'u1'};
+  const controller = createTaskComposerController({
+    debounceMs: 0,
+    request: async (url, options) => {
+      const body = options?.body ? JSON.parse(options.body) : null;
+      requests.push({url, body});
+      const time = body?.mode === 'manual' ? body.time : '14:10';
+      return {...plan([time]), targets:[target], mode:body?.mode || 'auto'};
+    },
+  });
+
+  controller.configure({accountId:'a', count:1, targets:[target], csrf:'c', mode:'auto', preferred:''});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/tasks/preview');
+  assert.equal(requests[0].body.mode, 'auto');
+  assert.equal(requests[0].body.time, '');
+  assert.equal(controller.getState().plan.times[0], '14:10');
+
+  // Editing the pre-filled time must send the chosen anchor to the server;
+  // the server can then place later friends around that anchor.
+  controller.configure({accountId:'a', count:1, targets:[target], csrf:'c', mode:'manual', preferred:'18:20'});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].body.mode, 'manual');
+  assert.equal(requests[1].body.time, '18:20');
+  assert.equal(controller.getState().plan.times[0], '18:20');
+  controller.close();
+});
+
 test('creation sends preview times and does not retry when refresh fails', async () => {
   let post; let refreshes=0;
   const controller=createTaskComposerController({debounceMs:0,request:async(url,options)=>{
@@ -34,6 +66,8 @@ test('creation sends preview times and does not retry when refresh fails', async
   await new Promise(resolve=>setTimeout(resolve,0));
   await controller.create({csrf:'c',payload:{account_id:'a',targets:[{name:'甲',sec_uid:'u1'},{name:'乙',sec_uid:'u2'}],message_kind:'douyin_sticker'}});
   assert.deepEqual(post.expected_times,['10:00','10:07']);
+  assert.equal(post.schedule_mode,'manual');
+  assert.equal(post.send_time,'10:00');
   assert.equal(refreshes,1); assert.equal(controller.getState().success.count,2);
   await controller.create({csrf:'c',payload:{account_id:'a',targets:[{name:'甲',sec_uid:'u1'},{name:'乙',sec_uid:'u2'}],message_kind:'douyin_sticker'}});
   assert.equal(refreshes,1);

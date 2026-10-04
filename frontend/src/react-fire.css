@@ -255,6 +255,7 @@ body::before { opacity:.035; background-image:linear-gradient(rgba(255,255,255,.
 .schedule-preview-head h3 { margin:0; font-size:12px; font-weight:500; }
 .schedule-preview-head small { color:var(--muted); font:10px var(--mono); }
 .schedule-preview > p { margin:0; font-size:10px; color:var(--ink-soft); line-height:1.65; }
+.field-hint { color:var(--muted); font-size:10px; line-height:1.5; }
 .schedule-reason { color:var(--muted) !important; }
 .schedule-friend-list { display:grid; gap:0; margin:0; padding:0; list-style:none; }
 .schedule-friend-list li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:5px 10px; align-items:center; padding:8px 0; border-top:1px solid var(--hairline); font-size:11px; }

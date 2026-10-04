@@ -747,6 +747,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const accounts=asList(data?.accounts); const membership=data?.membership||{};
   const [composerStep,setComposerStep]=useState(1);
   const [accountId,setAccountId]=useState(accounts[0]?.id||'');
+  const [selectedTime,setSelectedTime]=useState('');
   const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState('');
   const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false);
   const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [notice,setNotice]=useState(''); const [successToast,setSuccessToast]=useState('');
@@ -762,12 +763,12 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     setTaskPagination(page=>page?{...page,total:page.total+added.length}:page);
     setCreatedPending(count=>count+added.length);
     setSuccessToast(`已成功创建 ${value.count??added.length} 个续火任务`);
-    setFilter('all');setSearch('');setFriends([]);setComposerStep(1);setNotice('');
+    setFilter('all');setSearch('');setFriends([]);setSelectedTime('');setComposerStep(1);setNotice('');
   }}),[]);
   const [schedule,setSchedule]=useState(()=>composer.getState());
   useEffect(()=>{const unsubscribe=composer.subscribe(setSchedule);return()=>{unsubscribe();composer.close()}},[composer]);
   const selectedTargets=useMemo(()=>friends.map(friend=>({name:friend.name,sec_uid:friend.sec_uid||''})),[friends]);
-  useEffect(()=>{composer.configure({accountId,count:Math.max(1,friends.length),targets:selectedTargets,csrf:data.csrf,mode:'auto',preferred:''})},[composer,accountId,selectedTargets,data.csrf]);
+  useEffect(()=>{composer.configure({accountId,count:Math.max(1,friends.length),targets:selectedTargets,csrf:data.csrf,mode:selectedTime?'manual':'auto',preferred:selectedTime})},[composer,accountId,selectedTargets,selectedTime,data.csrf]);
   useEffect(()=>{if(!accountId&&accounts[0]?.id)setAccountId(accounts[0].id)},[accountId,accounts[0]?.id]);
   useEffect(()=>{
     if(schedule.success){successRef.current?.focus({preventScroll:true});successRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'})}
@@ -829,11 +830,11 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
       <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">0{composerStep}</span></div>
       <div className="composer-steps" role="list" aria-label="创建任务步骤">{[['账号',1],['好友',2],['发送设置',3]].map(([label,step])=><button type="button" key={step} className={composerStep===step?'active':''} disabled={step>composerStep||saving} aria-current={composerStep===step?'step':undefined} onClick={()=>step<=composerStep&&setComposerStep(step)}><b>0{step}</b><span>{label}</span></button>)}</div>
       <form onSubmit={submit} className="form-stack">
-        {composerStep===1&&<><label>发送账号<Select className="input" value={accountId} disabled={saving} onChange={event=>{setAccountId(event.target.value);setFriends([])}} aria-label="发送账号">{accounts.length?accounts.map((item,index)=><option key={item?.id||index} value={item?.id||''}>{displayName(item?.name)}</option>):<option value="">请先绑定账号</option>}</Select></label><div className="composer-step-hint">先选择负责发送消息的抖音账号。</div>{!accounts.length&&<div className="inline-feedback" role="status">尚未绑定发送账号。<Link to="/accounts">前往抖音账号页 ↗</Link></div>}</>}
+        {composerStep===1&&<><label>发送账号<Select className="input" value={accountId} disabled={saving} onChange={event=>{setAccountId(event.target.value);setFriends([]);setSelectedTime('')}} aria-label="发送账号">{accounts.length?accounts.map((item,index)=><option key={item?.id||index} value={item?.id||''}>{displayName(item?.name)}</option>):<option value="">请先绑定账号</option>}</Select></label><div className="composer-step-hint">先选择负责发送消息的抖音账号。</div>{!accounts.length&&<div className="inline-feedback" role="status">尚未绑定发送账号。<Link to="/accounts">前往抖音账号页 ↗</Link></div>}</>}
         {composerStep===2&&<><label>目标好友<div className="friend-trigger" onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((friend,index)=><span key={friend?.sec_uid||friend?.name||index} className="selected-chip">{displayName(friend?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="composer-step-hint">可选择多位好友，下一步会显示每位好友的具体发送时间。已有任务的好友会自动标记。</div></>}
         {composerStep===3&&<>
           <div className="composer-summary"><span>发送账号</span><b>{displayName(account?.name,'—')}</b><span>目标好友</span><b>{scheduledFriends.length?`${scheduledFriends.length} 位好友`:'—'}</b></div>
-          <label>消息类型<Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label>
+          <div className="form-grid"><label>每日发送时间<input className="input" type="time" aria-label="每日发送时间" value={selectedTime||schedule.plan?.times?.[0]||''} disabled={saving||schedule.status==='loading'} onChange={event=>setSelectedTime(event.target.value)}/><small className="field-hint">已预填时间，可按需调整</small></label><label>消息类型<Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label></div>
           <section className="schedule-preview" aria-label="好友发送时间安排" aria-busy={schedule.status==='loading'}>
             <div className="schedule-preview-head"><h3>每位好友的每日发送时间</h3><small>北京时间</small></div>
             {schedule.status==='loading'&&<p role="status">正在安排发送时间…</p>}
