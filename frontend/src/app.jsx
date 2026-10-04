@@ -4,6 +4,7 @@ import {createPortal} from 'react-dom';
 import {BrowserRouter, Link, useLocation, useNavigate} from 'react-router-dom';
 import {focusTrapTarget, getMobileDockRoutes, resetRouteScroll} from './navigation.js';
 import {contactKey, createContactPickerController} from './contact-picker-state.js';
+import {createTaskComposerController, mergeTaskRows} from './task-composer-state.js';
 // Lightweight motion primitives — avoids motion/react subpath import issues with Vite 8 Rolldown
 function AnimatePresence({children}) { return children; }
 function RouteMotionDiv({children, locationKey}) {
@@ -109,6 +110,7 @@ const adminRoutes = [
 
 const previewRequested = import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview');
 let previewScan = null;
+let previewCreatedTasks = [];
 let previewAttention = [{id:'preview-attention-1',title:'发送待确认 · 小林',detail:'请先核对抖音聊天记录，不要直接重发。',url:'/runs',at:'2026-09-28T09:45:00+08:00',tone:'warning',read:false}];
 
 function previewData() {
@@ -134,7 +136,7 @@ function previewData() {
   ];
   return {
     user:{name:'演示用户', role:new URLSearchParams(window.location.search).has('admin')?'admin':'user'}, csrf:'preview-csrf',
-    accounts:[account,secondAccount,thirdAccount], tasks, runs, recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':run.status==='running'?'warn':'danger'})),
+    accounts:[account,secondAccount,thirdAccount], tasks:[...previewCreatedTasks,...tasks], runs, recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':run.status==='running'?'warn':'danger'})),
     membership:{active:true, can_add_task:true, max_accounts:1, max_tasks:10, task_limit_label:'10 个好友任务', task_count:10, enabled_task_count:8, task_overage:0, days_remaining:27, valid_until:'2026-10-30T00:00:00+08:00', status_label:'标准版 · 使用中', pending_subscription:{valid_from:'2026-10-30T00:00:00+08:00',valid_until:'2026-11-29T00:00:00+08:00',max_accounts:1,max_tasks:5,task_limit_label:'5 个好友任务',status_label:'基础版'}},
     activity:{period_days:365,total:126,days:activityDays},
     counts:{users:18, accounts:26, tasks:74, runs:1260},
@@ -150,6 +152,28 @@ function previewData() {
 
 function mockApi(path, options={}) {
   const data = previewData();
+  if (path.startsWith('/api/studio/schedule?')) {
+    const query=new URLSearchParams(path.split('?')[1]);
+    const count=Math.max(1,Number(query.get('count'))||1), mode=query.get('mode')||'auto';
+    const preferred=mode==='manual'?query.get('preferred'):'14:10';
+    const [hour,minute]=String(preferred).split(':').map(Number);
+    const times=Array.from({length:count},(_,index)=>{const minutes=(hour*60+minute+index*7)%1440;return `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`});
+    const entries=times.map((time,index)=>{const date=new Date();const [h,m]=time.split(':').map(Number);date.setHours(h,m,0,0);if(date<=new Date())date.setDate(date.getDate()+1);return {index,time,next_run_at:date.toISOString(),day_offset:date.getDate()===new Date().getDate()?0:1}});
+    return Promise.resolve({status:'ready',mode,times,entries,suggested:times[0],gap_minutes:5,reason:'结合已有任务分布安排，好友之间至少间隔 5 分钟。',timezone:'Asia/Shanghai'});
+  }
+  if (path==='/tasks/preview' && options.method==='POST') {
+    const body=JSON.parse(options.body||'{}'); const targets=Array.isArray(body.targets)?body.targets:[];
+    const preferred=body.time||'14:10'; const [hour,minute]=preferred.split(':').map(Number);
+    const times=targets.map((_,index)=>{const total=(hour*60+minute+index*7)%1440;return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`});
+    const entries=times.map((time,index)=>({index,time,next_run_at:new Date(Date.now()+86400000+index*420000).toISOString(),day_offset:1}));
+    return Promise.resolve({status:'ready',mode:body.mode||'manual',times,entries,targets,count:targets.length,gap_minutes:5,reason:'根据已有任务安排错峰，好友之间至少间隔 5 分钟。'});
+  }
+  if (path==='/api/studio/tasks'&&options.method==='POST') {
+    const body=JSON.parse(options.body||'{}');
+    const items=body.targets.map((friend,index)=>({id:`preview-created-${interactionRequestId()}`,accountId:body.account_id,name:friend.name,sec_uid:friend.sec_uid,time:body.expected_times[index],kind:body.message_kind==='text'?'文字消息':'续火花表情',enabled:true,confirmed:false,status:'scheduled'}));
+    previewCreatedTasks=[...items,...previewCreatedTasks];
+    return Promise.resolve({items,count:items.length,times:body.expected_times,entries:body.expected_times.map((time,index)=>({time,next_run_at:body.expected_next_runs[index]}))});
+  }
   if (path === '/api/app/bootstrap' || path === '/api/admin/bootstrap') return Promise.resolve(data);
   if (path.startsWith('/api/admin/redemption-codes')) return Promise.resolve({items:data.redemptionCodes,pagination:{page:1,page_size:20,total:data.redemptionCodes.length,pages:1,has_previous:false,has_prev:false,has_next:false}});
   if (path === '/api/notifications') return Promise.resolve({csrf:data.csrf,mail_ready:true, preference:{email:'',enabled:false,verified:false}, policy:{events:['account_alert','account_recovered','task_failed','expiry'],quiet_start:23,quiet_end:8,quiet_enabled:false,interval_minutes:60}});
@@ -240,7 +264,7 @@ async function api(path, options={}) {
     // Vite returns a 5xx response when its local API proxy cannot reach the
     // backend. Keep the dev preview usable without changing production errors.
     if (import.meta.env.DEV && response.status >= 500) return mockApi(path, options);
-    const error = new Error(typeof value?.detail === 'string' ? value.detail : value?.message || '请求未完成');
+    const error = new Error(typeof value?.detail === 'string' ? value.detail : value?.detail?.message || value?.message || '请求未完成');
     error.status = response.status;
     error.payload = value;
     throw error;
@@ -708,53 +732,128 @@ function ContactPicker({open,onClose,account,data,onDone}) {
   </Drawer>;
 }
 
+function scheduleFirstRunLabel(entry) {
+  if (!entry?.next_run_at) return '首次执行时间待确认';
+  const date=new Date(entry.next_run_at);
+  if (Number.isNaN(date.getTime())) return '首次执行时间待确认';
+  const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
+  const tomorrow=new Date(Date.now()+86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
+  const runDay=date.toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
+  const day=runDay===today?'今天':runDay===tomorrow?'明天':date.toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric'});
+  return `${day} ${entry.time||date.toLocaleTimeString('zh-CN',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hour12:false})}`;
+}
+
 function Studio({data,onRefresh,preEditId,onEditClose}) {
-  const navigate=useNavigate(); const accounts=asList(data?.accounts); const membership=data?.membership||{};
+  const accounts=asList(data?.accounts); const membership=data?.membership||{};
   const [composerStep,setComposerStep]=useState(1);
-  const [accountId,setAccountId]=useState(accounts[0]?.id||''); const [time,setTime]=useState('09:30'); const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState(''); const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false); const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [saving,setSaving]=useState(false); const [notice,setNotice]=useState(''); const [createFailure,setCreateFailure]=useState('');
+  const [accountId,setAccountId]=useState(accounts[0]?.id||'');
+  const [scheduleMode,setScheduleMode]=useState('auto'); const [manualTime,setManualTime]=useState('');
+  const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState('');
+  const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false);
+  const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [notice,setNotice]=useState(''); const [successToast,setSuccessToast]=useState('');
   const [taskRows,setTaskRows]=useState(()=>asList(data?.tasks));
   const [taskPage,setTaskPage]=useState(()=>data?.tasks_pagination?.page||1);
   const [taskPagination,setTaskPagination]=useState(()=>data?.tasks_pagination||null);
-  const [loadingMoreTasks,setLoadingMoreTasks]=useState(false);
+  const [loadingMoreTasks,setLoadingMoreTasks]=useState(false); const [createdPending,setCreatedPending]=useState(0);
+  const refreshRef=useRef(onRefresh); refreshRef.current=onRefresh;
+  const successRef=useRef(null);
+  const composer=useMemo(()=>createTaskComposerController({request:api, refresh:()=>refreshRef.current?.(), onCreated:value=>{
+    const added=asList(value?.items);
+    setTaskRows(rows=>mergeTaskRows(rows,added));
+    setTaskPagination(page=>page?{...page,total:page.total+added.length}:page);
+    setCreatedPending(count=>count+added.length);
+    setSuccessToast(`已成功创建 ${value.count??added.length} 个续火任务`);
+    setFilter('all');setSearch('');setFriends([]);setComposerStep(1);setNotice('');
+  }}),[]);
+  const [schedule,setSchedule]=useState(()=>composer.getState());
+  useEffect(()=>{const unsubscribe=composer.subscribe(setSchedule);return()=>{unsubscribe();composer.close()}},[composer]);
+  const selectedTargets=useMemo(()=>friends.map(friend=>({name:friend.name,sec_uid:friend.sec_uid||''})),[friends]);
+  useEffect(()=>{composer.configure({accountId,count:Math.max(1,friends.length),targets:selectedTargets,csrf:data.csrf,mode:scheduleMode,preferred:scheduleMode==='manual'?manualTime:''})},[composer,accountId,selectedTargets,scheduleMode,manualTime,data.csrf]);
+  useEffect(()=>{if(!accountId&&accounts[0]?.id)setAccountId(accounts[0].id)},[accountId,accounts[0]?.id]);
+  useEffect(()=>{
+    if(schedule.success){successRef.current?.focus({preventScroll:true});successRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'})}
+  },[schedule.success]);
+  const saving=schedule.creating; const time=scheduleMode==='manual'?manualTime:schedule.plan?.times?.[0]||'';
   const tasks=taskRows;
   useEffect(()=>{
     const trigger=document.querySelector('.friend-trigger');
     if(!trigger)return;
-    trigger.setAttribute('role','button');
-    trigger.setAttribute('tabindex',accountId?'0':'-1');
-    trigger.setAttribute('aria-haspopup','dialog');
-    trigger.setAttribute('aria-expanded',String(picker));
-    trigger.setAttribute('aria-disabled',String(!accountId));
-    const onKey=event=>{
-      if((event.key==='Enter'||event.key===' ')&&accountId){event.preventDefault();setPicker(true);}
-    };
-    trigger.addEventListener('keydown',onKey);
-    return()=>trigger.removeEventListener('keydown',onKey);
-  },[accountId,picker]);
+    trigger.setAttribute('role','button');trigger.setAttribute('tabindex',accountId?'0':'-1');
+    trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded',String(picker));trigger.setAttribute('aria-disabled',String(!accountId));
+    const onKey=event=>{if((event.key==='Enter'||event.key===' ')&&accountId){event.preventDefault();setPicker(true)}};
+    trigger.addEventListener('keydown',onKey);return()=>trigger.removeEventListener('keydown',onKey);
+  },[accountId,picker,composerStep]);
   useEffect(()=>{
-    setTaskRows(asList(data?.tasks));
-    setTaskPage(data?.tasks_pagination?.page||1);
-    setTaskPagination(data?.tasks_pagination||null);
+    setTaskRows(asList(data?.tasks));setTaskPage(data?.tasks_pagination?.page||1);setTaskPagination(data?.tasks_pagination||null);setCreatedPending(0);
   },[data?.tasks,data?.tasks_pagination]);
   const loadMoreTasks=async()=>{
     if(loadingMoreTasks||!taskPagination?.has_next)return;
     setLoadingMoreTasks(true);
-    try{
-      const next=await api(`/api/app/tasks?page=${taskPage+1}`);
-      setTaskRows(rows=>[...rows,...asList(next?.items)]);
-      setTaskPage(next?.pagination?.page||taskPage+1);
-      setTaskPagination(next?.pagination||taskPagination);
-    }catch(error){setNotice(error.message)}finally{setLoadingMoreTasks(false)}
+    try{const next=await api(`/api/app/tasks?page=${taskPage+1}`);setTaskRows(rows=>mergeTaskRows(rows,asList(next?.items)));setTaskPage(next?.pagination?.page||taskPage+1);setTaskPagination(next?.pagination||taskPagination)}
+    catch(error){setNotice(error.message)}finally{setLoadingMoreTasks(false)}
   };
   const [editTask,setEditTask]=useState(()=>preEditId?tasks.find(t=>t?.id===preEditId)||null:null);
-  const account=accounts.find(a=>a?.id===accountId); const existing=tasks.filter(t=>t?.accountId===accountId); const shown=tasks.filter(t=>(filter==='all'||(filter==='active'?t?.enabled:!t?.enabled))&&(!search||displayName(t?.name,'').toLowerCase().includes(search.toLowerCase())));
-  const openEdit=t=>{setEditTask(t);};
-  const closeEdit=()=>{setEditTask(null);onEditClose?.();};
-  const createTask=async()=>{if(!friends.length)return setNotice('请选择一个或多个好友');if(!account)return setNotice('请选择发送账号');if(kind==='text'&&!message.trim())return setNotice('请填写发送内容');setSaving(true);setCreateFailure('');setNotice('正在创建续火任务…');let created=false;try{await api('/api/studio/tasks',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data.csrf},body:JSON.stringify({account_id:account.id,targets:friends.map(f=>({name:f.name,sec_uid:f.sec_uid||''})),send_time:time,message_kind:kind,message_template:kind==='text'?message.trim():'续火花'})});created=true;setFriends([]);setComposerStep(1);setNotice('已创建续火任务');try{await onRefresh()}catch(_refreshError){setNotice('任务已创建，但任务列表刷新失败；请稍后刷新页面查看。')}setTimeout(()=>navigate('/runs'),700)}catch(err){if(!created){const messageText=err?.message||'任务创建失败，请稍后重试';setCreateFailure(messageText);setNotice('');}}finally{setSaving(false)}};
-  const submit=async e=>{e.preventDefault();setNotice('');setCreateFailure('');if(composerStep===1){if(!account)return setNotice('请先选择发送账号');setComposerStep(2);return;}if(composerStep===2){if(!friends.length)return setNotice('请选择一个或多个好友');setComposerStep(3);return;}await createTask()};
-  const enabledTotal=data?.resource_limits?.tasks_enabled_total??tasks.filter(t=>t?.enabled).length;
+  const account=accounts.find(a=>a?.id===accountId);
+  const shown=tasks.filter(t=>(filter==='all'||(filter==='active'?t?.enabled:!t?.enabled))&&(!search||displayName(t?.name,'').toLowerCase().includes(search.toLowerCase())));
+  const closeEdit=()=>{setEditTask(null);onEditClose?.()};
+  const createTask=async()=>{
+    if(!friends.length)return setNotice('请选择一个或多个好友');
+    if(!account)return setNotice('请选择发送账号');
+    if(kind==='text'&&!message.trim())return setNotice('请填写发送内容');
+    setNotice('');
+    await composer.create({csrf:data.csrf,payload:{account_id:account.id,targets:friends.map(f=>({name:f.name,sec_uid:f.sec_uid||''})),message_kind:kind,message_template:kind==='text'?message.trim():'续火花'}});
+  };
+  const submit=async event=>{
+    event.preventDefault();setNotice('');
+    if(composerStep===1){if(!account)return setNotice('请先选择发送账号');setComposerStep(2);return}
+    if(composerStep===2){if(!friends.length)return setNotice('请选择一个或多个好友');setComposerStep(3);return}
+    await createTask();
+  };
+  const enabledTotal=data?.resource_limits?.tasks_enabled_total!=null?data.resource_limits.tasks_enabled_total+createdPending:tasks.filter(t=>t?.enabled).length;
   const pausedTotal=data?.resource_limits?.tasks_paused_total??Math.max(0,(taskPagination?.total??tasks.length)-enabledTotal);
-  return <><PageHeader eyebrow="02 / ROUTINE STUDIO" title="续火任务" text="把每天的默契交给稳定、可核对的自动计划。" actions={<Button onClick={()=>document.getElementById('task-composer')?.scrollIntoView({behavior:'smooth'})}>新建任务 ↘</Button>}/><div className="studio-layout"><section className="studio-list"><div className="toolbar"><RubberSegment className="admin-segment" items={[{value:'all',label:`全部 ${taskPagination?.total??tasks.length}`},{value:'active',label:`运行中 ${enabledTotal}`},{value:'paused',label:`已暂停 ${pausedTotal}`}]} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="任务筛选"/><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>{shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((t,index)=>{const name=displayName(t?.name,'未命名好友');return <div className="task-row" key={t?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{t?.avatar?<img src={t.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(t?.kind,'续火花表情')}</small></span></span><time>{displayText(t?.time,'—')}<small>每天</small></time><Badge tone={t?.enabled?'good':'neutral'}>{t?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>openEdit(t)}>编辑</Button><Button variant="quiet" onClick={async()=>{try{await api(`/api/studio/tasks/${t?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!t?.enabled})});onRefresh()}catch(e){setNotice(e.message)}}}>{t?.enabled?'暂停':'恢复'}</Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}{taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}</section><Card className="composer-card" id="task-composer"><div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">0{composerStep}</span></div><div className="composer-steps" role="list" aria-label="创建任务步骤">{[['账号',1],['好友',2],['发送设置',3]].map(([label,step])=><button type="button" key={step} className={composerStep===step?'active':''} disabled={step>composerStep} aria-current={composerStep===step?'step':undefined} onClick={()=>step<=composerStep&&setComposerStep(step)}><b>0{step}</b><span>{label}</span></button>)}</div><form onSubmit={submit} className="form-stack">{composerStep===1&&<><label>发送账号<Select className="input" value={accountId} onChange={e=>{setAccountId(e.target.value);setFriends([])}} aria-label="发送账号">{accounts.length?accounts.map((a,index)=><option key={a?.id||index} value={a?.id||''}>{displayName(a?.name)}</option>):<option value="">请先绑定账号</option>}</Select></label><div className="composer-step-hint">先选择负责发送消息的抖音账号。</div>{!accounts.length&&<div className="inline-feedback" role="status">尚未绑定发送账号。<Link to="/accounts">前往抖音账号页 ↗</Link></div>}</>}{composerStep===2&&<><label>目标好友<div className="friend-trigger" onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((f,index)=><span key={f?.sec_uid||f?.name||index} className="selected-chip">{displayName(f?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="composer-step-hint">只显示已同步的会话；已有任务的好友会自动标记。</div></>}{composerStep===3&&<><div className="composer-summary"><span>发送账号</span><b>{displayName(account?.name,'—')}</b><span>目标好友</span><b>{friends.length?`${friends.length} 位好友`:'—'}</b></div><div className="form-grid"><label>每日发送时间<input className="input" type="time" value={time} onChange={e=>setTime(e.target.value)}/></label><label>消息类型<Select className="input" value={kind} onChange={e=>setKind(e.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label></div>{kind==='text'&&<label>发送内容<textarea className="input textarea" maxLength="300" value={message} onChange={e=>setMessage(e.target.value)} placeholder="写一句日常问候"/></label>}<div className="message-preview"><span className="preview-mark">✦</span><div><b>{kind==='text'?'自定义文字消息':'续火花表情'}</b><small>{kind==='text'?'按设定时间发送你填写的内容。':'每天定时，给选中的好友发送续火花表情。'}</small></div></div></>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}{createFailure&&<div className="inline-feedback danger-text" role="alert"><b>创建失败，已保留当前填写内容</b><p>{createFailure}</p><Button variant="quiet" type="button" disabled={saving} onClick={createTask}>重新提交</Button></div>}<div className="composer-actions">{composerStep>1&&<Button variant="quiet" type="button" onClick={()=>setComposerStep(step=>step-1)}>上一步</Button>}<Button type="submit" disabled={saving||!membership.can_add_task}>{saving?(composerStep===3?'正在创建…':'请稍候…'):(composerStep===3?'创建续火任务 ↗':'下一步 ↗')}</Button></div>{!membership.can_add_task&&<small className="muted">当前订阅不可创建新任务，请先查看订阅。</small>}</form></Card></div><ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh}/></>;
+  const firstMinutes=time=>{const [hour,minute]=time.split(':').map(Number);return hour*60+minute};
+  const ready=schedule.status==='ready';
+  const scheduledFriends=ready?schedule.plan.targets||friends:friends;
+  const closeSuccessToast=React.useCallback(()=>setSuccessToast(''),[]);
+  return <>
+    <PageHeader eyebrow="02 / ROUTINE STUDIO" title="续火任务" text="把每天的默契交给稳定、可核对的自动计划。" actions={<Button onClick={()=>document.getElementById('task-composer')?.scrollIntoView({behavior:'smooth'})}>新建任务 ↘</Button>}/>
+    {schedule.success&&<section className="task-create-success" ref={successRef} tabIndex={-1} role="status" aria-live="polite">
+      <div className="task-create-success-head"><span className="task-created-mark" aria-hidden="true">✓</span><div><h2>已创建 {schedule.success.count} 个续火任务</h2><p>每天按以下时间发送，已加入当前任务列表。所有时间均为北京时间。</p></div></div>
+      <ul className="task-created-list">{schedule.success.items.map((task,index)=><li key={task.id}><b>{displayName(task.name,'未命名好友')}</b><span>每天 <time>{task.time}</time></span><small>首次：{scheduleFirstRunLabel({...schedule.success.entries[index],time:task.time})}</small></li>)}</ul>
+      {schedule.success.refreshError&&<p className="task-success-refresh">任务已保存，页面数据暂未刷新。<Button variant="quiet" onClick={()=>refreshRef.current?.()}>刷新列表</Button></p>}
+    </section>}
+    <div className="studio-layout"><section className="studio-list">
+      <div className="toolbar"><RubberSegment className="admin-segment" items={[{value:'all',label:`全部 ${taskPagination?.total??tasks.length}`},{value:'active',label:`运行中 ${enabledTotal}`},{value:'paused',label:`已暂停 ${pausedTotal}`}]} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="任务筛选"/><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>
+      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');return <div className="task-row" key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button variant="quiet" onClick={()=>setEditTask(task)}>编辑</Button><Button variant="quiet" onClick={async()=>{try{await api(`/api/studio/tasks/${task?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!task?.enabled})});await onRefresh()}catch(error){setNotice(error.message)}}}>{task?.enabled?'暂停':'恢复'}</Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
+      {taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}
+    </section><Card className="composer-card" id="task-composer">
+      <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">0{composerStep}</span></div>
+      <div className="composer-steps" role="list" aria-label="创建任务步骤">{[['账号',1],['好友',2],['发送设置',3]].map(([label,step])=><button type="button" key={step} className={composerStep===step?'active':''} disabled={step>composerStep||saving} aria-current={composerStep===step?'step':undefined} onClick={()=>step<=composerStep&&setComposerStep(step)}><b>0{step}</b><span>{label}</span></button>)}</div>
+      <form onSubmit={submit} className="form-stack">
+        {composerStep===1&&<><label>发送账号<Select className="input" value={accountId} disabled={saving} onChange={event=>{setAccountId(event.target.value);setFriends([])}} aria-label="发送账号">{accounts.length?accounts.map((item,index)=><option key={item?.id||index} value={item?.id||''}>{displayName(item?.name)}</option>):<option value="">请先绑定账号</option>}</Select></label><div className="composer-step-hint">先选择负责发送消息的抖音账号。</div>{!accounts.length&&<div className="inline-feedback" role="status">尚未绑定发送账号。<Link to="/accounts">前往抖音账号页 ↗</Link></div>}</>}
+        {composerStep===2&&<><label>目标好友<div className="friend-trigger" onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((friend,index)=><span key={friend?.sec_uid||friend?.name||index} className="selected-chip">{displayName(friend?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="composer-step-hint">可选择多位好友，下一步会显示每位好友的具体发送时间。已有任务的好友会自动标记。</div></>}
+        {composerStep===3&&<>
+          <div className="composer-summary"><span>发送账号</span><b>{displayName(account?.name,'—')}</b><span>目标好友</span><b>{scheduledFriends.length?`${scheduledFriends.length} 位好友`:'—'}</b></div>
+          <fieldset className="schedule-mode" disabled={saving}><legend>时间安排</legend><label><input type="radio" name="schedule-mode" checked={scheduleMode==='auto'} onChange={()=>setScheduleMode('auto')}/><span><b>自动推荐</b><small>根据服务器已有任务，安排较空闲的时段</small></span></label><label><input type="radio" name="schedule-mode" checked={scheduleMode==='manual'} onChange={()=>{setManualTime(previous=>previous||schedule.plan?.times?.[0]||'');setScheduleMode('manual')}}/><span><b>自己选择</b><small>保留首位好友时间，其余好友自动错峰</small></span></label></fieldset>
+          <div className="form-grid"><label>{scheduleMode==='auto'?'推荐首位好友时间':'首位好友每日发送时间'}<input className="input" type="time" aria-label="每日发送时间" value={time} disabled={saving} onChange={event=>{setManualTime(event.target.value);setScheduleMode('manual')}}/></label><label>消息类型<Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label></div>
+          <section className="schedule-preview" aria-label="好友发送时间安排" aria-busy={schedule.status==='loading'}>
+            <div className="schedule-preview-head"><h3>每位好友的每日发送时间</h3><small>北京时间</small></div>
+            {schedule.status==='loading'&&<p role="status">正在结合已有任务安排发送时间…</p>}
+            {schedule.error&&<div className="inline-feedback danger-text" role="alert"><p>{schedule.error}</p><Button variant="quiet" type="button" disabled={saving} onClick={()=>composer.retry()}>重新获取时间安排</Button></div>}
+            {schedule.conflict&&<div className="inline-feedback schedule-conflict" role="alert"><b>请核对新的时间安排</b><p>{schedule.conflict}</p></div>}
+            {ready&&<><p className="schedule-reason">{scheduleMode==='auto'?'优先安排未来较空闲的时段。':'首位好友使用你选择的时间。'}{scheduledFriends.length>1?'同一账号的好友至少间隔 5 分钟，后续时间会根据已有任务自动错开；创建前请核对下方安排。':'创建后每天按此时间执行。'}</p>{scheduledFriends.length<friends.length&&<p className="schedule-reason">已合并重复选择的好友，按 {scheduledFriends.length} 位好友创建任务。</p>}<ul className="schedule-friend-list">{scheduledFriends.map((friend,index)=>{const entry=schedule.plan.entries[index];const offset=(firstMinutes(entry.time)-firstMinutes(schedule.plan.times[0])+1440)%1440;return <li key={friend.sec_uid||friend.name||index}><span className="schedule-friend-name">{displayName(friend.name,'未命名好友')}</span><time>{entry.time}</time><small className="schedule-offset">{index?`＋${offset} 分钟`:'首位好友'}</small><small className="schedule-first-run">首次：{scheduleFirstRunLabel(entry)}</small></li>})}</ul></>}
+          </section>
+          {kind==='text'&&<label>发送内容<textarea className="input textarea" maxLength="300" disabled={saving} value={message} onChange={event=>setMessage(event.target.value)} placeholder="写一句日常问候"/></label>}
+          <div className="message-preview"><span className="preview-mark">✦</span><div><b>{kind==='text'?'自定义文字消息':'续火花表情'}</b><small>{kind==='text'?'按以上时间发送你填写的内容。':'每天按以上时间，给选中的好友发送续火花表情。'}</small></div></div>
+        </>}
+        {notice&&<div className="inline-feedback" role="status">{notice}</div>}
+        {schedule.createError&&<div className="inline-feedback danger-text" role="alert"><b>尚未创建任务，已保留当前填写内容</b><p>{schedule.createError}</p></div>}
+        <div className="composer-actions">{composerStep>1&&<Button variant="quiet" type="button" disabled={saving} onClick={()=>setComposerStep(step=>step-1)}>上一步</Button>}<Button type="submit" disabled={saving||!membership.can_add_task||(composerStep===3&&!ready)}>{saving?'正在创建…':composerStep===3?schedule.conflict?'确认新安排并创建 ↗':`确认创建 ${scheduledFriends.length} 个任务 ↗`:'下一步 ↗'}</Button></div>
+        {!membership.can_add_task&&<small className="muted">当前订阅不可创建新任务，请先查看订阅。</small>}
+      </form>
+    </Card></div>
+    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh}/><Toast message={successToast} onClose={closeSuccessToast}/>
+  </>;
 }
 
 function ScanVerification({scan,data,setScan}) {

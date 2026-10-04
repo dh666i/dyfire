@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 import re
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func, or_
 from spark_console.db import session_scope
 from spark_console.models import SparkTask, SparkTaskTargetIdentity, TaskRun, DouyinAccount, DouyinContactIdentity
 from spark_console.services import ValidationError, Conflict, NotFound
@@ -56,21 +56,34 @@ def build_reliability_router(engine,auth,cipher):
                 raw=data.get('targets',[])
                 if not isinstance(raw,list) or len(raw)>100 or any(not isinstance(t,dict) for t in raw):raise ValidationError('请选择 1–100 位好友')
                 targets=service.normalize_targets((t.get('name'),t.get('sec_uid')) for t in raw)
+                mode=data.get('mode','manual')
+                if mode not in ('auto','manual'):raise ValidationError('发送时间模式无效')
                 send_time=str(data.get('time',''))
+                # Auto mode does not require a user-selected anchor. Keep an
+                # internal valid anchor for backwards-compatible response
+                # fields; the planner chooses the actual quiet first slot.
+                if mode == 'auto' and not send_time:
+                    send_time = '09:30'
                 if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',send_time):raise ValidationError('请选择发送时间')
                 if user.role!='admin':SubscriptionService(db,AuditService(db)).require_task_capacity(user.id,len(targets))
                 for name,uid in targets:
                     if uid and not db.get(DouyinContactIdentity,(account.id,uid)):raise ValidationError('所选好友不属于当前账号')
                 from spark_console.schedule_slots import plan as plan_slots
-                planned=plan_slots(db,account.id,len(targets),send_time)
+                planned=plan_slots(db,account.id,len(targets),send_time,mode=mode)
                 times=list(planned['times'])
                 existing=list(db.execute(
                     select(SparkTask.target_name, SparkTaskTargetIdentity.sec_uid)
                     .outerjoin(SparkTaskTargetIdentity, SparkTaskTargetIdentity.task_id == SparkTask.id)
-                    .where(SparkTask.douyin_account_id == account.id)
+                    .where(
+                        SparkTask.douyin_account_id == account.id,
+                        or_(
+                            func.lower(SparkTask.target_name).in_({name.casefold() for name,_uid in targets}),
+                            SparkTaskTargetIdentity.sec_uid.in_({uid for _name,uid in targets if uid}),
+                        ),
+                    )
                 ).all())
                 conflicts=[name for name,uid in targets if service._has_target_conflict(existing,name,uid)]
-                return JSONResponse({'account':account.display_name,'count':len(targets),'time':send_time,'times':times,'suggested':planned['suggested'],'load':planned['load'],'gap_minutes':planned['gap_minutes'],'conflicts':conflicts,'blocked':account.validation_state in ('invalid','verification','temporary'),'manual_count':sum(not uid for _,uid in targets)},headers={'Cache-Control':'no-store'})
+                return JSONResponse({**planned,'account':account.display_name,'count':len(targets),'time':send_time,'targets':[{'name':name,'sec_uid':uid} for name,uid in targets],'conflicts':conflicts,'blocked':account.validation_state in ('invalid','verification','temporary'),'manual_count':sum(not uid for _,uid in targets)},headers={'Cache-Control':'no-store'})
             except NotFound:raise HTTPException(404,'账号不存在')
             except (ValidationError,Conflict) as error:raise HTTPException(400,str(error))
 

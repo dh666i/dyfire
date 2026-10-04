@@ -34,6 +34,14 @@ DOUYIN_STICKER_MESSAGE_KIND = "douyin_sticker"
 DOUYIN_SPARK_STICKER = "续火花"
 
 
+class ScheduleChanged(Conflict):
+    """A confirmed preview no longer matches the current safe allocation."""
+
+    def __init__(self, planned: dict[str, object]):
+        super().__init__("发送安排已更新，请核对新的时间后再次创建。")
+        self.planned = planned
+
+
 def _normalize_message_payload(
     message_kind: str, message_template: str
 ) -> tuple[str, str]:
@@ -222,12 +230,22 @@ class TaskService:
         send_time: str,
         message_template: str,
         message_kind: str = TEXT_MESSAGE_KIND,
+        *,
+        schedule_mode: str = "manual",
+        expected_times: Iterable[str] | None = None,
+        expected_next_runs: Iterable[str] | None = None,
     ) -> list[SparkTask]:
         normalized_targets = self.normalize_targets(targets)
         kind, message = _normalize_message_payload(message_kind, message_template)
         if not _TIME_RE.fullmatch(send_time):
             raise ValidationError("发送时间格式必须为 HH:MM")
         account = self.accounts.get_owned(owner_id, account_id)
+        if self.session.get_bind().dialect.name == "postgresql":
+            # SQLite studio creates acquire BEGIN IMMEDIATE before auth. On
+            # PostgreSQL serialize the account's schedule read and allocation.
+            self.session.execute(
+                select(type(account).id).where(type(account).id == account.id).with_for_update()
+            )
         if account.validation_state == "invalid":
             raise ValidationError("抖音账号登录状态已失效，请先重新登录")
 
@@ -310,11 +328,28 @@ class TaskService:
         ):
             raise Conflict("该好友已有续火任务，请编辑或恢复已有任务，无需重复创建")
 
-        from spark_console.schedule_slots import next_runs, plan as plan_slots
+        from spark_console.schedule_slots import plan as plan_slots
 
-        planned = plan_slots(self.session, account.id, len(normalized_targets), send_time)
+        try:
+            planned = plan_slots(
+                self.session, account.id, len(normalized_targets), send_time,
+                mode=schedule_mode,
+            )
+        except ValueError as error:
+            raise ValidationError(str(error)) from error
         times = list(planned["times"])
-        runs = next_runs(times)
+        runs = [datetime.fromisoformat(item["next_run_at"]) for item in planned["entries"]]
+        if expected_times is not None and list(expected_times) != times:
+            raise ScheduleChanged(planned)
+        if expected_next_runs is not None:
+            try:
+                expected_runs = [datetime.fromisoformat(value).astimezone(timezone.utc) for value in expected_next_runs]
+            except (ValueError, TypeError) as error:
+                raise ValidationError("预览发送日期格式无效，请重新获取发送安排") from error
+            if expected_runs != runs:
+                raise ScheduleChanged(planned)
+        if planned["status"] != "ready" or len(times) != len(normalized_targets):
+            raise ValidationError(str(planned["reason"]))
         tasks = [
             SparkTask(
                 owner_user_id=owner_id,

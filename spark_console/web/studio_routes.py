@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 
 from spark_console.db import session_scope
 from spark_console.models import DouyinAccount, SparkTask, TaskRun, SparkTaskTargetIdentity
@@ -15,7 +16,7 @@ from spark_console.services.account_health import views
 from spark_console.services.audits import AuditService
 from spark_console.services.directory import task_avatar_map
 from spark_console.services.subscriptions import SubscriptionService
-from spark_console.services.tasks import TaskService
+from spark_console.services.tasks import TaskService, ScheduleChanged
 from spark_console.web.membership import membership_summary
 
 
@@ -33,6 +34,9 @@ class NewTasks(BaseModel):
     send_time: str
     message_kind: str = 'douyin_sticker'
     message_template: str = '续火花'
+    schedule_mode: Literal['auto', 'manual'] = 'manual'
+    expected_times: list[str] | None = Field(default=None, min_length=1, max_length=100)
+    expected_next_runs: list[str] | None = Field(default=None, min_length=1, max_length=100)
 
 
 class Enabled(BaseModel):
@@ -127,7 +131,7 @@ def build_studio_router(engine, auth, cipher):
                     )}}
 
     @router.get('/api/studio/schedule')
-    def schedule(request: Request, account_id: str = '', count: int = Query(1, ge=1, le=100), preferred: str = Query('09:30', max_length=5)):
+    def schedule(request: Request, account_id: str = '', count: int = Query(1, ge=1, le=100), preferred: str = Query('09:30', max_length=5), mode: Literal['auto', 'manual'] = 'manual'):
         import re
         if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d', preferred):
             raise HTTPException(400, '请选择发送时间')
@@ -139,12 +143,16 @@ def build_studio_router(engine, auth, cipher):
                 owned = db.scalar(select(DouyinAccount).where(DouyinAccount.id == account_id, DouyinAccount.owner_user_id == user.id))
                 if owned is None:
                     raise HTTPException(404, '账号不存在')
-            planned = plan_slots(db, owned.id if owned else None, count, preferred)
+            planned = plan_slots(db, owned.id if owned else None, count, preferred, mode=mode)
             return planned
 
     @router.post('/api/studio/tasks')
     def create(payload: NewTasks, request: Request):
         with session_scope(engine) as db:
+            if engine.dialect.name == 'sqlite':
+                # Serialize the preview check and allocation with other writers.
+                # The lock is held only for this small bounded DB transaction.
+                db.execute(text('BEGIN IMMEDIATE'))
             user, record = auth.current(request, db)
             auth.csrf(record, request.headers.get('X-CSRF-Token', ''))
             audit = AuditService(db)
@@ -153,12 +161,36 @@ def build_studio_router(engine, auth, cipher):
                 targets = service.normalize_targets((t.name,t.sec_uid) for t in payload.targets)
                 if user.role != 'admin':
                     SubscriptionService(db,audit).require_task_capacity(user.id,len(targets))
-                tasks = service.create_many(user.id,payload.account_id,targets,payload.send_time,payload.message_template,payload.message_kind)
-                return {'ids': [t.id for t in tasks], 'times': [t.send_time for t in tasks]}
+                tasks = service.create_many(
+                    user.id,payload.account_id,targets,payload.send_time,payload.message_template,payload.message_kind,
+                    schedule_mode=payload.schedule_mode, expected_times=payload.expected_times,
+                    expected_next_runs=payload.expected_next_runs,
+                )
+                avatars = task_avatar_map(db, tasks)
+                today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
+                entries = [
+                    {'index': index, 'time': task.send_time,
+                     'next_run_at': task.next_run_at.isoformat(),
+                     'next_run_local': task.next_run_at.astimezone(ZoneInfo('Asia/Shanghai')).isoformat(),
+                     'day_offset': (task.next_run_at.astimezone(ZoneInfo('Asia/Shanghai')).date() - today).days}
+                    for index, task in enumerate(tasks)
+                ]
+                return {
+                    'ids': [t.id for t in tasks], 'times': [t.send_time for t in tasks],
+                    'count': len(tasks), 'entries': entries,
+                    'items': [{'id': t.id, 'name': t.target_name, 'accountId': t.douyin_account_id,
+                               'sec_uid': stable_uid, 'time': t.send_time,
+                               'kind': '续火花表情' if t.message_kind == 'douyin_sticker' else '文字消息',
+                               'message': t.message_template, 'enabled': t.enabled, 'avatar': avatars.get(t.id),
+                               'confirmed': False, 'status': 'scheduled'}
+                              for t, (_name, stable_uid) in zip(tasks, targets, strict=True)],
+                }
             except NotFound:
                 raise HTTPException(404, '账号不存在')
             except ValidationError as error:
                 raise HTTPException(400, str(error))
+            except ScheduleChanged as error:
+                raise HTTPException(409, {'code': 'schedule_changed', 'message': str(error), 'plan': error.planned})
             except Conflict as error:
                 raise HTTPException(409, str(error))
 

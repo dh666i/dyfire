@@ -480,7 +480,11 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     @app.exception_handler(409)
     async def change_required(request: Request, exc):
         if request.url.path.startswith('/api/'):
-            return JSONResponse({'detail': str(exc.detail)}, status_code=409)
+            # Structured schedule conflicts carry the refreshed plan so the
+            # client can show exact per-friend times without creating a
+            # partial batch. Preserve strings for the legacy API responses.
+            detail = exc.detail if isinstance(exc.detail, (dict, list)) else str(exc.detail)
+            return JSONResponse({'detail': detail}, status_code=409)
         if exc.detail == "password-change-required":
             return RedirectResponse("/change-password", status_code=303)
         return page(request, "error.html", status_code=409, message="请求冲突")

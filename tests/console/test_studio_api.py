@@ -177,7 +177,7 @@ def test_batch_create_staggers_and_schedule_avoids_busy_hour(site):
     })
     assert preview.status_code==200, preview.text
     body=preview.json()
-    assert body['times']==['09:30','09:35','09:40']
+    assert body['times']==['09:30','09:37','09:42']
     assert body['suggested']
     assert body['suggested'][0]['start']!='09:30'
     created=client.post('/api/studio/tasks',json={
@@ -186,12 +186,12 @@ def test_batch_create_staggers_and_schedule_avoids_busy_hour(site):
         'send_time':'09:30',
     },headers=headers)
     assert created.status_code==200, created.text
-    assert created.json()['times']==['09:30','09:35','09:40']
+    assert created.json()['times']==body['times']
     times=sorted(item['time'] for item in client.get('/api/studio').json()['tasks'])
-    assert times==['09:30','09:35','09:40']
+    assert times==['09:30','09:37','09:42']
     schedule=client.get('/api/studio/schedule',params={'account_id':owned,'count':1,'preferred':'09:30'})
     assert schedule.status_code==200
-    assert schedule.json()['times'][0]=='09:45'
+    assert schedule.json()['times'][0]=='09:47'
 
 
 def test_unsubmitted_failure_can_retry_once(site):
@@ -236,3 +236,122 @@ def test_unsubmitted_failure_can_retry_once(site):
     blocked=client.post(f'/runs/{submitted_id}/retry', data={'csrf_token':state['csrf']}, follow_redirects=False)
     assert blocked.status_code==303
     assert 'retry-rejected' in blocked.headers['location']
+
+
+def test_preview_create_agree_and_return_new_items_without_refresh(site, monkeypatch):
+    from spark_console.schedule_slots import SHANGHAI
+    client,(owned,_)=site
+    monkeypatch.setattr('spark_console.schedule_slots._local_now', lambda now=None: datetime(2026,10,4,10,0,tzinfo=SHANGHAI))
+    state=client.get('/api/studio').json()
+    targets=[{'name':'预览好友甲'},{'name':'预览好友乙'}]
+    preview=client.post('/tasks/preview',json={
+        'csrf_token':state['csrf'],'account_id':owned,'time':'09:30',
+        'targets':targets,'mode':'auto',
+    })
+    assert preview.status_code==200,preview.text
+    planned=preview.json()
+    assert planned['status']=='ready' and planned['count']==2
+    assert planned['targets']==[{'name':'预览好友甲','sec_uid':''},{'name':'预览好友乙','sec_uid':''}]
+    created=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':planned['targets'],'send_time':planned['times'][0],
+        'schedule_mode':'auto','expected_times':planned['times'],
+        'expected_next_runs':[entry['next_run_at'] for entry in planned['entries']],
+    },headers={'X-CSRF-Token':state['csrf']})
+    assert created.status_code==200,created.text
+    body=created.json()
+    assert body['times']==planned['times']
+    assert [entry['next_run_at'] for entry in body['entries']]==[entry['next_run_at'] for entry in planned['entries']]
+    assert [item['name'] for item in body['items']]==['预览好友甲','预览好友乙']
+    assert [item['time'] for item in body['items']]==planned['times']
+    assert body['count']==2 and all(item['enabled'] for item in body['items'])
+
+
+def test_changed_load_rejects_preview_atomically_and_returns_updated_plan(site):
+    from spark_console.models import SparkTask
+    client,(owned,foreign)=site
+    state=client.get('/api/studio').json()
+    targets=[{'name':'先核对甲'},{'name':'先核对乙'}]
+    planned=client.post('/tasks/preview',json={
+        'csrf_token':state['csrf'],'account_id':owned,'time':'10:00','targets':targets,
+    }).json()
+    assert planned['times']==['10:00','10:05']
+    with session_scope(client.app.state.engine) as db:
+        account=db.get(DouyinAccount,foreign)
+        db.add(SparkTask(owner_user_id=account.owner_user_id,douyin_account_id=foreign,
+            target_name='刚新增的全站负载',send_time='10:05',message_template='续火',enabled=True,
+            next_run_at=datetime.now(timezone.utc)+timedelta(days=1)))
+    rejected=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':targets,'send_time':'10:00',
+        'expected_times':planned['times'],
+    },headers={'X-CSRF-Token':state['csrf']})
+    assert rejected.status_code==409,rejected.text
+    detail=rejected.json()['detail']
+    assert detail['code']=='schedule_changed'
+    assert detail['plan']['times']==['10:00','10:10']
+    assert client.get('/api/studio').json()['tasks']==[]
+
+
+def test_paused_global_tasks_do_not_affect_automatic_suggestion(site, monkeypatch):
+    from spark_console.models import SparkTask
+    from spark_console.schedule_slots import SHANGHAI
+    client,(owned,foreign)=site
+    monkeypatch.setattr('spark_console.schedule_slots._local_now',lambda now=None: datetime(2026,10,4,9,25,tzinfo=SHANGHAI))
+    with session_scope(client.app.state.engine) as db:
+        account=db.get(DouyinAccount,foreign)
+        db.add(SparkTask(owner_user_id=account.owner_user_id,douyin_account_id=foreign,
+            target_name='暂停负载',send_time='09:30',message_template='续火',enabled=False,
+            next_run_at=datetime.now(timezone.utc)+timedelta(days=1)))
+    planned=client.get('/api/studio/schedule',params={'account_id':owned,'mode':'auto'}).json()
+    assert planned['times']==['09:30'] and planned['nearby_load']==0
+
+
+def test_preview_normalizes_aliases_before_planning_and_creation(site):
+    from spark_console.models import DouyinContactIdentity
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    with session_scope(client.app.state.engine) as db:
+        db.add(DouyinContactIdentity(account_id=owned,sec_uid='same-friend',nickname='同一好友'))
+    planned=client.post('/tasks/preview',json={
+        'csrf_token':state['csrf'],'account_id':owned,'time':'12:00',
+        'targets':[{'name':'同一好友'},{'name':'同一好友','sec_uid':'same-friend'},
+                   {'name':'另一个昵称','sec_uid':'same-friend'}],
+    }).json()
+    assert planned['count']==1 and planned['times']==['12:00']
+    assert planned['targets']==[{'name':'同一好友','sec_uid':'same-friend'}]
+    created=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':planned['targets'],'send_time':'12:00',
+        'expected_times':planned['times'],
+    },headers={'X-CSRF-Token':state['csrf']})
+    assert created.status_code==200,created.text
+    assert created.json()['count']==1
+
+
+def test_concurrent_confirmations_do_not_create_overlapping_account_times(site):
+    from concurrent.futures import ThreadPoolExecutor
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    headers={'X-CSRF-Token':state['csrf']}
+    def submit(name):
+        return client.post('/api/studio/tasks',json={
+            'account_id':owned,'targets':[{'name':name}],'send_time':'12:00',
+            'expected_times':['12:00'],
+        },headers=headers)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses=list(pool.map(submit,['并发甲','并发乙']))
+    assert sorted(response.status_code for response in responses)==[200,409]
+    rejected=next(response for response in responses if response.status_code==409)
+    assert rejected.json()['detail']['code']=='schedule_changed'
+    assert rejected.json()['detail']['plan']['times']==['12:05']
+    assert len(client.get('/api/studio').json()['tasks'])==1
+
+
+def test_first_run_date_changed_requires_reconfirmation_and_no_partial_tasks(site):
+    client,(owned,_)=site
+    state=client.get('/api/studio').json()
+    rejected=client.post('/api/studio/tasks',json={
+        'account_id':owned,'targets':[{'name':'日期已变'}],'send_time':'12:00',
+        'expected_times':['12:00'],'expected_next_runs':['2020-01-01T04:00:00+00:00'],
+    },headers={'X-CSRF-Token':state['csrf']})
+    assert rejected.status_code==409
+    assert rejected.json()['detail']['code']=='schedule_changed'
+    assert client.get('/api/studio').json()['tasks']==[]
