@@ -666,6 +666,22 @@ function friendState(task,last){
   return task?.enabled?{label:'待发送',tone:'warn'}:{label:'已暂停',tone:'neutral'};
 }
 
+function compactFriendSchedule(value, fallback) {
+  const raw = String(value || fallback || '').trim();
+  if (!raw) return '今日 — · 今日';
+  const timeMatch = raw.match(/(?:T|\s|^)(\d{1,2}:\d{2})(?::\d{2})?/);
+  const time = timeMatch ? timeMatch[1].padStart(5, '0') : raw.slice(-5);
+  const parsed = new Date(raw.includes(' ') && !raw.includes('T') ? raw.replace(' ', 'T') : raw);
+  if (Number.isNaN(parsed.getTime())) return `今日 ${time} · 今日`;
+  const dayKey = date => date.toLocaleDateString('en-CA', {timeZone:'Asia/Shanghai'});
+  const today = new Date();
+  const todayKey = dayKey(today);
+  const tomorrowKey = dayKey(new Date(today.getTime() + 86400000));
+  const parsedKey = dayKey(parsed);
+  const dayLabel = parsedKey === todayKey ? '今日' : parsedKey === tomorrowKey ? '明日' : parsed.toLocaleDateString('zh-CN', {timeZone:'Asia/Shanghai', month:'numeric', day:'numeric'});
+  return `${dayLabel} ${time} · ${dayLabel}`;
+}
+
 // FriendCard with pointer-tracking spotlight (same pattern as Card)
 function FriendCard({task: t, last, state, onEdit}) {
   const ref = useRef(null);
@@ -682,7 +698,7 @@ function FriendCard({task: t, last, state, onEdit}) {
     </div>
     <b>{displayName(t.name)}</b>
     {t.streak != null && <strong><span className="fire-streak-icon" aria-hidden="true">🔥</span> {t.streak}<small> 天连续</small></strong>}
-    <time>{last?.time||`今日 ${t.time||'—'}`} · 今日</time>
+    <time>{compactFriendSchedule(last?.time, t.time)}</time>
     <span className="fire-friend-bar"><i style={{transform:`scaleX(${t.enabled?1:.2})`}}/></span>
   </>;
   if (onEdit) {
