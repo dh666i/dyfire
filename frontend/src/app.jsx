@@ -668,18 +668,27 @@ function friendState(task,last){
 
 function compactFriendSchedule(value, fallback) {
   const raw = String(value || fallback || '').trim();
-  if (!raw) return '今日 — · 今日';
-  const timeMatch = raw.match(/(?:T|\s|^)(\d{1,2}:\d{2})(?::\d{2})?/);
-  const time = timeMatch ? timeMatch[1].padStart(5, '0') : raw.slice(-5);
-  const parsed = new Date(raw.includes(' ') && !raw.includes('T') ? raw.replace(' ', 'T') : raw);
-  if (Number.isNaN(parsed.getTime())) return `今日 ${time} · 今日`;
-  const dayKey = date => date.toLocaleDateString('en-CA', {timeZone:'Asia/Shanghai'});
+  if (!raw) return '今日 —';
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);
+  const timeMatch = raw.match(/(?:T|\s|^)(\d{1,2}):(\d{2})(?::\d{2})?/);
+  const time = match
+    ? `${match[4].padStart(2, '0')}:${match[5]}`
+    : timeMatch
+      ? `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
+      : raw.slice(-5);
+  if (!match) return `今日 ${time}`;
+
+  const localDay = `${match[1]}-${match[2]}-${match[3]}`;
   const today = new Date();
+  const dayKey = date => date.toLocaleDateString('en-CA', {timeZone:'Asia/Shanghai'});
   const todayKey = dayKey(today);
   const tomorrowKey = dayKey(new Date(today.getTime() + 86400000));
-  const parsedKey = dayKey(parsed);
-  const dayLabel = parsedKey === todayKey ? '今日' : parsedKey === tomorrowKey ? '明日' : parsed.toLocaleDateString('zh-CN', {timeZone:'Asia/Shanghai', month:'numeric', day:'numeric'});
-  return `${dayLabel} ${time} · ${dayLabel}`;
+  const dayLabel = localDay === todayKey
+    ? '今日'
+    : localDay === tomorrowKey
+      ? '明日'
+      : `${Number(match[2])}月${Number(match[3])}日`;
+  return `${dayLabel} ${time}`;
 }
 
 // FriendCard with pointer-tracking spotlight (same pattern as Card)
