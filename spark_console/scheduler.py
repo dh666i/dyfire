@@ -265,10 +265,15 @@ def _due_task_statement(now_utc: datetime, *, shard: int = 0, shards: int = 1):
             User.status == "active",
             or_(
                 User.role == "admin",
+                # Active paid subscription.
                 and_(
                     UserSubscription.valid_from <= now_utc,
                     UserSubscription.valid_until > now_utc,
                 ),
+                # Free tier: no subscription row at all (new user) or expired
+                # subscription — both get one task slot under the free-tier cap.
+                UserSubscription.user_id.is_(None),
+                UserSubscription.valid_until <= now_utc,
             ),
             SparkTask.enabled.is_(True),
             DouyinAccount.validation_state.not_in(
