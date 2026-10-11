@@ -105,14 +105,20 @@ def membership_summary(
         if not active:
             status = "expired"
             status_label = "已过期"
+            # Expired subscribers fall back to the free tier so they can still
+            # bind one account and run one task without an active subscription.
+            max_accounts = FREE_MAX_ACCOUNTS
+            max_tasks = FREE_MAX_TASKS
         elif days_remaining <= 7:
             status = "expiring"
             status_label = "即将到期"
+            max_accounts = subscription.max_accounts
+            max_tasks = subscription.max_tasks
         else:
             status = "active"
             status_label = "使用中"
-        max_accounts = subscription.max_accounts
-        max_tasks = subscription.max_tasks
+            max_accounts = subscription.max_accounts
+            max_tasks = subscription.max_tasks
         is_admin = False
 
     pending_subscription = None
@@ -140,11 +146,11 @@ def membership_summary(
             ),
             "status_label": "下期生效",
         } if pending_max_tasks is not None or pending_max_accounts is not None else None
-    free_tier = (
-        user.status == "active"
-        and user.role != "admin"
-        and subscription is None
-    )
+    # free_tier is true for any active non-admin user who has no currently-active
+    # paid subscription — whether they never had one or it has since expired.
+    # This flag drives the "1 account / 1 task" entitlement shown in the UI and
+    # checked in the write guards below.
+    free_tier = user.status == "active" and user.role != "admin" and not active
     if max_tasks is None or is_admin or is_unlimited_tasks(max_tasks):
         task_overage = 0
         task_capacity_status = "unlimited" if active or is_admin else "inactive"

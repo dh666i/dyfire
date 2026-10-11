@@ -656,14 +656,17 @@ class SubscriptionService:
             .select_from(DouyinAccount)
             .where(DouyinAccount.owner_user_id == user_id)
         )
-        if subscription is None:
+        current = self._now()
+        if subscription is None or _aware(subscription.valid_from) > current or _aware(subscription.valid_until) <= current:
+            # No active subscription — allow up to the free-tier limit so that
+            # new users and users with expired subscriptions can still bind one
+            # account without purchasing a plan.
+            if subscription is not None:
+                reconcile_subscription(self.session, subscription, current)
             if int(count or 0) >= FREE_MAX_ACCOUNTS:
                 raise Conflict("抖音账号数量已达免费额度，请开通订阅后继续添加")
             return None
-        current = self._now()
         reconcile_subscription(self.session, subscription, current)
-        if _aware(subscription.valid_from) > current or _aware(subscription.valid_until) <= current:
-            raise ValidationError(INACTIVE_SUBSCRIPTION)
         if int(count or 0) >= subscription.max_accounts:
             raise Conflict("抖音账号数量已达套餐上限")
         return subscription
@@ -689,14 +692,17 @@ class SubscriptionService:
                 SparkTask.enabled.is_(True),
             )
         )
-        if subscription is None:
+        current = self._now()
+        if subscription is None or _aware(subscription.valid_from) > current or _aware(subscription.valid_until) <= current:
+            # No active subscription — allow up to the free-tier limit so that
+            # new users and users with expired subscriptions can still run one
+            # task without purchasing a plan.
+            if subscription is not None:
+                reconcile_subscription(self.session, subscription, current)
             if int(count or 0) + additional_tasks > FREE_MAX_TASKS:
                 raise Conflict("续火花任务数量已达免费额度，请开通订阅后继续添加")
             return None
-        current = self._now()
         reconcile_subscription(self.session, subscription, current)
-        if _aware(subscription.valid_from) > current or _aware(subscription.valid_until) <= current:
-            raise ValidationError(INACTIVE_SUBSCRIPTION)
         if not is_unlimited_tasks(subscription.max_tasks) and int(count or 0) + additional_tasks > subscription.max_tasks:
             raise Conflict("续火任务数量已达套餐上限")
         return subscription

@@ -646,12 +646,34 @@ class SubscriptionServiceTests(unittest.TestCase):
         self.assertFalse(summary["can_add_account"])
         self.assertFalse(summary["can_add_task"])
 
-    def test_expired_subscription_does_not_fall_back_to_free_tier(self):
+    def test_expired_subscription_falls_back_to_free_tier(self):
+        # A user whose paid subscription has expired should still be able to
+        # bind one account and run one task, exactly like a brand-new user who
+        # has never had a subscription.
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="free-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
         subscription = self.service.extend(self.admin.id, self.user.id, duration_days=1)
         self.now = aware(subscription.valid_until) + timedelta(seconds=1)
-        self.assertFalse(self.service.has_task_access(self.user.id))
-        with self.assertRaisesRegex(ValidationError, "会员未开通或已过期"):
-            self.service.require_task_capacity(self.user.id)
+        # has_task_access remains true so existing tasks keep running.
+        self.assertTrue(self.service.has_task_access(self.user.id))
+        # The account slot is already used up (1 of FREE_MAX_ACCOUNTS=1).
+        with self.assertRaisesRegex(Conflict, "免费额度"):
+            self.service.require_account_capacity(self.user.id)
+        # One enabled task is still allowed.
+        self.assertIsNone(self.service.require_task_capacity(self.user.id))
+        # membership_summary reflects free-tier limits and flags.
+        summary = membership_summary(self.session, self.user, self.now)
+        self.assertTrue(summary["free_tier"])
+        self.assertEqual(1, summary["max_accounts"])
+        self.assertEqual(1, summary["max_tasks"])
+        self.assertFalse(summary["can_add_account"])  # already at limit
+        self.assertTrue(summary["can_add_task"])       # zero tasks enabled yet
 
     def test_task_capacity_checks_the_full_batch_size(self):
         self.service.extend(
