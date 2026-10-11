@@ -664,7 +664,7 @@ function Dashboard({data,onRefresh}) {
     <OnboardingGuide data={data} membership={membership} accounts={accounts} tasks={tasks} onNavigate={navigate}/>
     <div className="fire-home-main"><section><div className="fire-section-title">续火花任务 <span/></div><div className="fire-friend-grid">{friends.length?friends.slice(0,8).map((t,i)=>{const last=runByTaskId.get(t.id); return <FriendCard key={t.id||i} task={t} last={last} state={friendState(t,last)} onEdit={setEditTask}/>;}) : <Empty title="还没有今日续火任务" text="创建任务后会显示今日执行状态。"/>}{friends.length<4&&<button type="button" className="fire-friend-card fire-friend-add" onClick={()=>navigate(accounts.length?'/studio':'/accounts')}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section><aside className="fire-home-sidebar"><section className="fire-sub-card"><span className="fire-kicker">SUBSCRIPTION</span><h2>{membershipIsFreeTier(membership)?'免费版':'我的订阅'}</h2><strong>{membership.active?(membership.days_remaining??'∞'):(membershipIsFreeTier(membership)?'1':'—')}<small>{membership.active?'天有效':membershipIsFreeTier(membership)?'个好友任务':'未开通'}</small></strong><p>{membership.active?`启用任务 ${membershipTaskUsage(membership)??membership.task_count??data?.resource_limits?.tasks_enabled_total??tasks.filter(task=>task.enabled).length} / ${membership.task_limit_label||membership.max_tasks||'不限'}`:membershipIsFreeTier(membership)?`已使用 ${membershipTaskUsage(membership)??membership.task_count??data?.resource_limits?.tasks_enabled_total??tasks.filter(task=>task.enabled).length} / 1 个好友任务`:'联系客服购买后即可开通。'}</p><MembershipPlanNotice membership={membership} compact/><Button variant="quiet" onClick={()=>navigate('/subscription')}>{membership.active?'管理订阅':membershipIsFreeTier(membership)?'升级订阅':'查看套餐'}</Button>{!membership.active&&!membershipIsFreeTier(membership)&&<button type="button" className="fire-support-link" onClick={()=>setSupportOpen(true)}>联系客服开通</button>}</section></aside></div>
     <div className="fire-home-bottom"><section className="fire-heat-card"><div className="fire-section-title">近 365 天互动 · {activity.total||0} 次 <span/></div><p className="fire-heat-hint">每格代表一天，颜色越亮表示当天互动越多</p><div className="fire-heat-months" style={{gridTemplateColumns:`repeat(${heatColumns},minmax(0,1fr))`}}>{heatMonths.map((label,i)=><span key={i}>{label}</span>)}</div><div className="fire-heat-grid" style={{gridTemplateColumns:`repeat(${heatColumns},minmax(0,1fr))`}}>{heatDays.map((day,i)=><i key={i} className={day.outside?'outside':''} style={{opacity:day.outside?0:Math.min(1,.12+(Number(day.count||0)/Math.max(1,Math.max(...heatDays.map(item=>Number(item.count||0)))))*.88)}} title={day.date?`${day.date} · ${day.count||0} 次互动`:''}/>)}</div><div className="fire-heat-legend"><span>少</span><i/><i/><i/><i/><span>多</span></div></section><section className="fire-quick-card"><span>保持日常</span><h2>把重要的人，交给稳定的计划。</h2><MagneticButton onClick={()=>navigate(accounts.length?'/studio':'/accounts')}>{accounts.length?'创建续火任务':'绑定账号'} ↗</MagneticButton></section></div>
-    <TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={()=>setEditTask(null)} onRefresh={doRefresh}/><ContactSupportModal open={supportOpen} onClose={()=>setSupportOpen(false)}/>
+    <TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={()=>setEditTask(null)} onRefresh={doRefresh} onSaved={()=>{}}/><ContactSupportModal open={supportOpen} onClose={()=>setSupportOpen(false)}/>
   </div>;
 }
 
@@ -788,7 +788,6 @@ function scheduleFirstRunLabel(entry) {
 
 function Studio({data,onRefresh,preEditId,onEditClose}) {
   const accounts=asList(data?.accounts); const membership=data?.membership||{};
-  const [composerStep,setComposerStep]=useState(1);
   const [accountId,setAccountId]=useState(accounts[0]?.id||'');
   const [selectedTime,setSelectedTime]=useState('');
   const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState('');
@@ -813,14 +812,13 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     setTaskPagination(page=>page?{...page,total:page.total+added.length}:page);
     setCreatedPending(count=>count+added.length);
     setSuccessToast(`已成功创建 ${value.count??added.length} 个续火任务`);
-    setFilter('all');setSearch('');setFriends([]);setSelectedTime('');setComposerStep(1);setNotice('');
+    setFilter('all');setSearch('');setFriends([]);setSelectedTime('');setNotice('');
   }}),[]);
   const [schedule,setSchedule]=useState(()=>composer.getState());
   useEffect(()=>{const unsubscribe=composer.subscribe(setSchedule);return()=>{unsubscribe();composer.close()}},[composer]);
   const selectedTargets=useMemo(()=>friends.map(friend=>({name:friend.name,sec_uid:friend.sec_uid||''})),[friends]);
   useEffect(()=>{composer.configure({accountId,count:Math.max(1,friends.length),targets:selectedTargets,csrf:data.csrf,mode:selectedTime?'manual':'auto',preferred:selectedTime})},[composer,accountId,selectedTargets,selectedTime,data.csrf]);
   useEffect(()=>{if(!accountId&&accounts[0]?.id)setAccountId(accounts[0].id)},[accountId,accounts[0]?.id]);
-  useEffect(()=>{if(composerStep===1&&accounts.length===1&&account)setComposerStep(2)},[composerStep,accounts.length,account?.id]);
   useEffect(()=>{
     if(schedule.success){successRef.current?.focus({preventScroll:true});successRef.current?.scrollIntoView({behavior:'smooth',block:'nearest'})}
   },[schedule.success]);
@@ -833,7 +831,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded',String(picker));trigger.setAttribute('aria-disabled',String(!accountId));
     const onKey=event=>{if((event.key==='Enter'||event.key===' ')&&accountId){event.preventDefault();setPicker(true)}};
     trigger.addEventListener('keydown',onKey);return()=>trigger.removeEventListener('keydown',onKey);
-  },[accountId,picker,composerStep]);
+  },[accountId,picker]);
   useEffect(()=>{
     setTaskRows(asList(data?.tasks));setTaskPage(data?.tasks_pagination?.page||1);setTaskPagination(data?.tasks_pagination||null);setCreatedPending(0);
   },[data?.tasks,data?.tasks_pagination]);
@@ -882,12 +880,6 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     setNotice('');
     await composer.create({csrf:data.csrf,payload:{account_id:account.id,targets:friends.map(f=>({name:f.name,sec_uid:f.sec_uid||''})),message_kind:kind,message_template:kind==='text'?message.trim():'续火花'}});
   };
-  const submit=async event=>{
-    event.preventDefault();setNotice('');
-    if(composerStep===1){if(!account)return setNotice('请先选择发送账号');setComposerStep(2);return}
-    if(composerStep===2){if(!friends.length)return setNotice(remainingTaskCapacity===0?quotaMessage:'请选择一个或多个好友');setComposerStep(3);return}
-    await createTask();
-  };
   const enabledTotal=data?.resource_limits?.tasks_enabled_total!=null?data.resource_limits.tasks_enabled_total+createdPending:tasks.filter(t=>t?.enabled).length;
   const pausedTotal=data?.resource_limits?.tasks_paused_total??Math.max(0,(taskPagination?.total??tasks.length)-enabledTotal);
   const firstMinutes=time=>{const [hour,minute]=time.split(':').map(Number);return hour*60+minute};
@@ -903,34 +895,49 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     </section>}
     <div className="studio-layout"><section className="studio-list">
       <div className="toolbar"><RubberSegment className="admin-segment" items={[{value:'all',label:`全部 ${taskPagination?.total??tasks.length}`},{value:'active',label:`运行中 ${enabledTotal}`},{value:'paused',label:`已暂停 ${pausedTotal}`}]} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="任务筛选"/><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>
-      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';return <div className="task-row" key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} onClick={()=>setEditTask(task)}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={async()=>{try{await api(`/api/studio/tasks/${task?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!task?.enabled})});setNotice(task?.enabled?'任务已暂停':'任务已恢复');await onRefresh()}catch(error){setNotice(error.message)}}}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><Button className={actionClass} variant="danger" title="删除任务" aria-label={`删除 ${name}`} onClick={()=>deleteTask(task)}><ActionDeleteIcon/></Button></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
+      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';return <div className="task-row" key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} onClick={()=>setEditTask(task)}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={async()=>{try{await api(`/api/studio/tasks/${task?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!task?.enabled})});setNotice(task?.enabled?'任务已暂停':'任务已恢复');await onRefresh()}catch(error){setNotice(error.message)}}}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><Button className={actionClass} variant="danger" title="删除任务" aria-label={`删除 ${name}`} onClick={()=>deleteTask(task)}><ActionDeleteIcon/></Button><div className="task-row-menu"><button type="button" className="task-row-menu-btn" aria-label={`${name} 更多操作`} onClick={e=>{e.stopPropagation();const menu=e.currentTarget.nextElementSibling;menu.classList.toggle('is-open');const close=ev=>{if(!menu.contains(ev.target)){menu.classList.remove('is-open');document.removeEventListener('click',close)}};document.addEventListener('click',close)}}>⋮</button><div className="task-row-menu-dropdown"><button type="button" onClick={()=>setEditTask(task)}>编辑时间</button><button type="button" onClick={async()=>{try{await api(`/api/studio/tasks/${task?.id}/enabled`,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':data?.csrf},body:JSON.stringify({enabled:!task?.enabled})});setNotice(task?.enabled?'任务已暂停':'任务已恢复');await onRefresh()}catch(error){setNotice(error.message)}}}>{task?.enabled?'暂停任务':'恢复任务'}</button><button type="button" className="danger-action" onClick={()=>deleteTask(task)}>删除任务</button></div></div></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
       {taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}
     </section><Card className="composer-card" id="task-composer">
-      <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div><span className="step-mark">0{composerStep}</span></div>
-      <div className="composer-steps" role="list" aria-label="创建任务步骤">{[['账号',1],['好友',2],['发送设置',3]].map(([label,step])=><button type="button" key={step} className={composerStep===step?'active':''} disabled={step>composerStep||saving} aria-current={composerStep===step?'step':undefined} onClick={()=>step<=composerStep&&setComposerStep(step)}><b>0{step}</b><span>{label}</span></button>)}</div>
-      <form onSubmit={submit} className="form-stack">
-        {composerStep===1&&<><label>发送账号<Select className="input" value={accountId} disabled={saving} onChange={event=>{setAccountId(event.target.value);setFriends([]);setSelectedTime('')}} aria-label="发送账号">{accounts.length?accounts.map((item,index)=><option key={item?.id||index} value={item?.id||''}>{displayName(item?.name)}</option>):<option value="">请先绑定账号</option>}</Select></label><div className="composer-step-hint">先选择负责发送消息的抖音账号。</div>{!accounts.length&&<div className="inline-feedback" role="status">尚未绑定发送账号。<Link to="/accounts">前往抖音账号页 ↗</Link></div>}</>}
-        {composerStep===2&&<><label>目标好友<div className={`friend-trigger ${remainingTaskCapacity===0?'is-quota-full':''}`} onClick={()=>account&&setPicker(true)}>{friends.length?friends.map((friend,index)=><span key={friend?.sec_uid||friend?.name||index} className="selected-chip">{displayName(friend?.name,'未命名好友')}</span>):<span className="muted">选择一个或多个好友</span>}<span>＋</span></div></label><div className="composer-step-hint">{remainingTaskCapacity===0?quotaMessage:'可选择多位好友，下一步会显示每位好友的具体发送时间。已有任务的好友会自动标记。'}</div></>}
-        {composerStep===3&&<>
-          <div className="composer-summary"><span>发送账号</span><b>{displayName(account?.name,'—')}</b><span>目标好友</span><b>{scheduledFriends.length?`${scheduledFriends.length} 位好友`:'—'}</b></div>
-          <div className="form-grid"><label>每日发送时间<input className="input" type="time" aria-label="每日发送时间" value={selectedTime||schedule.plan?.times?.[0]||''} disabled={saving||schedule.status==='loading'} onChange={event=>setSelectedTime(event.target.value)}/></label><label>消息类型<Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label></div>
-          <section className="schedule-preview" aria-label="好友发送时间安排" aria-busy={schedule.status==='loading'}>
-            <div className="schedule-preview-head"><h3>每位好友的每日发送时间</h3><small>北京时间</small></div>
-            {schedule.status==='loading'&&<p role="status">正在安排发送时间…</p>}
-            {schedule.error&&<div className="inline-feedback danger-text" role="alert"><p>{schedule.error}</p><Button variant="quiet" type="button" disabled={saving} onClick={()=>composer.retry()}>重新获取时间安排</Button></div>}
-            {schedule.conflict&&<div className="inline-feedback schedule-conflict" role="alert"><b>请核对新的时间安排</b><p>{schedule.conflict}</p></div>}
-            {ready&&<><p className="schedule-reason">{scheduledFriends.length>1?'已为每位好友自动错开发送时间，请确认下方安排。':'创建后每天按此时间发送。'}</p>{scheduledFriends.length<friends.length&&<p className="schedule-reason">已合并重复选择的好友，按 {scheduledFriends.length} 位好友创建任务。</p>}<ul className="schedule-friend-list">{scheduledFriends.map((friend,index)=>{const entry=schedule.plan.entries[index];const offset=(firstMinutes(entry.time)-firstMinutes(schedule.plan.times[0])+1440)%1440;return <li key={friend.sec_uid||friend.name||index}><span className="schedule-friend-name">{displayName(friend.name,'未命名好友')}</span><time>{entry.time}</time><small className="schedule-offset">{index?`较首位晚 ${offset} 分钟`:'首位好友'}</small><small className="schedule-first-run">首次：{scheduleFirstRunLabel(entry)}</small></li>})}</ul></>}
-          </section>
-          {kind==='text'&&<label>发送内容<textarea className="input textarea" maxLength="300" disabled={saving} value={message} onChange={event=>setMessage(event.target.value)} placeholder="写一句日常问候"/></label>}
-          <div className="message-preview"><span className="preview-mark">✦</span><div><b>{kind==='text'?'自定义文字消息':'续火花表情'}</b><small>{kind==='text'?'按以上时间发送你填写的内容。':'每天按以上时间，给选中的好友发送续火花表情。'}</small></div></div>
-        </>}
+      <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div></div>
+      <div className="composer-account-bar">
+        <span className="eyebrow">发送账号</span>
+        <Select className="input" value={accountId} disabled={saving} onChange={event=>{setAccountId(event.target.value);setFriends([]);setSelectedTime('')}} aria-label="发送账号">{accounts.length?accounts.map((item,index)=><option key={item?.id||index} value={item?.id||''}>{displayName(item?.name)}</option>):<option value="">请先绑定账号</option>}</Select>
+        {!accounts.length&&<Link to="/accounts" className="composer-account-link">前往绑定 ↗</Link>}
+      </div>
+      <form onSubmit={async e=>{e.preventDefault();await createTask()}} className="composer-single-form">
+        <div className={`composer-main-area${friends.length&&ready?' has-preview':''}`}>
+          <div className="composer-friend-section">
+            <label className="composer-field-label">目标好友</label>
+            <div className={`friend-trigger ${remainingTaskCapacity===0?'is-quota-full':''}`} onClick={()=>account&&setPicker(true)}>
+              {friends.length?friends.map((friend,index)=><span key={friend?.sec_uid||friend?.name||index} className="selected-chip">{displayName(friend?.name,'未命名好友')}</span>):<span className="muted">点击选择好友</span>}
+              <span>＋</span>
+            </div>
+            {remainingTaskCapacity===0&&<small className="composer-quota-hint">{quotaMessage}</small>}
+          </div>
+          {friends.length>0&&(schedule.status==='loading'||ready)&&(
+            <div className="composer-preview-section" aria-label="发送时间预览" aria-busy={schedule.status==='loading'}>
+              <label className="composer-field-label">发送时间安排</label>
+              {schedule.status==='loading'&&<p className="composer-preview-loading" role="status">正在计算时间…</p>}
+              {schedule.error&&<div className="inline-feedback danger-text" role="alert">{schedule.error}<Button variant="quiet" type="button" disabled={saving} onClick={()=>composer.retry()}>重试</Button></div>}
+              {schedule.conflict&&<div className="inline-feedback" role="alert"><b>时间有冲突，请确认</b><p>{schedule.conflict}</p></div>}
+              {ready&&<ul className="composer-preview-list">{scheduledFriends.map((friend,index)=>{const entry=schedule.plan.entries[index];const offset=(firstMinutes(entry.time)-firstMinutes(schedule.plan.times[0])+1440)%1440;return <li key={friend.sec_uid||friend.name||index}><span>{displayName(friend.name,'未命名好友')}</span><time>{entry.time}</time>{index>0&&<small>+{offset}分</small>}</li>})}</ul>}
+            </div>
+          )}
+        </div>
+        <div className="composer-settings-row">
+          <label className="composer-field-inline"><span>时间</span><input className="input" type="time" aria-label="每日发送时间" value={selectedTime||schedule.plan?.times?.[0]||''} disabled={saving||schedule.status==='loading'} onChange={event=>setSelectedTime(event.target.value)}/></label>
+          <label className="composer-field-inline"><span>类型</span><Select className="input" value={kind} disabled={saving} onChange={event=>setKind(event.target.value)} aria-label="消息类型"><option value="douyin_sticker">续火花表情</option><option value="text">文字消息</option></Select></label>
+        </div>
+        {kind==='text'&&<label className="composer-text-label">发送内容<textarea className="input textarea" maxLength="300" disabled={saving} value={message} onChange={event=>setMessage(event.target.value)} placeholder="写一句日常问候"/></label>}
         {notice&&<div className="inline-feedback" role="status">{notice}</div>}
-        {schedule.createError&&<div className="inline-feedback danger-text" role="alert"><b>尚未创建任务，已保留当前填写内容</b><p>{schedule.createError}</p></div>}
-        <div className="composer-actions">{composerStep>1&&<Button variant="quiet" type="button" disabled={saving} onClick={()=>setComposerStep(step=>step-1)}>上一步</Button>}<Button type="submit" disabled={saving||(composerStep===3&&(!membership.can_add_task||remainingTaskCapacity===0||!ready))}>{saving?'正在创建…':composerStep===3?schedule.conflict?'确认新安排并创建 ↗':`确认创建 ${scheduledFriends.length} 个任务 ↗`:'下一步 ↗'}</Button></div>
-        {!membership.can_add_task&&<small className="muted">{quotaMessage}</small>}
+        {schedule.createError&&<div className="inline-feedback danger-text" role="alert"><b>未创建任务</b><p>{schedule.createError}</p></div>}
+        <div className="composer-actions">
+          <Button type="submit" disabled={saving||!friends.length||!account||!membership.can_add_task||remainingTaskCapacity===0||!ready}>{saving?'正在创建…':friends.length?`创建 ${scheduledFriends.length} 个续火任务 ↗`:'选择好友后创建 ↗'}</Button>
+          {!membership.can_add_task&&<small className="muted">{quotaMessage}</small>}
+        </div>
       </form>
     </Card></div>
-    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} releasedKeys={releasedKeys} selectionLimit={Number.isFinite(remainingTaskCapacity)?remainingTaskCapacity:null} limitMessage={remainingTaskCapacity===0?quotaMessage:''} onLimitReached={()=>setNotice(quotaMessage)} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh}/><Toast message={successToast} onClose={closeSuccessToast}/>
+    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} releasedKeys={releasedKeys} selectionLimit={Number.isFinite(remainingTaskCapacity)?remainingTaskCapacity:null} limitMessage={remainingTaskCapacity===0?quotaMessage:''} onLimitReached={()=>setNotice(quotaMessage)} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh} onSaved={msg=>setSuccessToast(msg)}/><Toast message={successToast} onClose={closeSuccessToast}/>
   </>;
 }
 
@@ -1025,15 +1032,17 @@ function Runs({data}) {
   const [filter,setFilter]=useState('');
   const [expanded,setExpanded]=useState(null);
   const [runsError,setRunsError]=useState('');
+  const [nameFilter,setNameFilter]=useState('');
   // Keep rows in sync when parent bootstrap refreshes (e.g. after task creation).
   useEffect(()=>{if(!filter)setRows(asList(data?.runs))},[data?.runs]);
   useEffect(()=>{api(`/api/studio/runs?status=${filter}`).then(v=>setRows(asList(v?.items))).catch(e=>setRunsError(e.message))},[filter]);
+  const displayedRows=rows.filter(r=>!nameFilter||(r.name||'').toLowerCase().includes(nameFilter.toLowerCase()));
   const tone=r=>r.status==='success'?'good':r.status==='failed'?'danger':r.status==='submitted_unconfirmed'?'warn':r.status==='running'?'running':'neutral';
   const runFilterItems=[{value:'',label:'全部'},{value:'success',label:'已发出'},{value:'failed',label:'未发出'},{value:'submitted_unconfirmed',label:'待核实'}];
-  return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><span className="runs-count">{rows.length} 条记录</span></div>{runsError&&<div className="inline-feedback danger-text" role="alert">{runsError}</div>}<Card className="runs-card">{rows.length?<div className="run-list">{rows.map(r=>{const open=expanded===r.id;const detailId=`run-detail-${r.id}`;return <div className={`run-row ${open?'is-expanded':''}`} key={r.id} role="button" tabIndex="0" aria-expanded={open} aria-controls={detailId} aria-label={`${r.name||'执行记录'}，${r.label||r.status||'状态未知'}。按 Enter 或空格查看详情`} onClick={()=>setExpanded(open?null:r.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setExpanded(open?null:r.id)}}}><span className={`run-dot ${r.status}`} aria-hidden="true"/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small><div id={detailId} className="run-detail" hidden={!open}><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||'本次执行完成，未发现异常。'}</span>{r.timeline?.map(item=><span key={`timeline-${item.sequence}`}><b>{item.occurred_at} · {item.stage}</b> {item.detail||item.event}</span>)}{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</div></div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||'计划执行正常'}</span></div>})}</div>:<Empty title="还没有执行记录" text="任务开始运行后，结果会出现在这里。"/>}</Card></>;
+  return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="runs-summary"><span className="runs-summary-item good"><b>{rows.filter(r=>r.status==='success').length}</b> 已发出</span><span className="runs-summary-item warn"><b>{rows.filter(r=>r.status==='submitted_unconfirmed').length}</b> 待核实</span><span className="runs-summary-item danger"><b>{rows.filter(r=>r.status==='failed').length}</b> 未发出</span></div><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><input className="input compact-search" value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="按好友名搜索"/><span className="runs-count">{displayedRows.length} / {rows.length} 条</span></div>{runsError&&<div className="inline-feedback danger-text" role="alert">{runsError}</div>}<Card className="runs-card">{displayedRows.length?<div className="run-list">{displayedRows.map(r=>{const open=expanded===r.id;const detailId=`run-detail-${r.id}`;return <div className={`run-row ${open?'is-expanded':''}`} key={r.id} role="button" tabIndex="0" aria-expanded={open} aria-controls={detailId} aria-label={`${r.name||'执行记录'}，${r.label||r.status||'状态未知'}。按 Enter 或空格查看详情`} onClick={()=>setExpanded(open?null:r.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setExpanded(open?null:r.id)}}}><span className={`run-dot ${r.status}`} aria-hidden="true"/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small><div id={detailId} className="run-detail" hidden={!open}><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||'本次执行完成，未发现异常。'}</span>{r.timeline?.map(item=><span key={`timeline-${item.sequence}`}><b>{item.occurred_at} · {item.stage}</b> {item.detail||item.event}</span>)}{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</div></div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||'计划执行正常'}</span></div>})}</div>:<Empty title="还没有执行记录" text="任务开始运行后，结果会出现在这里。"/>}</Card></>;
 }
 
-function TaskEditDrawer({task, data, open, onClose, onRefresh}) {
+function TaskEditDrawer({task, data, open, onClose, onRefresh, onSaved}) {
   const [time,setTime]=useState('09:30');
   const [kind,setKind]=useState('douyin_sticker');
   const [message,setMessage]=useState('');
@@ -1060,9 +1069,9 @@ function TaskEditDrawer({task, data, open, onClose, onRefresh}) {
     fd.append('message_template',kind==='text'?message:'续火花');
     try{
       await api(`/tasks/${t?.id}/edit`,{method:'POST',body:fd});
-      setStatus('已保存');
       await onRefresh();
-      setTimeout(onClose, 600);
+      onSaved?.('已保存发送时间');
+      onClose();
     }catch(err){setStatus(err.message);}
     finally{setSaving(false);}
   };
@@ -1090,7 +1099,7 @@ function TaskEditDrawer({task, data, open, onClose, onRefresh}) {
           {kind==='text'&&<label>发送内容
             <textarea className="input textarea" value={message} onChange={e=>setMessage(e.target.value)} placeholder="写一句日常问候"/>
           </label>}
-          {status&&<div className="inline-feedback">{status}</div>}
+          {status&&<div className="inline-feedback danger-text" role="alert">{status}</div>}
           <Button type="submit" disabled={saving}>{saving?'正在保存…':'保存任务 ↗'}</Button>
         </form>
       </div>

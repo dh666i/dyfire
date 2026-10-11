@@ -787,3 +787,53 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
   .update-version-grid > div { padding: 13px; }
   .quick-links a { padding-inline: 10px; }
 }
+
+/* Runs summary bar */
+.runs-summary{display:flex;gap:20px;padding:14px 0 4px;border-bottom:1px solid var(--hairline);margin-bottom:2px}
+.runs-summary-item{display:flex;align-items:center;gap:6px;font:11px var(--mono)}
+.runs-summary-item b{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.runs-summary-item.good b{color:var(--green-bright)}
+.runs-summary-item.warn b{color:#f0ba67}
+.runs-summary-item.danger b{color:#ff897c}
+
+/* Single-screen composer */
+.composer-account-bar{display:flex;align-items:center;gap:10px;padding:10px 0 14px;border-bottom:1px solid rgba(24,23,23,.12);margin-bottom:16px}
+.composer-account-bar .eyebrow{flex:0 0 auto;color:#a88f83}
+.composer-account-bar .input{flex:1;min-width:0}
+.composer-account-link{flex:0 0 auto;color:var(--orange-soft);font-size:11px;white-space:nowrap}
+.composer-single-form{display:grid;gap:14px}
+.composer-main-area{display:grid;gap:12px}
+.composer-main-area.has-preview{grid-template-columns:1fr 1fr;gap:16px}
+.composer-friend-section{display:grid;gap:6px}
+.composer-preview-section{display:grid;gap:6px;padding:12px;border:1px solid rgba(24,23,23,.12);background:rgba(255,255,255,.04)}
+.composer-field-label{color:var(--ink-soft);font-size:11px;font-weight:500}
+.composer-quota-hint{color:#a88f83;font-size:10px;line-height:1.5}
+.composer-preview-loading{color:var(--ink-soft);font-size:11px;margin:0}
+.composer-preview-list{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+.composer-preview-list li{display:flex;align-items:center;gap:8px;font-size:11px}
+.composer-preview-list li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer-preview-list li time{color:var(--orange-soft);font:600 12px var(--mono);flex:0 0 auto}
+.composer-preview-list li small{color:#a88f83;font-size:10px;flex:0 0 auto}
+.composer-settings-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.composer-field-inline{display:grid;gap:5px}
+.composer-field-inline>span{color:var(--ink-soft);font-size:11px}
+.composer-text-label{display:grid;gap:6px;color:var(--ink-soft);font-size:11px}
+@media(max-width:700px){
+  .composer-main-area.has-preview{grid-template-columns:1fr}
+  .composer-settings-row{grid-template-columns:1fr}
+  .runs-summary{gap:14px}
+}
+
+/* Task row mobile action menu */
+.task-row-menu{position:relative}
+.task-row-menu-btn{display:none;width:34px;height:34px;padding:0;border:1px solid rgba(24,23,23,.18);background:transparent;color:var(--ink-soft);cursor:pointer;font-size:16px;align-items:center;justify-content:center}
+.task-row-menu-dropdown{position:absolute;right:0;top:100%;z-index:20;min-width:130px;background:var(--paper-strong);border:1px solid rgba(24,23,23,.2);box-shadow:0 8px 24px rgba(0,0,0,.24);display:none}
+.task-row-menu-dropdown.is-open{display:block}
+.task-row-menu-dropdown button{display:flex;width:100%;align-items:center;gap:8px;padding:10px 14px;border:0;background:transparent;color:var(--ink-dark);font-size:12px;text-align:left;cursor:pointer}
+.task-row-menu-dropdown button:hover{background:rgba(255,255,255,.12)}
+.task-row-menu-dropdown button.danger-action{color:#b83222}
+@media(max-width:700px){
+  .row-actions .icon-action{display:none}
+  .task-row-menu-btn{display:flex}
+  .task-row-menu{display:flex;align-items:center}
+}

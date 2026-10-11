@@ -115,12 +115,12 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opa
 .card a, .card .section-head > a { color: #6e665e; }
 .card .muted, .card .muted-copy, .card small, .card p { color: var(--ink-soft); }
 .card .button.quiet { color: var(--ink-dark); border-color: rgba(24,23,23,.28); }
-.card .button.danger { color: #a33d31; border-color: rgba(163,61,49,.38); }
+.card .button.danger { color: #b83222; border-color: rgba(163,61,49,.38); }
 .metric { min-height: 132px; }
 .metric strong { color: var(--ink-dark); }
 .metric strong.accent { color: #d94716; }
 .metric strong.good { color: #237b4a; }
-.metric strong.danger { color: #b63d35; }
+.metric strong.danger { color: #b83222; }
 .account-status-list, .runs-card { background: var(--paper); }
 .account-status-row, .task-line, .task-row, .run-row { border-color: rgba(24,23,23,.14); }
 .account-status-row:hover, .task-line:hover, .task-row:hover, .run-row:hover { background: rgba(255,255,255,.22); }
@@ -129,7 +129,7 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opa
 .badge { color: #6e665e; }
 .badge.good { color: #237b4a; }
 .badge.warn { color: #8a5d20; }
-.badge.danger { color: #b63d35; }
+.badge.danger { color: #b83222; }
 .live-dot { background: var(--green-bright); box-shadow: 0 0 0 4px rgba(95,197,138,.16); }
 .status-banner { border-color: var(--hairline); background: var(--dark-panel); color: #aaa197; }
 .status-banner > div { color: var(--green-bright); }
@@ -147,7 +147,7 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opa
 .message-preview small, .edit-target small { color: var(--ink-soft); }
 .preview-mark, .step-mark { color: #d94716; }
 .inline-feedback { border-left-color: var(--orange); color: var(--ink-soft); background: rgba(255,255,255,.18); }
-.danger-text { color: #a33d31; border-left-color: #b63d35; }
+.danger-text { color: #b83222; border-left-color: #c23b22; }
 .success-text { color: #2d6e3e; border-left-color: #3a8a4f; }
 
 .drawer-backdrop { background: rgba(0,0,0,.72); z-index: 1000; }
