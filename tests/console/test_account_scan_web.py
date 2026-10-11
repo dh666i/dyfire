@@ -181,7 +181,7 @@ class AccountScanWebTests(unittest.TestCase):
             self.assertEqual("queued", scan.status)
             self.assertEqual(1, len(db.scalars(select(DouyinAccount)).all()))
 
-    def test_start_requires_login_csrf_and_active_membership(self):
+    def test_start_requires_login_csrf_and_allows_free_tier(self):
         anonymous = TestClient(
             create_app(self.settings, self.engine), base_url="https://testserver"
         )
@@ -204,12 +204,8 @@ class AccountScanWebTests(unittest.TestCase):
         other = self.other_client.post(
             "/accounts/scan", data={"csrf_token": self.other_csrf}
         )
-        self.assert_api_error(
-            other,
-            403,
-            "subscription_inactive",
-            "会员未开通或已过期，请开通后重试",
-        )
+        self.assertEqual(201, other.status_code)
+        self.assertEqual("queued", other.json()["status"])
 
     def test_start_rejects_exhausted_account_quota(self):
         with session_scope(self.engine) as db:

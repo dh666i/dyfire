@@ -173,7 +173,7 @@ class Worker:
                     )
                 if owner.role != "admin" and not SubscriptionService(
                     db, AuditService(db), now=lambda: current_time
-                ).active(owner.id):
+                ).has_task_access(owner.id):
                     return finish_run(
                         run,
                         "skipped",

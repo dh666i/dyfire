@@ -356,7 +356,8 @@ def _validate_tasks_can_enable(db: Session, tasks: list[SparkTask]) -> None:
             raise HTTPException(404, "任务归属用户不存在")
         if owner.role != "admin" and owner.id not in checked_owners:
             try:
-                subscriptions.require_active(owner.id)
+                if not subscriptions.has_task_access(owner.id):
+                    raise ValidationError("会员未开通或已过期")
             except (ValidationError, Conflict) as error:
                 raise HTTPException(400, str(error)) from error
             checked_owners.add(owner.id)

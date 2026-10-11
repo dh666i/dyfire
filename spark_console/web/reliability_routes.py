@@ -111,7 +111,8 @@ def build_reliability_router(engine,auth,cipher):
                         running=db.scalar(select(TaskRun.id).where(TaskRun.task_id==task.id,TaskRun.status=='running').limit(1))
                         if running: raise Conflict('任务正在执行，请稍后再修改')
                         if action=='enable' and user.role!='admin':
-                            SubscriptionService(db,AuditService(db)).require_active(user.id)
+                            if not SubscriptionService(db,AuditService(db)).has_task_access(user.id):
+                                raise ValidationError('会员未开通或已过期')
                         if action=='time':
                             binding=db.get(SparkTaskTargetIdentity,task.id)
                             service.update_owned(user.id,task.id,task.douyin_account_id,task.target_name,send_time,task.message_template,binding.sec_uid if binding else None,task.message_kind)

@@ -24,7 +24,7 @@ async def process_health_check(engine, cipher, checker=None):
             return False
         account = db.get(DouyinAccount, row.account_id)
         user = db.get(User, account.owner_user_id)
-        if not user or user.status != 'active' or (user.role != 'admin' and not SubscriptionService(db, AuditService(db)).active(user.id)):
+        if not user or user.status != 'active' or (user.role != 'admin' and not SubscriptionService(db, AuditService(db)).has_task_access(user.id)):
             row.next_check_at = None
             return False
         account_id, expected = account.id, snapshot(account)

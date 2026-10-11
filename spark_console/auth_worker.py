@@ -287,7 +287,7 @@ class AuthWorker:
                 return None
             return None if SubscriptionService(
                 db, AuditService(db)
-            ).active(owner_id) else "subscription_inactive"
+            ).has_task_access(owner_id) else "subscription_inactive"
         if owner.role == "admin":
             return None
         try:

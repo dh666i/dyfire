@@ -35,6 +35,28 @@ def site(tmp_path):
     engine.dispose()
 
 
+@pytest.fixture
+def free_site(tmp_path):
+    """Authenticated user with one valid Douyin account and no subscription."""
+    cookie = tmp_path / 'cookie.key'; cookie.write_bytes(b'c' * 32)
+    key = tmp_path / 'session.key'; key.write_bytes(b's' * 32)
+    settings = Settings(tmp_path, f'sqlite:///{tmp_path / "free.db"}', cookie, key)
+    engine = create_engine(settings.database_url, connect_args={'check_same_thread': False})
+    create_schema(engine)
+    with session_scope(engine) as db:
+        user = User(username='free-user', password_hash='unused', role='user', must_change_password=False)
+        db.add(user); db.flush()
+        account = DouyinAccount(owner_user_id=user.id, display_name='Free account',
+                                encrypted_cookies=b'fixture', cookie_nonce=b'fixture', validation_state='valid')
+        db.add(account); db.flush()
+        token, record = SessionService(key.read_bytes()).create_record(user.id); db.add(record)
+        account_id = account.id
+    with TestClient(create_app(settings, engine), base_url='https://testserver') as client:
+        client.cookies.set('spark_session', token)
+        yield client, account_id
+    engine.dispose()
+
+
 def test_create_owned_and_idempotent_enabled(site):
     client,(owned,foreign)=site
     data=client.get('/api/studio').json()
@@ -56,6 +78,45 @@ def test_create_owned_and_idempotent_enabled(site):
     assert runs['total']==0 and runs['items']==[]
     assert client.get('/api/studio/runs?page=0').status_code==422
     assert client.get('/api/studio/runs?status=bogus').status_code==400
+
+
+def test_free_user_can_create_one_task_but_second_and_batch_are_blocked(free_site):
+    client, account_id = free_site
+    state = client.get('/api/studio').json()
+    assert state['subscription']['free_tier'] is True
+    assert state['subscription']['max_tasks'] == 1
+    headers = {'X-CSRF-Token': state['csrf']}
+    first = client.post('/api/studio/tasks', json={
+        'account_id': account_id, 'targets': [{'name': '免费好友一'}], 'send_time': '09:30',
+    }, headers=headers)
+    assert first.status_code == 200, first.text
+    second = client.post('/api/studio/tasks', json={
+        'account_id': account_id, 'targets': [{'name': '免费好友二'}], 'send_time': '09:35',
+    }, headers=headers)
+    assert second.status_code == 409
+    assert '免费额度' in second.json()['detail']
+    batch = client.post('/api/studio/tasks', json={
+        'account_id': account_id, 'targets': [{'name': '免费好友三'}, {'name': '免费好友四'}], 'send_time': '10:00',
+    }, headers=headers)
+    assert batch.status_code == 409
+    assert '免费额度' in batch.json()['detail']
+
+
+def test_free_user_pause_releases_slot_and_resume_rechecks_capacity(free_site):
+    client, account_id = free_site
+    state = client.get('/api/studio').json()
+    headers = {'X-CSRF-Token': state['csrf']}
+    first = client.post('/api/studio/tasks', json={
+        'account_id': account_id, 'targets': [{'name': '免费可暂停'}], 'send_time': '09:30',
+    }, headers=headers)
+    assert first.status_code == 200, first.text
+    task_id = first.json()['ids'][0]
+    assert client.post(f'/api/studio/tasks/{task_id}/enabled', json={'enabled': False}, headers=headers).status_code == 200
+    second = client.post('/api/studio/tasks', json={
+        'account_id': account_id, 'targets': [{'name': '免费新好友'}], 'send_time': '09:35',
+    }, headers=headers)
+    assert second.status_code == 200, second.text
+    assert client.post(f'/api/studio/tasks/{task_id}/enabled', json={'enabled': True}, headers=headers).status_code == 409
 
 
 def test_delete_task_releases_friend_for_selection_and_recreation(site):

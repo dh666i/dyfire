@@ -23,6 +23,10 @@ from spark_console.services.audits import AuditService
 
 DEFAULT_MAX_ACCOUNTS = 1
 DEFAULT_MAX_TASKS = 10
+# Users can try the core workflow before purchasing. These limits apply only
+# when no subscription row exists; expired paid subscriptions remain blocked.
+FREE_MAX_ACCOUNTS = 1
+FREE_MAX_TASKS = 1
 # Keep the unlimited entitlement representable in the existing positive integer
 # columns. API/UI helpers render this sentinel as "不限".
 UNLIMITED_TASKS = 2_147_483_647
@@ -603,6 +607,18 @@ class SubscriptionService:
             < _aware(subscription.valid_until)
         )
 
+    def has_task_access(self, user_id: str) -> bool:
+        """Whether an active user may execute an existing task.
+
+        ``active`` intentionally remains the paid-membership predicate for
+        billing and display. A user without a subscription has one free task.
+        """
+        user = self.session.get(User, user_id)
+        if user is None or user.status != "active":
+            return False
+        subscription = self._get_subscription(user_id)
+        return True if subscription is None else self.active(user_id)
+
     def require_active(self, user_id: str) -> UserSubscription:
         return self._require_active(user_id)
 
@@ -624,24 +640,47 @@ class SubscriptionService:
             raise ValidationError(INACTIVE_SUBSCRIPTION)
         return subscription
 
-    def require_account_capacity(self, user_id: str) -> UserSubscription:
-        subscription = self._require_active(user_id, for_update=True)
+    def require_account_capacity(self, user_id: str) -> UserSubscription | None:
+        # Lock the owner row even when there is no subscription row yet. On
+        # PostgreSQL a missing subscription row cannot be locked, so without
+        # this guard two first-account requests could both pass the free tier.
+        locked_user_id = self.session.scalar(
+            select(User.id).where(User.id == user_id).with_for_update()
+        )
+        user = self.session.get(User, locked_user_id) if locked_user_id else None
+        if user is None or user.status != "active":
+            raise ValidationError(INACTIVE_SUBSCRIPTION)
+        subscription = self._get_subscription(user_id, for_update=True)
         count = self.session.scalar(
             select(func.count())
             .select_from(DouyinAccount)
             .where(DouyinAccount.owner_user_id == user_id)
         )
+        if subscription is None:
+            if int(count or 0) >= FREE_MAX_ACCOUNTS:
+                raise Conflict("抖音账号数量已达免费额度，请开通订阅后继续添加")
+            return None
+        current = self._now()
+        reconcile_subscription(self.session, subscription, current)
+        if _aware(subscription.valid_from) > current or _aware(subscription.valid_until) <= current:
+            raise ValidationError(INACTIVE_SUBSCRIPTION)
         if int(count or 0) >= subscription.max_accounts:
             raise Conflict("抖音账号数量已达套餐上限")
         return subscription
 
     def require_task_capacity(
         self, user_id: str, additional_tasks: int = 1
-    ) -> UserSubscription:
+    ) -> UserSubscription | None:
         additional_tasks = _positive_int(
             additional_tasks, "新增任务数量必须大于 0"
         )
-        subscription = self._require_active(user_id, for_update=True)
+        locked_user_id = self.session.scalar(
+            select(User.id).where(User.id == user_id).with_for_update()
+        )
+        user = self.session.get(User, locked_user_id) if locked_user_id else None
+        if user is None or user.status != "active":
+            raise ValidationError(INACTIVE_SUBSCRIPTION)
+        subscription = self._get_subscription(user_id, for_update=True)
         count = self.session.scalar(
             select(func.count())
             .select_from(SparkTask)
@@ -650,6 +689,14 @@ class SubscriptionService:
                 SparkTask.enabled.is_(True),
             )
         )
+        if subscription is None:
+            if int(count or 0) + additional_tasks > FREE_MAX_TASKS:
+                raise Conflict("续火花任务数量已达免费额度，请开通订阅后继续添加")
+            return None
+        current = self._now()
+        reconcile_subscription(self.session, subscription, current)
+        if _aware(subscription.valid_from) > current or _aware(subscription.valid_until) <= current:
+            raise ValidationError(INACTIVE_SUBSCRIPTION)
         if not is_unlimited_tasks(subscription.max_tasks) and int(count or 0) + additional_tasks > subscription.max_tasks:
             raise Conflict("续火任务数量已达套餐上限")
         return subscription

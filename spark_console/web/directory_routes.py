@@ -50,8 +50,8 @@ def build_directory_router(engine, auth, cipher):
                 raise HTTPException(422, "好友搜索仅支持已同步的最近会话，请先同步好友列表")
             if limit not in (20,40,60,80,100):
                 raise HTTPException(422, "每次增加20条，最多100条")
-            if user.role != 'admin' and not SubscriptionService(db, AuditService(db)).active(user.id):
-                raise HTTPException(403, "请先开通有效会员")
+            if user.role != 'admin' and not SubscriptionService(db, AuditService(db)).has_task_access(user.id):
+                raise HTTPException(403, "账号暂不可用，请先开通有效会员")
             db.execute(update(ContactDirectoryJob).where(ContactDirectoryJob.status.in_(['queued', 'running']),
                 ContactDirectoryJob.created_at < utc_now()-timedelta(minutes=5)).values(status='failed', error='同步超时，请重试', finished_at=utc_now()))
             active = db.scalar(select(ContactDirectoryJob).where(ContactDirectoryJob.owner_user_id == user.id,

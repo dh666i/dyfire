@@ -11,7 +11,7 @@ from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import and_, case, delete, func, select
+from sqlalchemy import and_, case, delete, func, select, text
 from sqlalchemy.engine import Engine
 from core.avatars import safe_avatar_url
 
@@ -1041,6 +1041,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         message_kind: str = Form(default="text"),
     ):
         with session_scope(engine) as db:
+            if engine.dialect.name == "sqlite":
+                db.execute(text("BEGIN IMMEDIATE"))
             user, record = auth.current(request, db)
             auth.csrf(record, csrf_token)
             sec_uids = target_sec_uid or []
@@ -1180,6 +1182,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     @app.post("/tasks/{task_id}/toggle")
     def toggle_task(request: Request, task_id: str, csrf_token: str = Form(default="")):
         with session_scope(engine) as db:
+            if engine.dialect.name == "sqlite":
+                db.execute(text("BEGIN IMMEDIATE"))
             user, record = auth.current(request, db)
             auth.csrf(record, csrf_token)
             service = TaskService(db, AccountService(db, cipher, AuditService(db)), AuditService(db))

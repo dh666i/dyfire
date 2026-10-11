@@ -691,6 +691,50 @@ class WorkerCredentialTests(unittest.IsolatedAsyncioTestCase):
             session.commit()
             return account.id, tuple(task.id for task in tasks)
 
+    @staticmethod
+    def _seed_free_case(engine, now: datetime) -> tuple[str, str]:
+        """Create one free-tier user/task without a subscription row."""
+        with Session(engine) as session:
+            user = User(username="free-worker-owner", password_hash="hash")
+            session.add(user); session.flush()
+            account = AccountService(
+                session, CookieCipher(b"w" * 32), AuditService(session)
+            ).create_from_storage_state(
+                user.id, "免费账号", _worker_storage_state("free-worker-marker")
+            )
+            task = SparkTask(
+                owner_user_id=user.id,
+                douyin_account_id=account.id,
+                target_name="免费好友",
+                send_time="09:00",
+                message_template="今日火花",
+                enabled=True,
+                next_run_at=now,
+            )
+            session.add(task); session.commit()
+            return account.id, task.id
+
+    async def test_free_tier_task_is_executed_by_worker(self):
+        now = datetime(2026, 9, 2, 1, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as directory:
+            settings = self._settings(Path(directory))
+            engine = create_engine(settings.database_url)
+            create_schema(engine)
+            try:
+                _account_id, task_id = self._seed_free_case(engine, now)
+                executor = _RecordingExecutor()
+                result = await Worker(
+                    settings,
+                    engine,
+                    executor=executor,
+                    started_at=now - timedelta(minutes=1),
+                ).run_once(now)
+                self.assertEqual("success", result.status)
+                with Session(engine) as session:
+                    self.assertEqual("success", session.scalar(select(TaskRun.status).where(TaskRun.task_id == task_id)))
+            finally:
+                engine.dispose()
+
     async def test_contact_avatar_sync_does_not_change_delivery_or_overwrite_relogin(self):
         now = datetime(2026, 9, 2, 1, 0, tzinfo=timezone.utc)
         url = "https://p3.douyinpic.com/avatar.jpeg"

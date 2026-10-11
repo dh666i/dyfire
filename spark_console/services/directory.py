@@ -115,7 +115,7 @@ async def process_directory_job(engine, cipher, reader=None):
             return False
         account = db.get(DouyinAccount, job.account_id)
         user = db.get(User, job.owner_user_id)
-        if not account or not user or account.owner_user_id != user.id or user.status != "active" or (user.role != "admin" and not SubscriptionService(db, AuditService(db)).active(user.id)):
+        if not account or not user or account.owner_user_id != user.id or user.status != "active" or (user.role != "admin" and not SubscriptionService(db, AuditService(db)).has_task_access(user.id)):
             job.status, job.error, job.finished_at = "failed", "账号或会员暂不可用", now
             return True
         if account.validation_state in BLOCKED:

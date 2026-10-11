@@ -609,6 +609,50 @@ class SubscriptionServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(Conflict, "任务数量已达套餐上限"):
             self.service.require_task_capacity(self.user.id)
 
+    def test_unsubscribed_user_gets_one_free_account_and_task(self):
+        self.assertFalse(self.service.active(self.user.id))
+        self.assertTrue(self.service.has_task_access(self.user.id))
+        self.assertIsNone(self.service.require_account_capacity(self.user.id))
+        self.assertIsNone(self.service.require_task_capacity(self.user.id))
+
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="free-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
+        self.session.add(
+            SparkTask(
+                owner_user_id=self.user.id,
+                douyin_account_id=account.id,
+                target_name="免费好友",
+                send_time="09:00",
+                message_template="今日火花",
+                enabled=True,
+            )
+        )
+        self.session.flush()
+        with self.assertRaisesRegex(Conflict, "免费额度"):
+            self.service.require_account_capacity(self.user.id)
+        with self.assertRaisesRegex(Conflict, "免费额度"):
+            self.service.require_task_capacity(self.user.id)
+
+        summary = membership_summary(self.session, self.user, self.now)
+        self.assertTrue(summary["free_tier"])
+        self.assertEqual(1, summary["max_accounts"])
+        self.assertEqual(1, summary["max_tasks"])
+        self.assertFalse(summary["can_add_account"])
+        self.assertFalse(summary["can_add_task"])
+
+    def test_expired_subscription_does_not_fall_back_to_free_tier(self):
+        subscription = self.service.extend(self.admin.id, self.user.id, duration_days=1)
+        self.now = aware(subscription.valid_until) + timedelta(seconds=1)
+        self.assertFalse(self.service.has_task_access(self.user.id))
+        with self.assertRaisesRegex(ValidationError, "会员未开通或已过期"):
+            self.service.require_task_capacity(self.user.id)
+
     def test_task_capacity_checks_the_full_batch_size(self):
         self.service.extend(
             self.admin.id,

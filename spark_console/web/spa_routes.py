@@ -126,7 +126,10 @@ def _onboarding_payload(
     """
     persisted = _decode_onboarding_steps(user.onboarding_steps)
     actual = set()
-    if membership.get("active"):
+    # Free users can use the core workflow without subscribing. Mark the
+    # subscription step complete for them so onboarding never gates binding
+    # or task creation behind a purchase.
+    if membership.get("active") or membership.get("free_tier"):
         actual.add("subscription")
     if account_total:
         actual.add("account")
@@ -363,7 +366,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     for r, task in recent_run_rows
                 ],
                 "activity": {"period_days": 365, "total": sum(item["count"] for item in activity_days), "days": activity_days},
-                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "enabled_task_count", "paused_task_count", "task_overage", "over_limit_task_count", "over_limit_enabled_tasks", "task_capacity_status", "task_capacity_label", "task_capacity_message", "pending_subscription", "pending_plan", "can_add_task")},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "enabled_task_count", "paused_task_count", "task_overage", "over_limit_task_count", "over_limit_enabled_tasks", "task_capacity_status", "task_capacity_label", "task_capacity_message", "pending_subscription", "pending_plan", "can_add_account", "can_add_task", "free_tier", "free_tier_label")},
                 "plans": pricing_plans(),
                 "onboarding": onboarding,
             }
@@ -1026,7 +1029,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             membership = membership_summary(db, user)
             return {
                 "user": {"id": user.id, "username": user.username, "role": user.role, "status": user.status, "created": shanghai_time(user.created_at), "admin_note": user.admin_note or ""},
-                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "enabled_task_count", "paused_task_count", "task_overage", "over_limit_task_count", "over_limit_enabled_tasks", "task_capacity_status", "task_capacity_label", "task_capacity_message", "pending_subscription", "pending_plan", "is_admin")},
+                "membership": {k: membership.get(k) for k in ("active", "status_label", "valid_until", "days_remaining", "max_accounts", "max_tasks", "task_limit_label", "account_count", "task_count", "enabled_task_count", "paused_task_count", "task_overage", "over_limit_task_count", "over_limit_enabled_tasks", "task_capacity_status", "task_capacity_label", "task_capacity_message", "pending_subscription", "pending_plan", "can_add_account", "can_add_task", "free_tier", "free_tier_label", "is_admin")},
                 "resource_limits": {
                     "page_size": WORKSPACE_LIST_PAGE_SIZE,
                     "accounts_total": account_total,

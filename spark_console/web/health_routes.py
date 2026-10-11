@@ -40,7 +40,7 @@ def build_health_router(engine, auth):
             )
             if not account:
                 raise HTTPException(404, '账号不存在')
-            if user.role != 'admin' and not SubscriptionService(db, AuditService(db)).active(user.id):
+            if user.role != 'admin' and not SubscriptionService(db, AuditService(db)).has_task_access(user.id):
                 raise HTTPException(403, '请先开通有效会员')
             if account.validation_state == 'verification' or is_relogging(db, account_id):
                 raise HTTPException(409, '请先完成当前登录或安全验证，系统不会自动尝试验证码或密码')

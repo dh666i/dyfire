@@ -15,6 +15,8 @@ from spark_console.models import (
     utc_now,
 )
 from spark_console.services.subscriptions import (
+    FREE_MAX_ACCOUNTS,
+    FREE_MAX_TASKS,
     is_unlimited_tasks,
     reconcile_subscription,
     task_limit_label,
@@ -84,12 +86,16 @@ def membership_summary(
         is_admin = True
     elif subscription is None:
         status = "inactive"
-        status_label = "未开通"
+        status_label = "免费版"
         active = False
         valid_until = None
         days_remaining = 0
-        max_accounts = 0
-        max_tasks = 0
+        # New users get a small free tier: one bound account and one enabled
+        # friend task. ``active`` remains false because it denotes a paid
+        # subscription; the explicit flag below tells callers why these
+        # otherwise non-zero limits are available.
+        max_accounts = FREE_MAX_ACCOUNTS
+        max_tasks = FREE_MAX_TASKS
         is_admin = False
     else:
         valid_until = _aware(subscription.valid_until)
@@ -134,12 +140,17 @@ def membership_summary(
             ),
             "status_label": "下期生效",
         } if pending_max_tasks is not None or pending_max_accounts is not None else None
+    free_tier = (
+        user.status == "active"
+        and user.role != "admin"
+        and subscription is None
+    )
     if max_tasks is None or is_admin or is_unlimited_tasks(max_tasks):
         task_overage = 0
-        task_capacity_status = "unlimited" if active else "inactive"
+        task_capacity_status = "unlimited" if active or is_admin else "inactive"
     else:
         task_overage = max(0, enabled_task_count - int(max_tasks or 0))
-        task_capacity_status = "over_limit" if task_overage else ("available" if active else "inactive")
+        task_capacity_status = "over_limit" if task_overage else ("available" if active or free_tier else "inactive")
 
     return {
         "subscription": subscription,
@@ -153,7 +164,7 @@ def membership_summary(
         "task_limit_label": task_limit_label(max_tasks),
         "account_count": account_count,
         "task_count": task_count,
-        "can_add_account": active
+        "can_add_account": (active or free_tier or is_admin)
         and (is_admin or account_count < int(max_accounts or 0)),
         # Paused tasks are retained history/configuration and do not consume
         # the live plan quota. Existing enabled tasks are deliberately left
@@ -169,13 +180,15 @@ def membership_summary(
         "over_limit_enabled_tasks": task_overage,
         "task_capacity_status": task_capacity_status,
         "task_capacity_label": f"超出当前额度 {task_overage} 个" if task_overage else ("不限任务" if task_capacity_status == "unlimited" else "额度可用"),
-        "task_capacity_message": f"已有 {enabled_task_count} 个启用任务，当前上限为 {task_limit_label(max_tasks)}。" if task_overage else "暂停任务不会占用额度；恢复和新增任务会按当前套餐检查。",
+        "task_capacity_message": f"已有 {enabled_task_count} 个启用任务，当前上限为 {task_limit_label(max_tasks)}。" if task_overage else ("免费用户可使用 1 个好友任务；开通订阅可解锁更多。" if free_tier else "暂停任务不会占用额度；恢复和新增任务会按当前套餐检查。"),
         "pending_subscription": pending_subscription,
         "pending_plan": pending_subscription,
-        "can_add_task": active and (
+        "can_add_task": (active or free_tier or is_admin) and (
             is_admin
             or is_unlimited_tasks(max_tasks)
             or enabled_task_count < int(max_tasks or 0)
         ),
         "is_admin": is_admin,
+        "free_tier": free_tier,
+        "free_tier_label": "免费体验",
     }

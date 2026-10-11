@@ -126,7 +126,8 @@ def build_studio_router(engine, auth, cipher):
                                'confirmed': latest.get(t.id) == 'success', 'status': latest.get(t.id, 'scheduled')} for t in tasks],
                     'subscription': {k: membership[k] for k in (
                         'active','status_label','days_remaining','max_accounts','max_tasks',
-                        'can_add_task','task_count','enabled_task_count','paused_task_count',
+                        'can_add_account','can_add_task','free_tier','free_tier_label',
+                        'task_count','enabled_task_count','paused_task_count',
                         'task_overage','pending_max_tasks','pending_valid_from',
                     )}}
 
@@ -197,6 +198,10 @@ def build_studio_router(engine, auth, cipher):
     @router.post('/api/studio/tasks/{task_id}/enabled')
     def set_enabled(task_id: str, payload: Enabled, request: Request):
         with session_scope(engine) as db:
+            if engine.dialect.name == 'sqlite':
+                # Serialize quota checks with task creation/resume so two
+                # quick clicks cannot both consume the final free slot.
+                db.execute(text('BEGIN IMMEDIATE'))
             user, record = auth.current(request, db)
             auth.csrf(record, request.headers.get('X-CSRF-Token',''))
             audit = AuditService(db)

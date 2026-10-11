@@ -6,6 +6,7 @@ from threading import Lock
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from sqlalchemy import text
 
 from spark_console.crypto import CookieCipher
 from spark_console.db import session_scope
@@ -91,6 +92,10 @@ def build_account_scan_router(
         account_id: str = Form(default=""),
     ):
         with session_scope(engine) as db:
+            if engine.dialect.name == "sqlite":
+                # Account admission and scan enqueue must observe one quota
+                # snapshot when two browser tabs bind at the same time.
+                db.execute(text("BEGIN IMMEDIATE"))
             user, record = auth.current(request, db)
             auth.csrf(record, csrf_token)
             if response := limited(user.id, "start", START_LIMIT):
@@ -104,7 +109,7 @@ def build_account_scan_router(
                     )
                 except NotFound:
                     return _error(404, "not_found", "未找到抖音账号")
-                if user.role != "admin" and not subscription.active(user.id):
+                if user.role != "admin" and not subscription.has_task_access(user.id):
                     return _error(
                         403,
                         "subscription_inactive",
@@ -156,7 +161,7 @@ def build_account_scan_router(
             auth.csrf(record, csrf_token)
             if response := limited(user.id, "start", START_LIMIT):
                 return response
-            if user.role != "admin" and not SubscriptionService(db, AuditService(db)).active(user.id):
+            if user.role != "admin" and not SubscriptionService(db, AuditService(db)).has_task_access(user.id):
                 return _error(403, "subscription_inactive", "会员未开通或已过期，请开通后重试")
             service = ScanSessionService(db)
             try:
