@@ -736,7 +736,8 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 
 /* The account login is a focused modal, while list and picker drawers remain sheets. */
 .drawer-centered-backdrop { justify-content: center; align-items: center; padding: 28px; }
-.drawer.drawer-centered { width: min(860px, 100%); height: min(88vh, 860px); max-height: calc(100vh - 56px); border: 1px solid rgba(231,223,209,.28); box-shadow: 0 28px 90px rgba(0,0,0,.42); }
+/* Height auto so content-light centered drawers don't show empty void; max-height caps large flows. */
+.drawer.drawer-centered { width: min(860px, 100%); height: auto; max-height: min(88vh, 860px); border: 1px solid rgba(231,223,209,.28); box-shadow: 0 28px 90px rgba(0,0,0,.42); overflow-y: auto; }
 .drawer-centered .scan-panel { padding: 28px 34px 30px; }
 .scan-loading-overlay { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; color: var(--paper-strong); background: rgba(10,10,10,.92); text-align: center; transition: opacity .24s ease, visibility .24s ease; }
 .scan-loading-overlay b { font-size: 14px; font-weight: 500; }

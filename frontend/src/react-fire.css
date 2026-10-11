@@ -51,6 +51,15 @@ html:not([data-theme="light"]) .contact-qr-light { display:none !important; }
 html:not([data-theme="light"]) .contact-qr-dark { display:block !important; }
 .contact-support-modal { display:grid; justify-items:center; gap:15px; padding:20px 28px 28px; text-align:center; }
 .modal-host-content { display:grid; gap:16px; }
+/* Compact confirm/prompt dialog — sizes to its content, not the viewport */
+.modal-overlay { position:fixed; inset:0; z-index:1100; display:grid; place-items:center; padding:20px; background:rgba(0,0,0,.72); backdrop-filter:blur(8px); animation:modal-fade-in .18s ease; }
+.modal-dialog { position:relative; width:min(420px,100%); background:var(--paper-strong); border:1px solid rgba(231,223,209,.22); box-shadow:0 28px 80px rgba(0,0,0,.52); animation:modal-in .22s cubic-bezier(.2,.8,.2,1); }
+.modal-dialog-prompt { width:min(520px,100%); }
+.modal-dialog-head { padding:20px 22px 14px; border-bottom:1px solid rgba(24,23,23,.14); }
+.modal-dialog-head .eyebrow { display:block; margin-bottom:4px; color:#746c63; font:10px var(--mono); letter-spacing:.08em; text-transform:uppercase; }
+.modal-dialog-head h2 { margin:0; font-family:Georgia,"Noto Serif SC",serif; font-size:18px; font-weight:500; color:var(--ink-dark); }
+.modal-dialog-body { padding:18px 22px 20px; display:grid; gap:14px; }
+@keyframes modal-fade-in { from { opacity:0; } to { opacity:1; } }
 .modal-host-message { margin:0; color:var(--ink-soft); font-size:12px; line-height:1.8; }
 .modal-host-field { display:grid; gap:8px; color:var(--ink-soft); font-size:11px; }
 .modal-host-field .input { width:100%; }
@@ -665,7 +674,7 @@ html[data-theme="light"] .scan-progress-four .scan-progress-line.complete { back
 .picker-error p{margin:0;color:var(--muted);font-size:11px;line-height:1.6}
 .picker-error .row-actions{justify-content:center;flex-wrap:wrap}
 .picker-error .button{min-height:36px}
-.contact-picker-footer{display:grid;gap:10px}
+.contact-picker-footer{display:grid;gap:10px;padding-bottom:env(safe-area-inset-bottom,0px)}
 .contact-picker-coverage{display:grid;gap:5px;min-width:0}
 .contact-picker-coverage b{font-size:11px;font-weight:500;color:var(--ink-dark)}
 .contact-picker-coverage small{font-size:10px;line-height:1.5;overflow-wrap:anywhere}

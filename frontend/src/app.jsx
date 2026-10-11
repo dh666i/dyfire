@@ -554,13 +554,22 @@ function ModalHost() {
   useEffect(()=>{setValue(request?.defaultValue||'')},[request]);
   if(!request)return null;
   const submit=event=>{event.preventDefault();if(prompt&&!value.trim())return;finish(prompt?value:true)};
-  return <Drawer open title={request.title||'请确认'} eyebrow={request.eyebrow||'CONFIRM ACTION'} centered onClose={()=>finish(prompt?null:false)}>
-    <form className="drawer-content modal-host-content" onSubmit={submit}>
-      {request.message&&<p className="modal-host-message">{request.message}</p>}
-      {prompt&&<label className="modal-host-field"><span>{request.label||'输入内容'}</span><input className="input" autoFocus type={request.inputType||'password'} autoComplete={request.autoComplete||'current-password'} value={value} onChange={event=>setValue(event.target.value)} placeholder={request.placeholder||''} required/></label>}
-      <div className="setting-actions modal-host-actions"><Button variant="quiet" type="button" onClick={()=>finish(prompt?null:false)}>{request.cancelLabel||'取消'}</Button><Button type="submit" disabled={prompt&&!value.trim()}>{request.confirmLabel||'确认'}</Button></div>
-    </form>
-  </Drawer>;
+  return createPortal(
+    <div className="modal-overlay" onMouseDown={e=>e.target===e.currentTarget&&finish(prompt?null:false)}>
+      <div className={`modal-dialog${prompt?' modal-dialog-prompt':''}`} role="dialog" aria-modal="true" aria-labelledby="modal-dialog-title">
+        <header className="modal-dialog-head">
+          {request.eyebrow&&<span className="eyebrow">{request.eyebrow}</span>}
+          <h2 id="modal-dialog-title">{request.title||'请确认'}</h2>
+        </header>
+        <form className="modal-dialog-body" onSubmit={submit}>
+          {request.message&&<p className="modal-host-message">{request.message}</p>}
+          {prompt&&<label className="modal-host-field"><span>{request.label||'输入内容'}</span><input className="input" autoFocus type={request.inputType||'password'} autoComplete={request.autoComplete||'current-password'} value={value} onChange={event=>setValue(event.target.value)} placeholder={request.placeholder||''} required/></label>}
+          <div className="setting-actions modal-host-actions"><Button variant="quiet" type="button" onClick={()=>finish(prompt?null:false)}>{request.cancelLabel||'取消'}</Button><Button type="submit" disabled={prompt&&!value.trim()}>{request.confirmLabel||'确认'}</Button></div>
+        </form>
+      </div>
+    </div>,
+    document.body
+  );
 }
 function Toast({message, onClose}) { useEffect(()=>{if(!message)return;const timer=window.setTimeout(onClose,4200);return()=>window.clearTimeout(timer)},[message,onClose]); if (!message) return null; return <div className="toast" role="status" aria-live="polite"><span>{message}</span><button type="button" onClick={onClose} aria-label="关闭提示">×</button></div>; }
 function LoadingState({label='正在准备你的工作区…'}) { return <div className="loading-state" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><span>{label}</span></div>; }
@@ -1016,6 +1025,8 @@ function Runs({data}) {
   const [filter,setFilter]=useState('');
   const [expanded,setExpanded]=useState(null);
   const [runsError,setRunsError]=useState('');
+  // Keep rows in sync when parent bootstrap refreshes (e.g. after task creation).
+  useEffect(()=>{if(!filter)setRows(asList(data?.runs))},[data?.runs]);
   useEffect(()=>{api(`/api/studio/runs?status=${filter}`).then(v=>setRows(asList(v?.items))).catch(e=>setRunsError(e.message))},[filter]);
   const tone=r=>r.status==='success'?'good':r.status==='failed'?'danger':r.status==='submitted_unconfirmed'?'warn':r.status==='running'?'running':'neutral';
   const runFilterItems=[{value:'',label:'全部'},{value:'success',label:'已发出'},{value:'failed',label:'未发出'},{value:'submitted_unconfirmed',label:'待核实'}];
