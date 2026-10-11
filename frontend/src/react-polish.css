@@ -148,6 +148,7 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opa
 .preview-mark, .step-mark { color: #d94716; }
 .inline-feedback { border-left-color: var(--orange); color: var(--ink-soft); background: rgba(255,255,255,.18); }
 .danger-text { color: #a33d31; border-left-color: #b63d35; }
+.success-text { color: #2d6e3e; border-left-color: #3a8a4f; }
 
 .drawer-backdrop { background: rgba(0,0,0,.72); z-index: 1000; }
 body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
