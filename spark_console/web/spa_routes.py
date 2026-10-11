@@ -126,10 +126,10 @@ def _onboarding_payload(
     """
     persisted = _decode_onboarding_steps(user.onboarding_steps)
     actual = set()
-    # Free users can use the core workflow without subscribing. Mark the
-    # subscription step complete for them so onboarding never gates binding
-    # or task creation behind a purchase.
-    if membership.get("active") or membership.get("free_tier"):
+    # Paid users retain the historical subscription completion state. Free
+    # users use the core workflow without this legacy step; the frontend no
+    # longer renders it, so do not fabricate a completed subscription here.
+    if membership.get("active"):
         actual.add("subscription")
     if account_total:
         actual.add("account")
