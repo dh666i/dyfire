@@ -611,13 +611,22 @@ class SubscriptionService:
         """Whether an active user may execute an existing task.
 
         ``active`` intentionally remains the paid-membership predicate for
-        billing and display. A user without a subscription has one free task.
+        billing and display. A user without an active subscription falls back
+        to the free tier (one task allowed) rather than being blocked entirely.
         """
         user = self.session.get(User, user_id)
         if user is None or user.status != "active":
             return False
+        if self.active(user_id):
+            return True
+        # No active subscription — free-tier users (never subscribed or expired)
+        # are still allowed to run their one free task.
         subscription = self._get_subscription(user_id)
-        return True if subscription is None else self.active(user_id)
+        if subscription is None:
+            return True
+        current = self._now()
+        # Expired subscription: grant free-tier access so the task keeps running.
+        return _aware(subscription.valid_until) <= current
 
     def require_active(self, user_id: str) -> UserSubscription:
         return self._require_active(user_id)
