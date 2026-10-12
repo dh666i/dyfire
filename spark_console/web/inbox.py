@@ -47,7 +47,7 @@ def entries(db,user_id):
         add('run:'+run.id,task.target_name+(' · 发送待确认' if pending else ' · 执行异常'),f'最近七天同类记录 {count} 条。'+('请先核对抖音聊天记录，不要直接重发。' if pending else '请查看执行详情与账号状态。'),'/runs?q='+quote(task.target_name),run.scheduled_for)
     sub=db.get(UserSubscription,user_id)
     if sub and sub.valid_until and sub.valid_until.replace(tzinfo=timezone.utc)<datetime.now(timezone.utc)+timedelta(days=3):
-        add('expiry:'+sub.valid_until.isoformat(),'会员到期提醒','请查看有效期与额度；到期后计划将暂停。','/subscription',sub.valid_until)
+        add('expiry:'+sub.valid_until.isoformat(),'会员到期提醒','请查看有效期与额度；到期后保留 1 个好友任务，其余任务暂不执行。','/subscription',sub.valid_until)
     notification_ids = [item['id'] for item in result]
     read = set()
     if notification_ids:

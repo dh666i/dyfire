@@ -68,6 +68,53 @@ def _worker_storage_state(marker: str) -> dict[str, object]:
 
 
 class SchedulerTests(unittest.TestCase):
+    def test_free_user_with_historical_overage_only_claims_earliest_enabled_task(self):
+        engine = create_engine("sqlite:///:memory:")
+        create_schema(engine)
+        now = datetime(2026, 8, 25, 1, 0, tzinfo=timezone.utc)
+        with Session(engine) as session:
+            user = User(username="free-overage", password_hash="hash")
+            session.add(user)
+            session.flush()
+            account = DouyinAccount(
+                owner_user_id=user.id,
+                display_name="main",
+                encrypted_cookies=b"x",
+                cookie_nonce=b"n",
+            )
+            session.add(account)
+            session.flush()
+            first = SparkTask(
+                owner_user_id=user.id,
+                douyin_account_id=account.id,
+                target_name="好友一",
+                send_time="09:00",
+                message_template="x",
+                enabled=True,
+                next_run_at=now,
+                created_at=now - timedelta(minutes=2),
+            )
+            second = SparkTask(
+                owner_user_id=user.id,
+                douyin_account_id=account.id,
+                target_name="好友二",
+                send_time="09:00",
+                message_template="x",
+                enabled=True,
+                next_run_at=now,
+                created_at=now - timedelta(minutes=1),
+            )
+            session.add_all((first, second))
+            session.commit()
+
+            run = claim_next_due_task(session, now, "free-worker")
+            self.assertIsNotNone(run)
+            self.assertEqual(first.id, run.task_id)
+            session.commit()
+            self.assertIsNone(claim_next_due_task(session, now, "free-worker-2"))
+            self.assertEqual(now, second.next_run_at.replace(tzinfo=timezone.utc))
+        engine.dispose()
+
     def test_equal_schedule_prefers_owner_not_recently_dispatched(self):
         engine = create_engine("sqlite:///:memory:")
         create_schema(engine)

@@ -19,6 +19,8 @@ from spark_console.models import (
     UserSubscription,
 )
 from spark_console.services.subscriptions import (
+    FREE_MAX_ACCOUNTS,
+    FREE_MAX_TASKS,
     is_unlimited_tasks,
     reconcile_subscription,
     task_limit_label,
@@ -96,13 +98,21 @@ class AdminUserRow:
     def max_accounts(self) -> int | None:
         if self.user.role == "admin":
             return None
-        return self.subscription.max_accounts if self.subscription else 0
+        if self.subscription is None:
+            return FREE_MAX_ACCOUNTS
+        if _aware(self.subscription.valid_from) > self.now or _aware(self.subscription.valid_until) <= self.now:
+            return FREE_MAX_ACCOUNTS
+        return self.subscription.max_accounts
 
     @property
     def max_tasks(self) -> int | None:
         if self.user.role == "admin":
             return None
-        return self.subscription.max_tasks if self.subscription else 0
+        if self.subscription is None:
+            return FREE_MAX_TASKS
+        if _aware(self.subscription.valid_from) > self.now or _aware(self.subscription.valid_until) <= self.now:
+            return FREE_MAX_TASKS
+        return self.subscription.max_tasks
 
     @property
     def task_limit_label(self) -> str:

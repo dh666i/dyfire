@@ -68,13 +68,31 @@ class SubscriptionServiceTests(unittest.TestCase):
     def create_code(self, **kwargs):
         return self.service.create_redemption_code(self.admin.id, **kwargs)
 
-    def test_pricing_plans_match_published_monthly_entitlements(self):
+    def test_pricing_plans_match_current_entitlements_and_keep_legacy_lookup(self):
         self.assertEqual(
             [(plan["price_yuan"], plan["max_tasks"]) for plan in pricing_plans()],
-            [("9.9", 5), ("15", 10), ("20", UNLIMITED_TASKS)],
+            [("5", UNLIMITED_TASKS), ("20", UNLIMITED_TASKS)],
         )
+        self.assertEqual(30, pricing_plan("monthly")["duration_days"])
+        self.assertEqual(180, pricing_plan("half_year")["duration_days"])
+        self.assertEqual(5, pricing_plan("starter")["max_tasks"])
+        self.assertEqual(10, pricing_plan("standard")["max_tasks"])
         self.assertEqual(UNLIMITED_TASKS, pricing_plan("unlimited")["max_tasks"])
         self.assertEqual("不限", task_limit_label(UNLIMITED_TASKS))
+
+    def test_new_half_year_code_uses_unlimited_tasks_without_rewriting_legacy_limits(self):
+        legacy_code, legacy_plaintext = self.create_code(plan_id="starter")
+        new_code, new_plaintext = self.create_code(plan_id="half_year")
+        self.assertEqual(180, new_code.duration_days)
+        self.assertEqual(UNLIMITED_TASKS, new_code.max_tasks)
+        self.service.redeem(self.user.id, new_plaintext)
+        self.assertEqual(UNLIMITED_TASKS, self.session.get(UserSubscription, self.user.id).max_tasks)
+
+        self.assertEqual(30, legacy_code.duration_days)
+        self.assertEqual(5, legacy_code.max_tasks)
+        legacy_subscription = self.service.redeem(self.other.id, legacy_plaintext)
+        self.assertEqual(5, legacy_subscription.max_tasks)
+        self.assertEqual(self.now + timedelta(days=30), aware(legacy_subscription.valid_until))
 
     def test_unlimited_plan_allows_task_capacity(self):
         self.service.extend(
@@ -674,6 +692,40 @@ class SubscriptionServiceTests(unittest.TestCase):
         self.assertEqual(1, summary["max_tasks"])
         self.assertFalse(summary["can_add_account"])  # already at limit
         self.assertTrue(summary["can_add_task"])       # zero tasks enabled yet
+
+    def test_free_execution_slot_is_deterministic_and_preserves_task_rows(self):
+        account = DouyinAccount(
+            owner_user_id=self.user.id,
+            display_name="free-account",
+            encrypted_cookies=b"encrypted",
+            cookie_nonce=b"nonce",
+        )
+        self.session.add(account)
+        self.session.flush()
+        first = SparkTask(
+            owner_user_id=self.user.id,
+            douyin_account_id=account.id,
+            target_name="较早任务",
+            send_time="09:00",
+            message_template="今日火花",
+            enabled=True,
+            created_at=self.now - timedelta(minutes=2),
+        )
+        second = SparkTask(
+            owner_user_id=self.user.id,
+            douyin_account_id=account.id,
+            target_name="较晚任务",
+            send_time="09:05",
+            message_template="今日火花",
+            enabled=True,
+            created_at=self.now - timedelta(minutes=1),
+        )
+        self.session.add_all((first, second))
+        self.session.flush()
+        self.assertTrue(self.service.can_execute_task(self.user.id, first.id))
+        self.assertFalse(self.service.can_execute_task(self.user.id, second.id))
+        self.assertTrue(first.enabled)
+        self.assertTrue(second.enabled)
 
     def test_task_capacity_checks_the_full_batch_size(self):
         self.service.extend(

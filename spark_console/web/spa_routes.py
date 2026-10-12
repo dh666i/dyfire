@@ -949,8 +949,15 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             try:
                 for user in targets:
                     if action == "extend":
-                        service.extend(admin.id, user.id, duration_days=int(values.get("duration_days", 30)),
-                            max_accounts=int(values.get("max_accounts", 1)), max_tasks=int(values.get("max_tasks", 10)))
+                        plan_id = str(values.get("plan_id") or "").strip() or None
+                        service.extend(
+                            admin.id,
+                            user.id,
+                            duration_days=int(values.get("duration_days", 30)),
+                            max_accounts=int(values.get("max_accounts", 1)),
+                            max_tasks=int(values.get("max_tasks", 10)),
+                            plan_id=plan_id,
+                        )
                     else:
                         service.revoke_subscription(admin.id, user.id)
             except (NotFound, Conflict, ValidationError, ValueError) as error:

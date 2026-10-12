@@ -41,11 +41,11 @@
   <h2>生成会员兑换码</h2><p>兑换后自动增加会员时长，并应用指定的账号与任务额度。</p>
   <form method="post" action="/admin/codes/redemptions" class="admin-form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / 月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
+    <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="monthly">月度畅享 · ¥5 / 1 个月 · 不限好友任务</option>{% for plan in plans|default([]) if plan.id != 'monthly' %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / {{ plan.billing_label|default('月') }} · {{ plan.task_limit_label }}</option>{% endfor %}<option value="">自定义额度</option></select></label>
     <label class="admin-field"><span>有效天数</span><input type="number" name="duration_days" value="30" min="1" max="3650" required></label>
     <label class="admin-field"><span>生成数量</span><input type="number" name="quantity" value="1" min="1" max="20" required></label>
     <label class="admin-field"><span>账号上限</span><input type="number" name="max_accounts" value="1" min="1" max="100" required></label>
-    <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="10" min="1" max="2147483647" required></label>
+    <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="2147483647" min="1" max="2147483647" required></label>
     <div class="admin-form-actions"><button class="admin-button admin-button-ghost" type="button" data-dialog-close>取消</button><button class="admin-button admin-button-primary" type="submit">生成兑换码</button></div>
   </form>
 </dialog>
@@ -58,10 +58,10 @@
     <div class="admin-section-copy"><strong>续期并设置额度</strong><small>从当前有效期末尾续期；已过期则从现在开始。</small></div>
     <form method="post" action="/admin/subscriptions/{{ item.id }}/extend" class="admin-form-grid cols-3">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="">沿用下方额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / 月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
+      <label class="admin-field"><span>套餐</span><select name="plan_id"><option value="monthly">月度畅享 · ¥5 / 1 个月 · 不限好友任务</option>{% for plan in plans|default([]) if plan.id != 'monthly' %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }} / {{ plan.billing_label|default('月') }} · {{ plan.task_limit_label }}</option>{% endfor %}<option value="">沿用当前额度</option></select></label>
       <label class="admin-field"><span>增加天数</span><input type="number" name="duration_days" value="30" min="1" max="3650" required></label>
       <label class="admin-field"><span>账号上限</span><input type="number" name="max_accounts" value="{{ item.max_accounts if item.max_accounts else 1 }}" min="1" max="100" required></label>
-      <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="{{ item.max_tasks if item.max_tasks else 20 }}" min="1" max="1000" required></label>
+      <label class="admin-field"><span>任务上限</span><input type="number" name="max_tasks" value="{{ item.max_tasks if item.max_tasks else 2147483647 }}" min="1" max="2147483647" required></label>
       <div class="admin-form-actions"><button class="admin-button admin-button-primary" type="submit">保存并续期</button></div>
     </form>
   </div>

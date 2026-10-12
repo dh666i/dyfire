@@ -43,8 +43,8 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>增加天数<input type="number" name="duration_days" value="30" min="1" required></label>
         <label>账号上限<input type="number" name="max_accounts" value="{{ member.max_accounts if member and member.max_accounts else 1 }}" min="1" required></label>
-        <label>套餐<select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
-        <label>任务上限<input type="number" name="max_tasks" value="{{ member.max_tasks if member and member.max_tasks else 10 }}" min="1" required></label>
+        <label>套餐<select name="plan_id"><option value="monthly">月度畅享 · ¥5 / 1 个月 · 不限好友任务</option>{% for plan in plans|default([]) if plan.id != 'monthly' %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/{{ plan.billing_label|default('月') }} · {{ plan.task_limit_label }}</option>{% endfor %}<option value="">自定义额度</option></select></label>
+        <label>任务上限<input type="number" name="max_tasks" value="{{ member.max_tasks if member and member.max_tasks else 2147483647 }}" min="1" required></label>
         <button type="submit">保存并延长</button>
       </form>
       {% endif %}
@@ -79,8 +79,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>有效天数<input type="number" name="duration_days" value="30" min="1" required></label>
       <label>账号上限<input type="number" name="max_accounts" value="1" min="1" required></label>
-      <label>套餐<select name="plan_id"><option value="">自定义额度</option>{% for plan in plans|default([]) %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/月 · {{ plan.task_limit_label }}</option>{% endfor %}</select></label>
-      <label>任务上限<input type="number" name="max_tasks" value="10" min="1" required></label>
+      <label>套餐<select name="plan_id"><option value="monthly">月度畅享 · ¥5 / 1 个月 · 不限好友任务</option>{% for plan in plans|default([]) if plan.id != 'monthly' %}<option value="{{ plan.id }}">{{ plan.name }} · ¥{{ plan.price_yuan }}/{{ plan.billing_label|default('月') }} · {{ plan.task_limit_label }}</option>{% endfor %}<option value="">自定义额度</option></select></label>
+      <label>任务上限<input type="number" name="max_tasks" value="2147483647" min="1" required></label>
       <label>生成数量<input type="number" name="quantity" value="1" min="1" max="20" required></label>
       <button type="submit">生成兑换码</button>
     </form>

@@ -171,9 +171,10 @@ class Worker:
                         "user_inactive",
                         "用户账号已停用",
                     )
-                if owner.role != "admin" and not SubscriptionService(
+                subscriptions = SubscriptionService(
                     db, AuditService(db), now=lambda: current_time
-                ).has_task_access(owner.id):
+                )
+                if owner.role != "admin" and not subscriptions.has_task_access(owner.id):
                     return finish_run(
                         run,
                         "skipped",
@@ -181,6 +182,17 @@ class Worker:
                         current_time,
                         "subscription_inactive",
                         "会员未开通或已过期",
+                    )
+                if owner.role != "admin" and not subscriptions.can_execute_task(
+                    owner.id, task.id
+                ):
+                    return finish_run(
+                        run,
+                        "skipped",
+                        "entitlement_check",
+                        current_time,
+                        "free_task_slot_unavailable",
+                        "免费版仅执行一个好友任务，其他任务已保留但暂不执行",
                     )
                 account = db.scalar(
                     select(DouyinAccount).where(

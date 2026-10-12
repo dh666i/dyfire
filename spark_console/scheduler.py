@@ -239,6 +239,7 @@ def _due_task_statement(now_utc: datetime, *, shard: int = 0, shards: int = 1):
     without changing the eligibility or fairness rules used by SQLite.
     """
     recent_task = aliased(SparkTask)
+    earlier_enabled_task = aliased(SparkTask)
     last_owner_dispatch = (
         select(func.max(TaskRun.started_at))
         .join(recent_task, TaskRun.task_id == recent_task.id)
@@ -271,9 +272,27 @@ def _due_task_statement(now_utc: datetime, *, shard: int = 0, shards: int = 1):
                     UserSubscription.valid_until > now_utc,
                 ),
                 # Free tier: no subscription row at all (new user) or expired
-                # subscription — both get one task slot under the free-tier cap.
-                UserSubscription.user_id.is_(None),
-                UserSubscription.valid_until <= now_utc,
+                # subscription. Keep all task definitions, but reserve the
+                # execution slot for the deterministic earliest enabled task.
+                and_(
+                    or_(
+                        UserSubscription.user_id.is_(None),
+                        UserSubscription.valid_until <= now_utc,
+                    ),
+                    ~exists().where(
+                        and_(
+                            earlier_enabled_task.owner_user_id == SparkTask.owner_user_id,
+                            earlier_enabled_task.enabled.is_(True),
+                            or_(
+                                earlier_enabled_task.created_at < SparkTask.created_at,
+                                and_(
+                                    earlier_enabled_task.created_at == SparkTask.created_at,
+                                    earlier_enabled_task.id < SparkTask.id,
+                                ),
+                            ),
+                        )
+                    ),
+                ),
             ),
             SparkTask.enabled.is_(True),
             DouyinAccount.validation_state.not_in(

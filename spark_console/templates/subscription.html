@@ -50,13 +50,13 @@
 </div>
 
 <section class="subscription-help" aria-label="会员套餐">
-  <article class="workspace-section panel subscription-help-card"><div><h2>月度套餐</h2>{% for plan in plans|default([]) %}<p><strong>{{ plan.name }} · ¥{{ plan.price_yuan }} / 月</strong> · {{ plan.task_limit_label }}</p>{% endfor %}</div></article>
+  <article class="workspace-section panel subscription-help-card"><div><h2>订阅套餐</h2>{% for plan in plans|default([]) %}<p><strong>{{ plan.name }} · ¥{{ plan.price_yuan }} / {{ plan.billing_label|default('月') }}</strong> · {{ plan.task_limit_label }}</p>{% endfor %}</div></article>
 </section>
 
 <section class="subscription-help" aria-label="会员服务说明">
   <article class="workspace-section panel subscription-help-card"><div><h2>续费如何计算</h2><p>会员未到期时，从原到期时间顺延；已到期时，从兑换时间开始计算。账号和任务额度按本次兑换码套餐更新，不与原额度相加。每位好友对应一个任务。</p></div></article>
   <article class="workspace-section panel subscription-help-card"><span class="subscription-help-icon" aria-hidden="true">{{ icon('subscription', 20) }}</span><div><h2>如何购买或续费</h2><p>请通过原购买渠道联系管理员，确认当前套餐、价格与收款方式后领取兑换码。本页面不会展示未经管理员配置的价格或联系方式。</p></div></article>
-  <article class="workspace-section panel subscription-help-card"><span class="subscription-help-icon" aria-hidden="true">{{ icon('tasks', 20) }}</span><div><h2>到期后会怎样</h2><p>会员到期后，账号、任务和记录仍可查看，但自动任务不会执行。重新开通后只执行后续计划，错过的消息不会补发。</p></div></article>
+  <article class="workspace-section panel subscription-help-card"><span class="subscription-help-icon" aria-hidden="true">{{ icon('tasks', 20) }}</span><div><h2>到期后会怎样</h2><p>会员到期后，账号、任务和记录仍可查看；系统保留 1 个免费好友任务继续执行，其他任务暂不执行。重新开通后恢复全部任务额度，错过的消息不会补发。</p></div></article>
   <article class="workspace-section panel subscription-help-card"><span class="subscription-help-icon" aria-hidden="true">{{ icon('security', 20) }}</span><div><h2>使用期间的验证</h2><p>抖音可能随时要求重新验证登录。发现账号失效时，请按控制台提示重新绑定；系统不会绕过抖音的安全验证。</p></div></article>
 </section>
 <section class="workspace-section panel"><h2>最近开通与兑换记录</h2><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>时间</th><th>来源</th><th>更新后到期时间</th><th>账号 / 任务额度</th></tr></thead><tbody>{% for grant in grants|default([]) %}<tr><td>{{ grant.created_at|shanghai_time }}</td><td>{{ '兑换码' if grant.redemption_code_id else '管理员开通' }}</td><td>{{ grant.valid_until|shanghai_time }}</td><td>{{ grant.max_accounts }} / {{ grant.max_tasks }}</td></tr>{% else %}<tr><td colspan="4">暂无开通记录</td></tr>{% endfor %}</tbody></table></div></section>

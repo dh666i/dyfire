@@ -647,7 +647,7 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(await worker.run_once())
 
-    async def test_expired_membership_fails_queued_scan_before_browser_launch(self):
+    async def test_expired_membership_keeps_free_scan_access(self):
         scan_id = self._start_scan()
         with session_scope(self.engine) as session:
             subscription = session.get(UserSubscription, self.owner_id)
@@ -663,9 +663,12 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         persisted = self._persisted(scan_id)
-        self.assertFalse(scanner.called)
+        # Expired subscribers fall back to the free tier, so the one-account
+        # experience remains available. The scanner is reached and reports
+        # its own simulated QR failure.
+        self.assertTrue(scanner.called)
         self.assertEqual(ScanStatus.FAILED, persisted["status"])
-        self.assertEqual("subscription_inactive", persisted["error_code"])
+        self.assertEqual("qr_load_failed", persisted["error_code"])
         self.assertIsNone(persisted["slot"])
 
     async def test_account_quota_fails_queued_scan_before_browser_launch(self):

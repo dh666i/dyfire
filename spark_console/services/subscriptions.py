@@ -5,8 +5,8 @@ import secrets
 import string
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.orm import Session, aliased
 
 from spark_console.models import (
     DouyinAccount,
@@ -24,7 +24,8 @@ from spark_console.services.audits import AuditService
 DEFAULT_MAX_ACCOUNTS = 1
 DEFAULT_MAX_TASKS = 10
 # Users can try the core workflow before purchasing. These limits apply only
-# when no subscription row exists; expired paid subscriptions remain blocked.
+# when no subscription is active; expired paid subscriptions fall back to the
+# same one-account/one-task experience.
 FREE_MAX_ACCOUNTS = 1
 FREE_MAX_TASKS = 1
 # Keep the unlimited entitlement representable in the existing positive integer
@@ -32,33 +33,62 @@ FREE_MAX_TASKS = 1
 UNLIMITED_TASKS = 2_147_483_647
 PRICING_PLANS = (
     {
+        "id": "monthly",
+        "name": "月度畅享",
+        "price_yuan": "5",
+        "duration_days": 30,
+        "max_accounts": 1,
+        "duration_label": "1 个月",
+        "billing_label": "月",
+        "max_tasks": UNLIMITED_TASKS,
+        "task_limit_label": "不限好友任务",
+    },
+    {
+        "id": "half_year",
+        "name": "半年畅享",
+        "price_yuan": "20",
+        "duration_days": 180,
+        "max_accounts": 1,
+        "duration_label": "6 个月",
+        "billing_label": "半年",
+        "max_tasks": UNLIMITED_TASKS,
+        "task_limit_label": "不限好友任务",
+    },
+)
+# These IDs were exposed by previous releases. They remain accepted for
+# already-open admin pages and scripted integrations, but are intentionally
+# omitted from ``pricing_plans()`` so newly generated codes use the current
+# catalog. Stored codes and subscriptions contain concrete limits/dates and
+# are never rewritten by this catalog change.
+LEGACY_PRICING_PLANS = {
+    "starter": {
         "id": "starter",
-        "name": "基础版",
+        "name": "基础版（旧）",
         "price_yuan": "9.9",
         "duration_days": 30,
         "max_accounts": 1,
         "max_tasks": 5,
         "task_limit_label": "5 个好友任务",
     },
-    {
+    "standard": {
         "id": "standard",
-        "name": "标准版",
+        "name": "标准版（旧）",
         "price_yuan": "15",
         "duration_days": 30,
         "max_accounts": 1,
         "max_tasks": 10,
         "task_limit_label": "10 个好友任务",
     },
-    {
+    "unlimited": {
         "id": "unlimited",
-        "name": "不限版",
+        "name": "不限版（旧）",
         "price_yuan": "20",
         "duration_days": 30,
         "max_accounts": 1,
         "max_tasks": UNLIMITED_TASKS,
         "task_limit_label": "不限好友任务",
     },
-)
+}
 MAX_SUBSCRIPTION_DAYS = 36_500
 INVALID_CODE = "兑换码无效或已使用"
 INACTIVE_SUBSCRIPTION = "会员未开通或已过期"
@@ -75,7 +105,10 @@ def pricing_plans() -> tuple[dict[str, object], ...]:
 def pricing_plan(plan_id: str | None) -> dict[str, object] | None:
     if not plan_id:
         return None
-    return next((dict(plan) for plan in PRICING_PLANS if plan["id"] == plan_id), None)
+    plan = next((plan for plan in PRICING_PLANS if plan["id"] == plan_id), None)
+    if plan is None:
+        plan = LEGACY_PRICING_PLANS.get(plan_id)
+    return dict(plan) if plan is not None else None
 
 
 def is_unlimited_tasks(max_tasks: int | None) -> bool:
@@ -627,6 +660,48 @@ class SubscriptionService:
         current = self._now()
         # Expired subscription: grant free-tier access so the task keeps running.
         return _aware(subscription.valid_until) <= current
+
+    def can_execute_task(self, user_id: str, task_id: str) -> bool:
+        """Return whether ``task_id`` owns the user's current execution slot.
+
+        Free-tier users retain all historical task definitions, but only the
+        deterministically earliest enabled task may execute.  This check is
+        repeated by the Worker because a run can be claimed before a paid
+        term expires and started afterwards.  Paid users and administrators
+        bypass the single-slot filter.
+        """
+        user = self.session.get(User, user_id)
+        if user is None or user.status != "active":
+            return False
+        if user.role == "admin" or self.active(user_id):
+            return True
+        task = self.session.get(SparkTask, task_id)
+        if task is None or task.owner_user_id != user_id or not task.enabled:
+            return False
+        # A future-dated subscription is not a free-tier entitlement, while
+        # an absent or expired subscription is.  ``active`` above already
+        # reconciles any pending lower plan at an exact boundary.
+        subscription = self._get_subscription(user_id)
+        current = self._now()
+        if subscription is not None and _aware(subscription.valid_until) > current:
+            return False
+        earlier_task = aliased(SparkTask)
+        earlier_enabled = self.session.scalar(
+            select(earlier_task.id)
+            .where(
+                earlier_task.owner_user_id == user_id,
+                earlier_task.enabled.is_(True),
+                or_(
+                    earlier_task.created_at < task.created_at,
+                    and_(
+                        earlier_task.created_at == task.created_at,
+                        earlier_task.id < task.id,
+                    ),
+                ),
+            )
+            .limit(1)
+        )
+        return earlier_enabled is None
 
     def require_active(self, user_id: str) -> UserSubscription:
         return self._require_active(user_id)
