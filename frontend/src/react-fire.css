@@ -41,7 +41,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; }
 .contact-qr-frame { display:grid; justify-items:center; gap:8px; flex:0 1 clamp(168px,22vw,238px); width:min(100%,238px); padding:10px; border:1px solid var(--hairline); border-radius:12px; background:var(--paper-strong); box-shadow:0 10px 26px rgba(0,0,0,.2); }
 .contact-qr-frame img { display:block; width:100%; height:auto; aspect-ratio:1; object-fit:contain; image-rendering:auto; }
 .contact-qr-frame .contact-qr-image { grid-area:1/1; align-self:center; }
-.contact-qr-frame small { grid-area:2/1; color:var(--ink-soft); font:10px var(--mono); white-space:nowrap; }
+.contact-qr-frame small { grid-area:2/1; max-width:100%; overflow:hidden; color:var(--ink-soft); font:10px/1.4 var(--mono); text-align:center; text-overflow:ellipsis; white-space:nowrap; }
 .contact-qr-dark { display:none !important; }
 .contact-qr-large { flex-basis:clamp(230px,58vw,320px); width:min(100%,320px); padding:14px; }
 html[data-theme="light"] .contact-qr-frame { background:var(--surface-strong); border-color:rgba(87,59,45,.16); box-shadow:0 10px 26px rgba(36,39,43,.12); }
@@ -433,7 +433,7 @@ html[data-theme="light"] .fire-heat-months { color:#75665e; }
 /* Match the deployed contribution layout. Keep month labels readable when a
    week column is narrow; they may extend into the following empty space. */
 .fire-heat-months { display:grid; gap:4px; margin-bottom:5px; min-height:14px; width:100%; color:#9d8478; font:9px var(--mono); overflow:visible; }
-.fire-heat-months span { overflow:visible; white-space:nowrap; min-width:24px; }
+.fire-heat-months span { min-width:0; max-width:3em; overflow:hidden; text-overflow:clip; white-space:nowrap; }
 .fire-heat-grid { grid-template-rows:repeat(7,minmax(0,1fr)); grid-auto-flow:column; gap:4px; width:100%; max-width:none; }
 .fire-heat-grid i { width:auto; height:auto; aspect-ratio:1; min-width:0; border-radius:3px; }
 html[data-theme="light"] .fire-heat-months { color:#75665e; }
@@ -824,6 +824,89 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
   .runs-summary{gap:14px}
 }
 
+/* Final responsive shell pass. Keep the top navigation usable on tablets and
+   reserve space for the fixed dock on every narrow viewport. */
+@media (max-width: 900px) {
+  .fire-nav {
+    display: flex;
+    min-height: 58px;
+    padding: 8px 16px;
+    gap: 0;
+  }
+  .fire-nav-segment { display: none !important; }
+  .fire-service { display: none; }
+  .fire-nav-brand { flex: 0 0 auto; }
+  .fire-nav-brand .brand-copy small { display: none; }
+  .fire-nav-right { margin-left: auto; gap: 6px; }
+  .fire-account { height: 36px; min-height: 36px; }
+  .fire-account > span:last-child { display: none; }
+  .fire-main .main-inner { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+  .mobile-route-status { display: block; padding: 5px 16px 0; }
+}
+
+/* The centered login/editor dialog must stay a dialog. The generic drawer
+   remains a bottom sheet on small screens. */
+@media (max-width: 900px) {
+  .drawer-backdrop:not(.drawer-centered-backdrop) {
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+  .drawer-backdrop:not(.drawer-centered-backdrop) .drawer,
+  .drawer-backdrop:not(.drawer-centered-backdrop) .drawer.drawer-wide {
+    width: 100%;
+    max-width: none;
+    height: min(90dvh, 720px);
+    max-height: calc(100dvh - 12px);
+    border: 0;
+    border-top: 1px solid var(--hairline);
+    border-radius: 22px 22px 0 0;
+  }
+  .drawer-backdrop.drawer-centered-backdrop {
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .drawer-backdrop.drawer-centered-backdrop .drawer.drawer-centered {
+    width: min(680px, calc(100vw - 32px));
+    max-width: min(680px, calc(100vw - 32px));
+    height: auto;
+    max-height: min(86dvh, 760px);
+    border: 1px solid var(--hairline);
+    border-radius: 18px;
+  }
+}
+
+/* One consistent shape language for controls that still come from the base
+   workspace stylesheet. */
+.button,
+.input,
+.textarea,
+.friend-trigger,
+.card,
+.task-table,
+.admin-table,
+.status-banner,
+.segmented,
+.admin-subview-tabs,
+.update-version-grid > div,
+.update-progress,
+.update-rollback,
+.admin-bulk-bar,
+.mfa-recovery-status,
+.mfa-recovery-issued,
+.onboarding-step,
+.today-board-account { border-radius: 12px; }
+.button:focus-visible,
+.input:focus-visible,
+.textarea:focus-visible,
+.friend-trigger:focus-visible,
+.icon-button:focus-visible,
+.fire-theme:focus-visible,
+.fire-account:focus-visible,
+.mobile-dock a:focus-visible,
+.admin-subview-tabs button:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
+
 /* Task row mobile action menu */
 .task-row-menu{position:relative}
 .task-row-menu-btn{display:none;width:34px;height:34px;padding:0;border:1px solid rgba(24,23,23,.18);background:transparent;color:var(--ink-soft);cursor:pointer;font-size:16px;align-items:center;justify-content:center}
@@ -832,10 +915,86 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
 .task-row-menu-dropdown button{display:flex;width:100%;align-items:center;gap:8px;padding:10px 14px;border:0;background:transparent;color:var(--ink-dark);font-size:12px;text-align:left;cursor:pointer}
 .task-row-menu-dropdown button:hover{background:rgba(255,255,255,.12)}
 .task-row-menu-dropdown button.danger-action{color:#b83222}
+.task-row-menu-btn{border-radius:9px;transition:background .16s ease,border-color .16s ease,color .16s ease}
+.task-row-menu-btn:hover,.task-row-menu-btn:focus-visible,.task-row-menu-btn.is-open{background:rgba(255,107,37,.1);border-color:rgba(255,107,37,.38);color:var(--orange-soft);outline:none}
+.task-row-menu-dropdown{border-radius:10px;overflow:hidden;padding:4px;background:var(--paper-strong);border-color:var(--hairline);box-shadow:0 14px 34px rgba(0,0,0,.34)}
+.task-row-menu-dropdown button{min-height:38px;border-radius:7px;padding:9px 12px;transition:background .14s ease,color .14s ease}
+.task-row-menu-dropdown button:hover,.task-row-menu-dropdown button:focus-visible{background:rgba(255,107,37,.1);color:var(--ink-dark);outline:none}
+.task-row-menu-dropdown button.danger-action:hover,.task-row-menu-dropdown button.danger-action:focus-visible{background:rgba(228,119,110,.12);color:#ff9f91}
+.contact-picker-loading{display:flex;align-items:center;justify-content:center;gap:8px;min-height:34px;margin:4px 0 8px;border:1px solid var(--hairline);border-radius:9px;background:rgba(255,255,255,.025);color:var(--ink-soft);font-size:10px}
+.contact-picker-loading .loading-spinner{width:13px;height:13px;border-width:2px}
+html[data-theme="light"] .task-row-menu-btn{border-color:rgba(48,39,35,.16)}
+html[data-theme="light"] .task-row-menu-dropdown{background:var(--surface-strong);border-color:rgba(48,39,35,.14);box-shadow:0 14px 34px rgba(56,45,38,.16)}
+html[data-theme="light"] .contact-picker-loading{border-color:rgba(48,39,35,.13);background:rgba(48,39,35,.035);color:#75655d}
 @media(max-width:700px){
   .row-actions .icon-action{display:none}
   .task-row-menu-btn{display:flex}
   .task-row-menu{display:flex;align-items:center}
+}
+
+/* Final responsive contract: the compact dock owns navigation below the
+   tablet width, while the top bar keeps only identity and utilities. */
+@media (max-width: 900px) {
+  .fire-nav {
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:12px;
+    min-height:64px;
+    padding-inline:20px;
+  }
+  .fire-nav-segment,
+  .fire-nav-tabs { display:none !important; }
+  .fire-nav-right { gap:7px; }
+  .fire-service { display:none; }
+  .mobile-dock { display:flex; }
+  .fire-account { min-height:36px; height:36px; }
+  .fire-account > span:last-child { display:none; }
+  .main-inner { padding-inline:24px; }
+}
+
+@media (max-width: 700px) {
+  .fire-nav { padding-inline:14px; }
+  .main-inner { padding-inline:14px; }
+  .fire-nav-brand .brand-copy small { display:none; }
+}
+
+/* A centered dialog remains a dialog on phones. Only ordinary drawers become
+   bottom sheets, so QR login, editing and confirmation dialogs keep context. */
+@media (max-width: 700px) {
+  .drawer-backdrop:not(.drawer-centered-backdrop) {
+    align-items:flex-end;
+    justify-content:center;
+    padding:0;
+  }
+  .drawer-backdrop.drawer-centered-backdrop {
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+  }
+  .drawer.drawer-centered {
+    width:min(100%,560px);
+    max-width:560px;
+    height:auto;
+    max-height:calc(100dvh - 32px);
+    border:1px solid rgba(255,219,198,.18);
+    border-radius:20px;
+  }
+  .drawer.drawer-centered .drawer-head { cursor:default; }
+  .drawer.drawer-centered .drawer-head::before { display:none; }
+  .drawer.drawer-centered > .scan-panel { overflow-y:auto; scrollbar-width:thin; }
+}
+
+/* Keep long lists discoverable without forcing a heavy scrollbar on the
+   decorative heatmap and horizontal chips. */
+html, body { scrollbar-width:auto; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { width:8px; height:8px; }
+html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb { background:rgba(255,219,198,.22); border-radius:999px; }
+.drawer-content, .drawer.drawer-centered > .scan-panel { scrollbar-width:thin; scrollbar-color:rgba(255,219,198,.28) transparent; }
+.drawer-content::-webkit-scrollbar, .drawer.drawer-centered > .scan-panel::-webkit-scrollbar { width:7px; }
+.drawer-content::-webkit-scrollbar-thumb, .drawer.drawer-centered > .scan-panel::-webkit-scrollbar-thumb { background:rgba(255,219,198,.25); border-radius:999px; }
+
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline:2px solid var(--orange-soft);
+  outline-offset:3px;
 }
 
 /* Admin workspace two-tab layout */
@@ -852,3 +1011,34 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
 .admin-toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:900;max-width:420px;width:calc(100% - 40px);padding:12px 16px;background:var(--paper-strong);border:1px solid rgba(231,223,209,.22);box-shadow:0 8px 28px rgba(0,0,0,.36);display:flex;align-items:center;gap:10px;font-size:12px;animation:modal-in .2s ease}
 .admin-toast span{flex:1}
 .admin-toast button{flex:0 0 auto;border:0;background:transparent;color:#a88f83;cursor:pointer;font-size:14px;padding:0 2px}
+
+/* Only interactive execution records should advertise click behavior. The
+   same row primitive is reused by diagnostics, mail delivery and admin
+   summaries, where it is informational and must keep the default cursor. */
+.run-row[role="button"] { cursor:pointer; }
+.run-row:not([role="button"]) { cursor:default; }
+
+/* Keep contribution cells legible on phones. The inline column count from
+   React is intentionally replaced by intrinsic week columns below 700px so
+   the heatmap scrolls instead of shrinking each day into a few pixels. */
+@media (max-width: 700px) {
+  .fire-heat-scroll { overflow-x:auto; overscroll-behavior-x:contain; }
+  .fire-heat-months {
+    display:grid;
+    grid-template-columns:none !important;
+    grid-auto-columns:10px;
+    grid-auto-flow:column;
+    width:max-content;
+    min-width:max-content;
+  }
+  .fire-heat-months span { min-width:24px; max-width:none; overflow:visible; }
+  .fire-heat-grid {
+    grid-template-columns:none !important;
+    grid-template-rows:repeat(7,10px);
+    grid-auto-columns:10px;
+    grid-auto-flow:column;
+    width:max-content;
+    min-width:max-content;
+  }
+  .fire-heat-grid i { width:10px; height:10px; aspect-ratio:auto; }
+}
