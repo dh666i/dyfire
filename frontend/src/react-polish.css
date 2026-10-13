@@ -638,11 +638,8 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   outline: 2px solid var(--orange);
   outline-offset: 3px;
 }
-.route-view { animation: route-reveal .22s ease both; min-width: 0; }
-.route-view > * { animation: panel-rise .38s cubic-bezier(.2,.75,.2,1) both; }
-.route-view > *:nth-child(2) { animation-delay: .045s; }
-.route-view > *:nth-child(3) { animation-delay: .09s; }
-.route-view > *:nth-child(4) { animation-delay: .135s; }
+.route-view { min-width: 0; }
+.route-view > * { animation: none; }
 .button { position: relative; overflow: hidden; transition: transform .18s ease, filter .18s ease, background-color .18s ease, border-color .18s ease; }
 .button::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 28%, rgba(255,255,255,.18) 48%, transparent 68%); transform: translateX(-120%); transition: transform .45s ease; pointer-events: none; }
 .button:hover::after { transform: translateX(120%); }
@@ -670,8 +667,8 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .contact-row input { width: 16px; height: 16px; }
 .toast { max-width: min(420px, calc(100vw - 30px)); line-height: 1.5; }
 .toast button { flex: 0 0 auto; font-size: 18px; line-height: 1; padding: 2px 4px; }
-.mosaic-task-row, .mosaic-contact-list a, .quick-links a { transition: background-color .16s ease, padding-left .16s ease; }
-.mosaic-task-row:hover, .mosaic-contact-list a:hover, .quick-links a:hover { padding-left: 28px; }
+.mosaic-task-row, .mosaic-contact-list a, .quick-links a { transition: background-color var(--motion-quick, .14s) var(--motion-ease-standard, ease), transform var(--motion-quick, .14s) var(--motion-ease-standard, ease); }
+.mosaic-task-row:hover, .mosaic-contact-list a:hover, .quick-links a:hover { transform: translateX(4px); }
 .admin-table { overflow-x: auto; }
 .admin-table > * { min-width: 620px; }
 .admin-row small { display: block; color: var(--ink-soft); font-size: 10px; margin-top: 4px; font-weight: 400; }
@@ -685,8 +682,6 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 @keyframes drawer-out { to { transform: translateX(22px); opacity: 0; } }
 
 @media (max-width: 700px) {
-  .route-view { animation-duration: .18s; }
-  .route-view > * { animation-duration: .28s; }
   .page-header { min-width: 0; }
   .page-header h1 { overflow-wrap: anywhere; }
   .page-actions { display: flex; }
@@ -874,8 +869,6 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .scan-stage.frame-error .scan-loading-overlay { background: rgba(31, 19, 16, .95); }
 .scan-loading-error { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid #ff9b8d; color: #ff9b8d; font: 500 16px var(--mono); }
 .scan-loading-overlay .button { min-height: 34px; font-size: 11px; }
-.route-view { view-transition-name: route-view; }
-::view-transition-old(route-view), ::view-transition-new(route-view) { animation-duration: .24s; }
 .page-header, .card, .mosaic-hero, .mosaic-contacts, .mosaic-subscription, .mosaic-create { contain: layout paint; }
 .button:not(:disabled), .icon-button, .theme-toggle, .logout-link, .user-chip, .utility-button, .utility-account, .mobile-dock a, .sidebar nav a { -webkit-tap-highlight-color: transparent; }
 .button:not(:disabled):active, .icon-button:active, .mobile-dock a:active { transform: translateY(1px) scale(.98); }

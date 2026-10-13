@@ -15,7 +15,7 @@ const root = path.resolve(__dirname, '../..');
 const app = fs.readFileSync(path.join(root, 'frontend/src/app.jsx'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'frontend/src/react-polish.css'), 'utf8');
 
-const userTable = app.match(/<div className="admin-table">\s*<div className="table-head user-workbench-head"[\s\S]*?<\/div>\{users\.map\(u=>\{[\s\S]*?<\/div>\}\)\}<\/div>/);
+const userTable = app.match(/<div className="admin-table">\s*<div className="table-head user-workbench-head"[\s\S]*?<\/div>(?:<MotionList[^>]*>)?\{users\.map\(u=>\{[\s\S]*?<\/div>\}\)\}(?:<\/MotionList>)?<\/div>/);
 assert.ok(userTable, 'customer workbench must keep a user table and row map');
 const row = userTable[0].match(/<div className="admin-row admin-user-row user-workbench-row"[\s\S]*?<\/div>\}\)\}/);
 assert.ok(row, 'customer workbench must render user-workbench-row records');

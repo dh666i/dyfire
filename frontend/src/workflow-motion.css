@@ -1,0 +1,31 @@
+.workflow-motion-list { position: relative; min-width: 0; }
+.workflow-motion-list > [data-motion-ghost] { z-index: 1; pointer-events: none !important; }
+.workflow-disclosure[hidden] { display: none !important; }
+.workflow-disclosure[aria-hidden="true"] { pointer-events: none; }
+.contact-row.is-selected {
+  background: color-mix(in srgb, var(--orange, #ff6b25) 9%, transparent);
+  border-color: color-mix(in srgb, var(--orange, #ff6b25) 30%, var(--hairline));
+}
+.contact-row .contact-selection-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  font-size: 11px;
+  opacity: .5;
+  transform: scale(.9);
+  transition: opacity var(--motion-fast, 100ms) ease, transform var(--motion-short, 150ms) var(--ease-standard, ease), background-color var(--motion-fast, 100ms) ease;
+}
+.contact-row.is-selected .contact-selection-mark {
+  opacity: 1;
+  transform: scale(1);
+  background: var(--orange, #ff6b25);
+  color: #20100a;
+  border-color: transparent;
+}
+@media (prefers-reduced-motion: reduce) {
+  .contact-row .contact-selection-mark { transition: none; transform: none; }
+}

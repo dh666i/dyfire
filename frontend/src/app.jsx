@@ -5,11 +5,25 @@ import {BrowserRouter, Link, useLocation, useNavigate} from 'react-router-dom';
 import {focusTrapTarget, getMobileDockRoutes, resetRouteScroll} from './navigation.js';
 import {contactKey, createContactPickerController} from './contact-picker-state.js';
 import {createTaskComposerController, mergeTaskRows} from './task-composer-state.js';
+import {MotionDisclosure, MotionList} from './workflow-motion.jsx';
 // Keep route motion in one place.  The keyed wrapper lets CSS run one entry
 // transition per navigation without a second inline transition or a delayed
 // first frame that can flash on slower devices.
 function RouteMotionDiv({children, locationKey}) {
-  return <div key={locationKey} className="route-view">{children}</div>;
+  const ref = useRef(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    node.classList.remove('is-entering');
+    // Restart the compositor-only route animation without remounting the
+    // route subtree, preserving filters, drafts and open local state.
+    void node.offsetWidth;
+    node.classList.add('is-entering');
+    const clear = () => node.classList.remove('is-entering');
+    node.addEventListener('animationend', clear, {once:true});
+    return () => node.removeEventListener('animationend', clear);
+  }, [locationKey]);
+  return <div ref={ref} className="route-view">{children}</div>;
 }
 // eslint-disable-next-line no-unused-vars
 const _motion_react_unused = null; // motion/react used by RubberSegment.jsx
@@ -28,6 +42,10 @@ const drawerStack = [];
 const DRAWER_EXIT_MS = 180;
 const MODAL_EXIT_MS = 180;
 const TOAST_EXIT_MS = 160;
+const motionExitDelay = duration => {
+  if (typeof window === 'undefined') return duration;
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : duration;
+};
 
 const asList = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const displayText = (value, fallback='') => typeof value === 'string' && value.trim() ? value : fallback;
@@ -301,29 +319,39 @@ async function api(path, options={}) {
 // currently rendered value, so polling never makes a metric flash back to 0.
 function useCountUp(to, {duration=900, enabled=true}={}) {
   const numericTo = typeof to === 'number' && !Number.isNaN(to) ? to : null;
-  const previousRef = useRef(null);
-  const [value, setValue] = useState(numericTo ?? to);
+  const currentRef = useRef(numericTo == null ? null : 0);
+  const frameRef = useRef(null);
+  const [value, setValue] = useState(numericTo == null ? to : 0);
   useEffect(() => {
+    if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
     if (numericTo == null || !enabled) {
       setValue(to);
-      previousRef.current = numericTo;
+      currentRef.current = numericTo;
       return;
     }
-    const from = previousRef.current == null ? 0 : previousRef.current;
-    previousRef.current = numericTo;
+    const from = Number.isFinite(currentRef.current) ? currentRef.current : 0;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (reduced || from === numericTo) { setValue(numericTo); return; }
+    if (reduced || from === numericTo) {
+      currentRef.current = numericTo;
+      setValue(numericTo);
+      return;
+    }
     const start = performance.now();
-    let raf;
     const tick = now => {
       const p = Math.min((now - start) / duration, 1);
       // ease-out cubic
       const eased = 1 - Math.pow(1 - p, 3);
-      setValue(Math.round(from + (numericTo - from) * eased));
-      if (p < 1) raf = requestAnimationFrame(tick);
+      const next = Math.round(from + (numericTo - from) * eased);
+      currentRef.current = next;
+      setValue(next);
+      if (p < 1) frameRef.current = requestAnimationFrame(tick);
+      else frameRef.current = null;
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
   }, [numericTo, to, duration, enabled]);
   return value;
 }
@@ -514,7 +542,7 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
     }
     if(!mounted)return;
     setClosing(true);
-    closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false)},DRAWER_EXIT_MS);
+    closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false)},motionExitDelay(DRAWER_EXIT_MS));
     return ()=>{if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current)};
   },[open,mounted]);
   useEffect(()=>{
@@ -567,7 +595,7 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
       setMounted(false);
       setClosing(false);
       onCloseRef.current?.();
-    },DRAWER_EXIT_MS);
+    },motionExitDelay(DRAWER_EXIT_MS));
   };
   requestCloseRef.current=requestClose;
   if (!mounted) return null;
@@ -603,6 +631,7 @@ function ModalHost() {
   const [request,setRequest]=useState(null);
   const [closing,setClosing]=useState(false);
   const activeRef=useRef(null);
+  const dialogRef=useRef(null);
   const queueRef=useRef([]);
   const showNext=useRef(()=>{});
   const closeTimerRef=useRef(null);
@@ -641,7 +670,7 @@ function ModalHost() {
       setRequest(null);
       setClosing(false);
       showNext.current();
-    },MODAL_EXIT_MS);
+    },motionExitDelay(MODAL_EXIT_MS));
   };
   finishRef.current=finish;
   const prompt=Boolean(request?.kind==='prompt');
@@ -649,17 +678,35 @@ function ModalHost() {
   useEffect(()=>{setValue(request?.defaultValue||'')},[request]);
   useEffect(()=>{
     if(!request)return;
+    const dialog=dialogRef.current;
+    const previous=document.activeElement;
+    const previousOverflow=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    const focusable=()=>[...dialog?.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')||[]]
+      .filter(element=>{const style=window.getComputedStyle(element);return style.display!=='none'&&style.visibility!=='hidden';});
+    const focusTimer=window.setTimeout(()=>focusable()[0]?.focus(),0);
     const onKey=event=>{
-      if(event.key==='Escape')finishRef.current?.(request.kind==='prompt'?null:false);
+      if(event.key==='Escape'){finishRef.current?.(request.kind==='prompt'?null:false);return;}
+      if(event.key!=='Tab')return;
+      const items=focusable();
+      if(!items.length)return;
+      const first=items[0]; const last=items[items.length-1];
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
     };
     window.addEventListener('keydown',onKey);
-    return()=>window.removeEventListener('keydown',onKey);
+    return()=>{
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown',onKey);
+      document.body.style.overflow=previousOverflow;
+      if(previous&&typeof previous.focus==='function') previous.focus();
+    };
   },[request]);
   if(!request)return null;
   const submit=event=>{event.preventDefault();if(prompt&&!value.trim())return;finish(prompt?value:true)};
   return createPortal(
     <div className={`modal-overlay${closing?' is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&finish(prompt?null:false)}>
-      <div className={`modal-dialog${prompt?' modal-dialog-prompt':''}${closing?' is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="modal-dialog-title">
+      <div ref={dialogRef} className={`modal-dialog${prompt?' modal-dialog-prompt':''}${closing?' is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="modal-dialog-title">
         <header className="modal-dialog-head">
           {request.eyebrow&&<span className="eyebrow">{request.eyebrow}</span>}
           <h2 id="modal-dialog-title">{request.title||'请确认'}</h2>
@@ -678,26 +725,37 @@ function Toast({message, onClose}) {
   const [visibleMessage,setVisibleMessage]=useState(message||'');
   const [closing,setClosing]=useState(false);
   const timerRef=useRef(null);
+  const messageIdRef=useRef(0);
+  const visibleRef=useRef(message||'');
   const onCloseRef=useRef(onClose);
   onCloseRef.current=onClose;
-  const dismiss=()=>{
+  const dismiss=(expectedId=messageIdRef.current)=>{
+    if(expectedId!==messageIdRef.current||!visibleRef.current)return;
     if(timerRef.current)window.clearTimeout(timerRef.current);
     setClosing(true);
     timerRef.current=window.setTimeout(()=>{
+      if(expectedId!==messageIdRef.current)return;
+      visibleRef.current='';
       setVisibleMessage('');
       setClosing(false);
       onCloseRef.current?.();
-    },TOAST_EXIT_MS);
+    },motionExitDelay(TOAST_EXIT_MS));
   };
   useEffect(()=>{
+    const messageId=++messageIdRef.current;
     if(timerRef.current)window.clearTimeout(timerRef.current);
     if(message){
+      visibleRef.current=message;
       setVisibleMessage(message);
       setClosing(false);
-      timerRef.current=window.setTimeout(dismiss,4200);
-    }else if(visibleMessage){
+      timerRef.current=window.setTimeout(()=>dismiss(messageId),4200);
+    }else if(visibleRef.current){
       setClosing(true);
-      timerRef.current=window.setTimeout(()=>{setVisibleMessage('');setClosing(false)},TOAST_EXIT_MS);
+      timerRef.current=window.setTimeout(()=>{
+        if(messageId!==messageIdRef.current)return;
+        visibleRef.current='';
+        setVisibleMessage('');setClosing(false);
+      },motionExitDelay(TOAST_EXIT_MS));
     }
     return()=>{if(timerRef.current)window.clearTimeout(timerRef.current)};
   },[message]);
@@ -896,11 +954,11 @@ function ContactPicker({open,onClose,account,data,onDone,releasedKeys=new Set(),
       {limitMessage&&<div className="inline-feedback" role="status">{limitMessage} <Link to="/subscription">查看套餐 ↗</Link></div>}
       <div className="drawer-tools"><span>{selected.size} 人已选{Number.isFinite(selectionLimit)?` / ${selectionLimit} 个可用额度`:''}</span><button type="button" onClick={()=>{const keys=visible.filter(i=>!existing.has(contactKey(i))&&!selected.has(contactKey(i))).map(contactKey);const next=Number.isFinite(selectionLimit)?keys.slice(0,Math.max(0,selectionLimit-selected.size)):keys;if(Number.isFinite(selectionLimit)&&keys.length>next.length)onLimitReached?.();controller.selectMany(next)}} disabled={loading||Number.isFinite(selectionLimit)&&selectionLimit<=selected.size}>全选当前结果</button><button type="button" onClick={()=>controller.clearSelection()} disabled={loading}>清空</button></div>
       {(loading||busy==='page'||busy==='sync')&&items.length>0&&<div className="contact-picker-loading" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/>{busy==='sync'?'正在同步好友…':'正在加载更多好友…'}</div>}
-      {loading&&!items.length?<div className="skeleton-stack"><div/><div/><div/></div>:<div className="contact-list">{visible.map((item,i)=>{
+      {loading&&!items.length?<div className="skeleton-stack"><div/><div/><div/></div>:<div className="contact-list"><MotionList className="contact-motion-list">{visible.map((item,i)=>{
         const id=contactKey(item)||`contact-${i}`;const name=displayName(item?.name,'未命名好友');const disabled=existing.has(id);
         const atLimit=Number.isFinite(selectionLimit)&&selected.size>=selectionLimit&&!selected.has(id);
-        return <label className={`contact-row ${disabled||atLimit?'disabled':''}`} key={id}><input type="checkbox" disabled={disabled||atLimit} checked={selected.has(id)} onChange={e=>{if(e.target.checked&&atLimit){onLimitReached?.();return}controller.select(id,e.target.checked)}}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':atLimit?'额度已用完':item?.remark_name||item?.nickname||'已同步会话'}</small></span><span>{selected.has(id)?'✓':''}</span></label>
-      })}</div>}
+        return <label className={`contact-row ${selected.has(id)?'is-selected ':''}${disabled||atLimit?'disabled':''}`} key={id} data-motion-state={selected.has(id)?'selected':'idle'}><input type="checkbox" disabled={disabled||atLimit} checked={selected.has(id)} onChange={e=>{if(e.target.checked&&atLimit){onLimitReached?.();return}controller.select(id,e.target.checked)}}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':atLimit?'额度已用完':item?.remark_name||item?.nickname||'已同步会话'}</small></span><span className="contact-selection-mark" aria-hidden="true">{selected.has(id)?'✓':''}</span></label>
+      })}</MotionList></div>}
       {!loading&&!error&&!visible.length&&<Empty title={query?'没有匹配的已加载会话':'还没有已同步好友'} text={query?'搜索仅覆盖已加载会话，可以加载或同步更多好友后再搜索。':'点击下方同步按钮，读取这个账号的最近好友会话。'}/>}
     </div>
     <footer className="drawer-foot contact-picker-footer">
@@ -1050,7 +1108,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
     </section>}
     <div className="studio-layout"><section className="studio-list">
       <div className="toolbar"><RubberSegment className="admin-segment" items={[{value:'all',label:`全部 ${taskPagination?.total??tasks.length}`},{value:'active',label:`运行中 ${enabledTotal}`},{value:'paused',label:`已暂停 ${pausedTotal}`}]} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="任务筛选"/><input className="input compact-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索好友或备注"/></div>
-      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div>{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';const menuOpen=openTaskMenu===task?.id;return <div className="task-row" key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={()=>toggleTask(task)}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><Button className={actionClass} variant="danger" title="删除任务" aria-label={`删除 ${name}`} onClick={()=>deleteTask(task)}><ActionDeleteIcon/></Button><div className="task-row-menu"><button type="button" className={`task-row-menu-btn${menuOpen?' is-open':''}`} aria-expanded={menuOpen} aria-label={`${name} 更多操作`} onClick={e=>{e.stopPropagation();setOpenTaskMenu(menuOpen?null:task?.id)}}>⋮</button><div className={`task-row-menu-dropdown${menuOpen?' is-open':''}`}><button type="button" onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}>编辑时间</button><button type="button" onClick={()=>toggleTask(task)}>{task?.enabled?'暂停任务':'恢复任务'}</button><button type="button" className="danger-action" onClick={()=>deleteTask(task)}>删除任务</button></div></div></span></div>})}</div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
+      {shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div><MotionList className="task-motion-list">{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';const menuOpen=openTaskMenu===task?.id;return <div className="task-row" data-motion-state={task?.enabled?'enabled':'paused'} key={task?.id||`${name}-${index}`}><span className="person-cell"><span className="avatar">{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</span><span><b>{name}</b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={()=>toggleTask(task)}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><Button className={actionClass} variant="danger" title="删除任务" aria-label={`删除 ${name}`} onClick={()=>deleteTask(task)}><ActionDeleteIcon/></Button><div className="task-row-menu"><button type="button" className={`task-row-menu-btn${menuOpen?' is-open':''}`} aria-expanded={menuOpen} aria-label={`${name} 更多操作`} onClick={e=>{e.stopPropagation();setOpenTaskMenu(menuOpen?null:task?.id)}}>⋮</button><div className={`task-row-menu-dropdown${menuOpen?' is-open':''}`}><button type="button" onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}>编辑时间</button><button type="button" onClick={()=>toggleTask(task)}>{task?.enabled?'暂停任务':'恢复任务'}</button><button type="button" className="danger-action" onClick={()=>deleteTask(task)}>删除任务</button></div></div></span></div>})}</MotionList></div>:<Empty title="还没有续火任务" text="先选择账号和好友，创建第一条每日计划。"/>}
       {taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}
     </section><Card className="composer-card" id="task-composer">
       <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div></div>
@@ -1194,7 +1252,7 @@ function Runs({data}) {
   const displayedRows=rows.filter(r=>!nameFilter||(r.name||'').toLowerCase().includes(nameFilter.toLowerCase()));
   const tone=r=>r.status==='success'?'good':r.status==='failed'?'danger':r.status==='submitted_unconfirmed'?'warn':r.status==='running'?'running':'neutral';
   const runFilterItems=[{value:'',label:'全部'},{value:'success',label:'已发出'},{value:'failed',label:'未发出'},{value:'submitted_unconfirmed',label:'待核实'}];
-  return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="runs-summary"><span className="runs-summary-item good"><b>{rows.filter(r=>r.status==='success').length}</b> 已发出</span><span className="runs-summary-item warn"><b>{rows.filter(r=>r.status==='submitted_unconfirmed').length}</b> 待核实</span><span className="runs-summary-item danger"><b>{rows.filter(r=>r.status==='failed').length}</b> 未发出</span></div><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><input className="input compact-search" value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="按好友名搜索"/><span className="runs-count">{displayedRows.length} / {rows.length} 条</span></div>{runsError&&<div className="inline-feedback danger-text" role="alert">{runsError}</div>}<Card className="runs-card">{displayedRows.length?<div className="run-list">{displayedRows.map(r=>{const open=expanded===r.id;const detailId=`run-detail-${r.id}`;return <div className={`run-row ${open?'is-expanded':''}`} key={r.id} role="button" tabIndex="0" aria-expanded={open} aria-controls={detailId} aria-label={`${r.name||'执行记录'}，${r.label||r.status||'状态未知'}。按 Enter 或空格查看详情`} onClick={()=>setExpanded(open?null:r.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setExpanded(open?null:r.id)}}}><span className={`run-dot ${r.status}`} aria-hidden="true"/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small><div id={detailId} className="run-detail" hidden={!open}><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||'本次执行完成，未发现异常。'}</span>{r.timeline?.map(item=><span key={`timeline-${item.sequence}`}><b>{item.occurred_at} · {item.stage}</b> {item.detail||item.event}</span>)}{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</div></div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||'计划执行正常'}</span></div>})}</div>:<Empty title="还没有执行记录" text="任务开始运行后，结果会出现在这里。"/>}</Card></>;
+  return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="runs-summary"><span className="runs-summary-item good"><b>{rows.filter(r=>r.status==='success').length}</b> 已发出</span><span className="runs-summary-item warn"><b>{rows.filter(r=>r.status==='submitted_unconfirmed').length}</b> 待核实</span><span className="runs-summary-item danger"><b>{rows.filter(r=>r.status==='failed').length}</b> 未发出</span></div><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><input className="input compact-search" value={nameFilter} onChange={e=>setNameFilter(e.target.value)} placeholder="按好友名搜索"/><span className="runs-count">{displayedRows.length} / {rows.length} 条</span></div>{runsError&&<div className="inline-feedback danger-text" role="alert">{runsError}</div>}<Card className="runs-card">{displayedRows.length?<div className="run-list"><MotionList className="run-motion-list">{displayedRows.map(r=>{const open=expanded===r.id;const detailId=`run-detail-${r.id}`;return <div className={`run-row ${open?'is-expanded':''}`} data-motion-state={r.status||'unknown'} key={r.id} role="button" tabIndex="0" aria-expanded={open} aria-controls={detailId} aria-label={`${r.name||'执行记录'}，${r.label||r.status||'状态未知'}。按 Enter 或空格查看详情`} onClick={()=>setExpanded(open?null:r.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setExpanded(open?null:r.id)}}}><span className={`run-dot ${r.status}`} aria-hidden="true"/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small><MotionDisclosure open={open} id={detailId} className="run-detail"><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||'本次执行完成，未发现异常。'}</span>{r.timeline?.map(item=><span key={`timeline-${item.sequence}`}><b>{item.occurred_at} · {item.stage}</b> {item.detail||item.event}</span>)}{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</MotionDisclosure></div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||'计划执行正常'}</span></div>})}</MotionList></div>:<Empty title="还没有执行记录" text="任务开始运行后，结果会出现在这里。"/>}</Card></>;
 }
 
 function TaskEditDrawer({task, data, open, onClose, onRefresh, onSaved}) {
@@ -1466,7 +1524,7 @@ function Admin({data,onRefresh}) {
     {baseSection==='operations'&&<div className="admin-segment-wrap"><RubberSegment className="admin-segment" items={opsTabItems} value={operationsTab} onChange={tab=>{setOperationsTab(tab);navigate(`/admin/operations?view=${tab}`)}} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="sm" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="运维工作台视图"/></div>}
     {section==='overview'&&<><div className="metric-grid admin-metrics"><Metric label="用户" value={counts.users||0} detail="注册账户"/><Metric label="抖音账号" value={counts.accounts||0} detail="绑定数量"/><Metric label="续火任务" value={counts.tasks||0} detail="全部用户" tone="accent"/><Metric label="执行记录" value={counts.runs||0} detail="累计记录"/></div><AdminInsights insights={insights} days={insightDays} onDaysChange={setInsightDays} onOpenUser={openUser}/><Card><div className="section-head"><h2>最近执行</h2><Link to="/admin/runs">查看全部 ↗</Link></div><AdminRuns rows={data.recentRuns}/></Card></>}
 
-    {section==='users'&&<Card className="admin-customer-workbench"><div className="section-head"><div><h2>客户总览</h2><p className="muted-copy">客户、订阅、资源和运行状态集中在一行查看，点击客户名称可打开完整工作台。</p></div><span className="eyebrow">{usersPagination?.total??users.length} USERS</span></div><div className="toolbar admin-toolbar"><input className="input compact-search" value={query} onChange={e=>{if(usersPagination?.page!==1)setUsersPagination({...usersPagination,page:1});setQuery(e.target.value)}} placeholder="搜索用户名或备注"/><select className="input compact-search" value={userStatusFilter} onChange={e=>{if(usersPagination?.page!==1)setUsersPagination({...usersPagination,page:1});setUserStatusFilter(e.target.value)}}><option value="">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option></select><span className="muted-copy">本页已选 {selectedUsers.size}</span></div>{selectedUsers.size>0&&<div className="admin-bulk-bar"><span>已选择 {selectedUsers.size} 位客户</span><Button variant="quiet" onClick={()=>runBulk('/api/admin/users/bulk',{user_ids:[...selectedUsers],action:'enable'},'已启用')}>批量启用</Button><Button variant="danger" onClick={()=>runBulk('/api/admin/users/bulk',{user_ids:[...selectedUsers],action:'disable'},'已停用')}>批量停用</Button><Button variant="quiet" onClick={()=>setSelectedUsers(new Set())}>清除选择</Button></div>}<div className="admin-table"><div className="table-head user-workbench-head"><span>选择</span><span>客户</span><span>订阅</span><span>资源使用</span><span>账号 / 今日</span><span>操作</span></div>{users.map(u=>{const pending=pendingMembershipPlan(u);const overLimit=membershipOverLimit(u);const membershipStatus=u.membership_status||'inactive';const membershipTone=membershipStatus==='active'||membershipStatus==='admin'?'good':membershipStatus==='expiring'?'warn':'neutral';return <div className="admin-row admin-user-row user-workbench-row" key={u.id}><input type="checkbox" className="row-check" checked={selectedUsers.has(u.id)} disabled={u.role==='admin'||u.id===data.user?.id} onChange={()=>toggleSelected(setSelectedUsers,u.id)} aria-label={`选择 ${u.username}`}/><button className="admin-cell-button" onClick={()=>openUser(u)}><b>{adminUserLabel(u)}<small>{u.role==='admin'?'管理员':'普通用户'} · 注册于 {u.created}</small></b></button><span className="row-status"><Badge tone={membershipTone}>{u.membership_label||'未开通'}</Badge><small>{u.valid_until?`至 ${new Date(u.valid_until).toLocaleDateString('zh-CN')}`:'可直接绑定账号'}</small>{pending&&<small className="admin-pending-plan">下期 {membershipTaskLimitLabel(pending)} · {membershipDate(pending.valid_from||pending.starts_at||pending.effective_at)}</small>}</span><span className="row-secondary">{u.enabled_task_count??u.task_count??0} / {u.max_tasks>=UNLIMITED_TASKS||u.max_tasks==null?'不限':u.max_tasks} 个启用任务<small>{u.account_count??0} 个账号 · {u.task_count??0} 个任务</small>{overLimit>0&&<small className="admin-over-limit">超出 {overLimit} 个启用任务</small>}</span><span className="admin-user-health"><Badge tone={u.status!=='active'?'danger':(u.account_health_status==='需处理'?'warn':'good')}>{u.status!=='active'?'用户停用':(u.account_health_label||'账号正常')}</Badge><small>今日成功 {u.today_success||0} · 失败 {u.today_failed||0}</small></span><span className="row-actions"><Button variant="quiet" disabled={u.role==='admin'} onClick={()=>submit(`/admin/users/${u.id}/subscription`,{plan_id:'monthly',duration_days:'30',max_accounts:'1',max_tasks:String(UNLIMITED_TASKS)})}>续期 1 个月</Button><Button variant="quiet" onClick={()=>openUser(u)}>编辑</Button><Button variant="quiet" disabled={u.role==='admin'||u.id===data.user?.id} onClick={async()=>{try{await api(`/api/admin/users/${u.id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf})});setAdminToast('用户状态已更新');refreshUsers();onRefresh()}catch(e){setFeedback(e.message)}}}>{u.status==='active'?'停用':'启用'}</Button></span></div>})}</div><AdminPagination value={usersPagination} onChange={page=>setUsersPagination(p=>({...p,page}))}/></Card>}
+    {section==='users'&&<Card className="admin-customer-workbench"><div className="section-head"><div><h2>客户总览</h2><p className="muted-copy">客户、订阅、资源和运行状态集中在一行查看，点击客户名称可打开完整工作台。</p></div><span className="eyebrow">{usersPagination?.total??users.length} USERS</span></div><div className="toolbar admin-toolbar"><input className="input compact-search" value={query} onChange={e=>{if(usersPagination?.page!==1)setUsersPagination({...usersPagination,page:1});setQuery(e.target.value)}} placeholder="搜索用户名或备注"/><select className="input compact-search" value={userStatusFilter} onChange={e=>{if(usersPagination?.page!==1)setUsersPagination({...usersPagination,page:1});setUserStatusFilter(e.target.value)}}><option value="">全部状态</option><option value="active">正常</option><option value="disabled">已停用</option></select><span className="muted-copy">本页已选 {selectedUsers.size}</span></div>{selectedUsers.size>0&&<div className="admin-bulk-bar"><span>已选择 {selectedUsers.size} 位客户</span><Button variant="quiet" onClick={()=>runBulk('/api/admin/users/bulk',{user_ids:[...selectedUsers],action:'enable'},'已启用')}>批量启用</Button><Button variant="danger" onClick={()=>runBulk('/api/admin/users/bulk',{user_ids:[...selectedUsers],action:'disable'},'已停用')}>批量停用</Button><Button variant="quiet" onClick={()=>setSelectedUsers(new Set())}>清除选择</Button></div>}<div className="admin-table"><div className="table-head user-workbench-head"><span>选择</span><span>客户</span><span>订阅</span><span>资源使用</span><span>账号 / 今日</span><span>操作</span></div><MotionList className="admin-users-motion-list">{users.map(u=>{const pending=pendingMembershipPlan(u);const overLimit=membershipOverLimit(u);const membershipStatus=u.membership_status||'inactive';const membershipTone=membershipStatus==='active'||membershipStatus==='admin'?'good':membershipStatus==='expiring'?'warn':'neutral';return <div className="admin-row admin-user-row user-workbench-row" key={u.id}><input type="checkbox" className="row-check" checked={selectedUsers.has(u.id)} disabled={u.role==='admin'||u.id===data.user?.id} onChange={()=>toggleSelected(setSelectedUsers,u.id)} aria-label={`选择 ${u.username}`}/><button className="admin-cell-button" onClick={()=>openUser(u)}><b>{adminUserLabel(u)}<small>{u.role==='admin'?'管理员':'普通用户'} · 注册于 {u.created}</small></b></button><span className="row-status"><Badge tone={membershipTone}>{u.membership_label||'未开通'}</Badge><small>{u.valid_until?`至 ${new Date(u.valid_until).toLocaleDateString('zh-CN')}`:'可直接绑定账号'}</small>{pending&&<small className="admin-pending-plan">下期 {membershipTaskLimitLabel(pending)} · {membershipDate(pending.valid_from||pending.starts_at||pending.effective_at)}</small>}</span><span className="row-secondary">{u.enabled_task_count??u.task_count??0} / {u.max_tasks>=UNLIMITED_TASKS||u.max_tasks==null?'不限':u.max_tasks} 个启用任务<small>{u.account_count??0} 个账号 · {u.task_count??0} 个任务</small>{overLimit>0&&<small className="admin-over-limit">超出 {overLimit} 个启用任务</small>}</span><span className="admin-user-health"><Badge tone={u.status!=='active'?'danger':(u.account_health_status==='需处理'?'warn':'good')}>{u.status!=='active'?'用户停用':(u.account_health_label||'账号正常')}</Badge><small>今日成功 {u.today_success||0} · 失败 {u.today_failed||0}</small></span><span className="row-actions"><Button variant="quiet" disabled={u.role==='admin'} onClick={()=>submit(`/admin/users/${u.id}/subscription`,{plan_id:'monthly',duration_days:'30',max_accounts:'1',max_tasks:String(UNLIMITED_TASKS)})}>续期 1 个月</Button><Button variant="quiet" onClick={()=>openUser(u)}>编辑</Button><Button variant="quiet" disabled={u.role==='admin'||u.id===data.user?.id} onClick={async()=>{try{await api(`/api/admin/users/${u.id}/toggle`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf})});setAdminToast('用户状态已更新');refreshUsers();onRefresh()}catch(e){setFeedback(e.message)}}}>{u.status==='active'?'停用':'启用'}</Button></span></div>})}</MotionList></div><AdminPagination value={usersPagination} onChange={page=>setUsersPagination(p=>({...p,page}))}/></Card>}
     {section==='codes'&&<>
       <Card><div className="section-head"><div><span className="eyebrow">ISSUE ACCESS</span><h2>生成兑换码</h2><p className="muted-copy">未兑换的兑换码不会过期，兑换后从兑换时间开始计算有效期。</p></div></div><div className="form-grid admin-code-form"><label>套餐<select className="input" id="code-plan" value={codePlanId} onChange={e=>{const id=e.target.value;setCodePlanId(id);const plan=(data.plans||[]).find(item=>item.id===id);if(plan){setCodeDuration(planDurationDays(plan));setCodeTasks(planMaxTasks(plan));setCodeAccounts(plan.max_accounts||1)}else{setCodeDuration(30);setCodeTasks(UNLIMITED_TASKS);setCodeAccounts(1)}}}><option value="monthly">月度畅享 · ¥5 / 1 个月 · 不限好友任务</option>{(data.plans||[]).filter(plan=>plan.id!=='monthly').map(plan=><option value={plan.id} key={plan.id}>{plan.name} · ¥{plan.price_yuan} / {planDurationLabel(plan)} · {planTaskLabel(plan)}</option>)}<option value="">自定义额度</option></select></label>{codeIsCustom&&<><label>有效天数<input className="input" id="code-days" type="number" min="1" max="36500" value={codeDuration} onChange={e=>setCodeDuration(e.target.value)}/></label><label>任务额度<input className="input" id="code-tasks" type="number" min="1" max={UNLIMITED_TASKS} value={codeTasks} onChange={e=>setCodeTasks(e.target.value)}/></label><label>账号额度<input className="input" id="code-accounts" type="number" min="1" max="100" value={codeAccounts} onChange={e=>setCodeAccounts(e.target.value)}/></label></>}<label>数量<input className="input" id="code-quantity" type="number" min="1" max="1000" value={codeQuantity} onChange={e=>setCodeQuantity(e.target.value)}/></label></div><div className="muted-copy admin-code-selection">{codePlan?`${codePlan.name}：${planDurationLabel(codePlan)} · ${planTaskLabel(codePlan)}`:'自定义额度：请确认有效天数和任务额度'}</div><Button onClick={createCodes}>生成兑换码 ↗</Button></Card>
       {generatedCodes.length>0&&<Card className="redemption-generated-card"><div className="section-head"><div><h2>刚生成的兑换码</h2><p className="muted-copy">兑换码会保存在下方记录中，可随时复制。</p></div><div className="redemption-generated-actions"><Badge tone="good">{generatedCodes.length} 个</Badge><Button variant="quiet" onClick={copyAllRedemptionCodes}>{copiedCode==='__all__'?'已复制全部':'复制全部'}</Button></div></div><div className="redemption-generated-list">{generatedCodes.map(code=><div className="redemption-generated-row" key={code}><code>{code}</code><Button variant="quiet" onClick={()=>copyRedemptionCode(code)}>{copiedCode===code?'已复制':'复制'}</Button></div>)}</div></Card>}

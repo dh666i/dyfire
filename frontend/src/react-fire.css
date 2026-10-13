@@ -303,6 +303,10 @@ html[data-theme="light"] .fire-select-option { color:#2b2421; }
 html[data-theme="light"] .fire-select-option:hover, html[data-theme="light"] .fire-select-option.is-active { background:rgba(255,107,37,.11); }
 html[data-theme="light"] .fire-select-option[aria-selected=true] { color:#b94c20; }
 .task-table, .admin-table { border-top-color:var(--hairline); }
+.workflow-motion-list > * { will-change: transform, opacity; }
+.task-motion-list, .contact-motion-list, .run-motion-list, .admin-users-motion-list { display: block; }
+.run-detail.workflow-disclosure { display: grid; }
+.run-detail.workflow-disclosure[hidden] { display: none !important; }
 .table-head { color:#91786e; }
 .task-row { background:transparent; min-height:66px; }
 .task-row:hover { background:rgba(255,107,37,.05); }
@@ -1131,6 +1135,10 @@ html[data-theme="light"] .modal-dialog-head { border-bottom-color: rgba(48,39,35
   --motion-ease-standard: cubic-bezier(.2, .7, .2, 1);
   --motion-ease-enter: cubic-bezier(.2, .8, .2, 1);
   --motion-ease-exit: cubic-bezier(.4, 0, 1, 1);
+  --motion-fast: 120ms;
+  --motion-short: 150ms;
+  --motion-medium: 180ms;
+  --ease-standard: var(--motion-ease-standard);
 }
 
 /* Theme changes should feel intentional without animating layout. */
@@ -1177,10 +1185,8 @@ body,
 /* RouteMotionDiv owns one short route fade. The older stylesheet also
    animated every direct child, which caused a double fade and a visible
    first-frame flash, so only the wrapper keeps an entry animation. */
-.route-view {
-  animation: route-reveal var(--motion-enter) var(--motion-ease-enter) both;
-  min-width: 0;
-}
+.route-view { min-width: 0; }
+.route-view.is-entering { animation: route-reveal var(--motion-enter) var(--motion-ease-enter) both; }
 .route-view > * { animation: none !important; }
 
 /* MagneticButton stores its pointer offset separately from the button's
@@ -1222,9 +1228,6 @@ body,
 .drawer-backdrop.is-closing,
 .modal-overlay.is-closing,
 .toast.is-closing { pointer-events: none; }
-.drawer-backdrop.is-closing,
-.modal-overlay.is-closing,
-.toast.is-closing { pointer-events: none; }
 .fire-ring .ring-progress { transition-duration: var(--motion-emphasis); transition-timing-function: var(--motion-ease-enter); }
 .onboarding-progress i { transition-duration: var(--motion-standard); transition-timing-function: var(--motion-ease-standard); }
 
@@ -1237,9 +1240,9 @@ body,
   transition-duration: var(--motion-quick);
   transition-timing-function: var(--motion-ease-standard);
 }
-.mosaic-task-row:hover { padding-left: 24px; transform: translateX(2px); }
-.mosaic-contact-list a:hover { padding-left: 0; transform: translateX(2px); }
-.quick-links a:hover { padding-left: 0; transform: translateX(2px); }
+.mosaic-task-row:hover { transform: translateX(2px); }
+.mosaic-contact-list a:hover { transform: translateX(2px); }
+.quick-links a:hover { transform: translateX(2px); }
 
 /* Non-essential looping effects stay subtle and obey the same cadence. */
 .empty-mark { animation-duration: 2.4s; }
@@ -1279,6 +1282,7 @@ body,
   .split-char {
     animation: none !important;
   }
+  .route-view.is-entering { animation: none !important; }
   .magnetic-button,
   .magnetic-button:hover,
   .magnetic-button:active { transform: none !important; }
