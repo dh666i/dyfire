@@ -435,7 +435,8 @@ def list_users(
     filters = []
     query = q.strip()
     if query:
-        filters.append(User.username.ilike(f"%{query}%"))
+        pattern = f"%{query}%"
+        filters.append(or_(User.username.ilike(pattern), User.admin_note.ilike(pattern)))
     if status in {"active", "disabled"}:
         filters.append(User.status == status)
     total = int(db.scalar(select(func.count(User.id)).where(*filters)) or 0)

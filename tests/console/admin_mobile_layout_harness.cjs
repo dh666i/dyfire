@@ -22,22 +22,24 @@ assert.ok(row, 'customer workbench must render user-workbench-row records');
 const rowMarkup = row[0];
 
 // The mobile grid assigns areas by child order. Keep this order explicit:
-// checkbox, identity, usage, health, actions.
+// checkbox, identity, subscription, usage, health, actions.
 const checkbox = rowMarkup.indexOf('<input type="checkbox"');
 const identity = rowMarkup.indexOf('className="admin-cell-button"');
-const usage = rowMarkup.indexOf('??sub.account_count');
+const subscription = rowMarkup.indexOf('className="row-status"');
+const usage = rowMarkup.indexOf('u.enabled_task_count');
 const health = rowMarkup.indexOf('className="admin-user-health"');
 const actions = rowMarkup.indexOf('className="row-actions"');
-assert.ok(checkbox >= 0 && identity >= 0 && usage >= 0 && health >= 0 && actions >= 0, 'customer row is missing a required field');
-assert.deepEqual([checkbox, identity, usage, health, actions], [...[checkbox, identity, usage, health, actions].sort((a, b) => a - b)], 'customer row child order must match mobile grid areas');
+assert.ok(checkbox >= 0 && identity >= 0 && subscription >= 0 && usage >= 0 && health >= 0 && actions >= 0, 'customer row is missing a required field');
+assert.deepEqual([checkbox, identity, subscription, usage, health, actions], [...[checkbox, identity, subscription, usage, health, actions].sort((a, b) => a - b)], 'customer row child order must match mobile grid areas');
 
 const mobileStart = css.indexOf('@media (max-width: 700px)');
 assert.ok(mobileStart >= 0, 'mobile breakpoint rules must exist');
 const mobileCss = css.slice(mobileStart);
 assert.match(mobileCss, /\.user-workbench-row\s*\{[\s\S]*?grid-template-columns:\s*28px\s+minmax\(0,\s*1fr\)\s+auto;/, 'user rows need an isolated checkbox column on mobile');
-assert.match(mobileCss, /\.user-workbench-row\s*\{[\s\S]*?grid-template-areas:\s*"check primary status"\s*"\. secondary actions";/, 'user rows need non-overlapping mobile grid areas');
-assert.match(mobileCss, /\.user-workbench-row\s*>\s*:nth-child\(3\)[^{]*\{[^}]*overflow-wrap:\s*anywhere;/, 'resource text must wrap inside the row');
-assert.match(mobileCss, /\.user-workbench-row\s*>\s*:nth-child\(4\)[^{]*\{[^}]*text-align:\s*right;/, 'health state must stay aligned to the row edge');
+assert.match(mobileCss, /\.user-workbench-row\s*\{[\s\S]*?grid-template-areas:\s*"check primary status"\s*"\. secondary secondary"\s*"\. tertiary actions";/, 'user rows need non-overlapping mobile grid areas');
+assert.match(mobileCss, /\.user-workbench-row\s*>\s*:nth-child\(4\)[^{]*\{[^}]*overflow-wrap:\s*anywhere;/, 'resource text must wrap inside the row');
+assert.match(mobileCss, /\.user-workbench-row\s*>\s*:nth-child\(5\)[^{]*\{[^}]*overflow-wrap:\s*anywhere;/, 'health text must wrap inside the row');
+assert.match(mobileCss, /\.user-workbench-row\s*>\s*:nth-child\(3\)[^{]*\{[^}]*text-align:\s*right;/, 'subscription state must stay aligned to the row edge');
 assert.match(mobileCss, /\.user-workbench-row \.row-actions[^{]*\{[^}]*flex-wrap:\s*wrap;/, 'row actions must wrap instead of overflowing');
 assert.match(mobileCss, /\.admin-table, \.admin-pagination\s*\{[^}]*padding-bottom:\s*(?:8|16)px;/, 'last row and pagination need mobile dock clearance');
 

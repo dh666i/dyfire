@@ -1111,7 +1111,7 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .admin-bulk-bar .button { min-height:32px; padding:0 10px; font-size:10px; }
 .admin-toolbar { justify-content:flex-start; flex-wrap:wrap; }
 .admin-toolbar .muted-copy { margin-left:auto; }
-.user-workbench-head, .user-workbench-row { grid-template-columns:36px minmax(160px,1.3fr) minmax(145px,1fr) minmax(130px,.85fr) auto; }
+.user-workbench-head, .user-workbench-row { grid-template-columns:36px minmax(160px,1.25fr) minmax(135px,.95fr) minmax(150px,1fr) minmax(130px,.85fr) auto; }
 .subscription-workbench-head, .subscription-workbench-row { grid-template-columns:36px minmax(150px,1.2fr) minmax(90px,.8fr) minmax(180px,1.1fr) auto; }
 .task-group-head, .task-group-row { grid-template-columns:minmax(180px,1.5fr) 70px 70px 100px auto; }
 .task-detail-head, .task-detail-row { grid-template-columns:30px minmax(150px,1.3fr) 90px 90px auto; }
@@ -1164,7 +1164,7 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
      so the username, health state, and actions cannot collide on phones. */
   .user-workbench-row {
     grid-template-columns: 28px minmax(0, 1fr) auto;
-    grid-template-areas: "check primary status" ". secondary actions";
+    grid-template-areas: "check primary status" ". secondary secondary" ". tertiary actions";
     column-gap: 9px;
     row-gap: 7px;
     padding: 14px 0;
@@ -1178,16 +1178,19 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .admin-row.subscription-workbench-row > input,
   .admin-row.task-detail-row > input { grid-area: check; justify-self: start; width: 18px; height: 18px; margin-top: 4px; }
   .user-workbench-row > :nth-child(2) { grid-area: primary; min-width: 0; }
-  .user-workbench-row > :nth-child(3) { grid-area: secondary; min-width: 0; overflow-wrap: anywhere; }
-  .user-workbench-row > :nth-child(4) { grid-area: status; min-width: 0; justify-self: end; text-align: right; }
-  .user-workbench-row > :nth-child(5) { grid-area: actions; justify-self: end; min-width: 0; }
+  .user-workbench-row > :nth-child(3) { grid-area: status; min-width: 0; justify-self: end; text-align: right; overflow-wrap: anywhere; }
+  .user-workbench-row > :nth-child(4) { grid-area: secondary; min-width: 0; justify-self: start; overflow-wrap: anywhere; }
+  .user-workbench-row > :nth-child(5) { grid-area: tertiary; min-width: 0; justify-self: start; overflow-wrap: anywhere; }
+  .user-workbench-row > :nth-child(6) { grid-area: actions; justify-self: end; min-width: 0; }
   .user-workbench-row .admin-cell-button b,
   .user-workbench-row .admin-cell-button small,
   .user-workbench-row > :nth-child(3) small,
-  .user-workbench-row > :nth-child(4) small { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
+  .user-workbench-row > :nth-child(3) small,
+  .user-workbench-row > :nth-child(4) small,
+  .user-workbench-row > :nth-child(5) small { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
   .user-workbench-row .row-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
   .user-workbench-row .row-actions .button { min-height: 36px; padding-inline: 10px; }
-  .user-workbench-row > :nth-child(4) .badge,
+  .user-workbench-row > :nth-child(3) .badge,
   .subscription-workbench-row > :nth-child(3) .badge,
   .task-group-row > :nth-child(4) .badge,
   .task-detail-row > :nth-child(4) .badge { max-width: 100%; white-space: normal; text-align: right; }
@@ -1281,3 +1284,25 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .admin-run-attempts>div{grid-template-columns:1fr;gap:4px;}
   .admin-pagination{align-items:flex-start;flex-direction:column;}
 }
+
+/* Unified modal sizing: short confirmations stay compact while long prompts
+   remain readable and scroll within the viewport. */
+.modal-dialog,
+.modal-dialog-prompt {
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(78dvh, 560px);
+  overflow: auto;
+  border-radius: 18px;
+}
+.modal-dialog-prompt { width: min(520px, calc(100vw - 32px)); }
+.modal-dialog-head { padding: 18px 20px 12px; }
+.modal-dialog-body { padding: 16px 20px 18px; }
+.modal-host-message { max-width: 54ch; }
+@media (max-width: 700px) {
+  .modal-overlay { padding: 16px; }
+  .modal-dialog,
+  .modal-dialog-prompt { width: min(100%, 520px); max-height: min(76dvh, 520px); border-radius: 16px; }
+  .modal-dialog-head { padding: 16px 17px 11px; }
+  .modal-dialog-body { padding: 14px 17px calc(16px + env(safe-area-inset-bottom)); }
+}
+html[data-theme="light"] .modal-dialog { border-color: rgba(48,39,35,.14); box-shadow: 0 26px 70px rgba(56,45,38,.2); }
