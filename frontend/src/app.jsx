@@ -5,12 +5,11 @@ import {BrowserRouter, Link, useLocation, useNavigate} from 'react-router-dom';
 import {focusTrapTarget, getMobileDockRoutes, resetRouteScroll} from './navigation.js';
 import {contactKey, createContactPickerController} from './contact-picker-state.js';
 import {createTaskComposerController, mergeTaskRows} from './task-composer-state.js';
-// Lightweight motion primitives — avoids motion/react subpath import issues with Vite 8 Rolldown
-function AnimatePresence({children}) { return children; }
+// Keep route motion in one place.  The keyed wrapper lets CSS run one entry
+// transition per navigation without a second inline transition or a delayed
+// first frame that can flash on slower devices.
 function RouteMotionDiv({children, locationKey}) {
-  const [visible, setVisible] = React.useState(false);
-  React.useEffect(() => { setVisible(false); const t = setTimeout(() => setVisible(true), 10); return () => clearTimeout(t); }, [locationKey]);
-  return <div className="route-view" style={{opacity: visible?1:0, transform: visible?'none':'translateY(5px)', transition: 'opacity 150ms ease-out, transform 150ms ease-out'}}>{children}</div>;
+  return <div key={locationKey} className="route-view">{children}</div>;
 }
 // eslint-disable-next-line no-unused-vars
 const _motion_react_unused = null; // motion/react used by RubberSegment.jsx
@@ -26,6 +25,9 @@ import RubberSegment from './components/RubberSegment';
 import {cloudFrameOverlay, createCloudFrameState, frameLoadError, frameLoaded, retryCloudFrame} from './cloud-frame-state.js';
 
 const drawerStack = [];
+const DRAWER_EXIT_MS = 180;
+const MODAL_EXIT_MS = 180;
+const TOAST_EXIT_MS = 160;
 
 const asList = value => Array.isArray(value) ? value.filter(Boolean) : [];
 const displayText = (value, fallback='') => typeof value === 'string' && value.trim() ? value : fallback;
@@ -295,25 +297,34 @@ async function api(path, options={}) {
 
 // ── Utility hooks ────────────────────────────────────────────────────────────
 
-// CountUp: animates a number from 0 to `to` on mount, respects reduced-motion
+// CountUp: animates the initial value from 0 and later refreshes from the
+// currently rendered value, so polling never makes a metric flash back to 0.
 function useCountUp(to, {duration=900, enabled=true}={}) {
-  const [value, setValue] = useState(0);
+  const numericTo = typeof to === 'number' && !Number.isNaN(to) ? to : null;
+  const previousRef = useRef(null);
+  const [value, setValue] = useState(numericTo ?? to);
   useEffect(() => {
-    if (!enabled || typeof to !== 'number' || isNaN(to)) { setValue(to); return; }
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduced) { setValue(to); return; }
+    if (numericTo == null || !enabled) {
+      setValue(to);
+      previousRef.current = numericTo;
+      return;
+    }
+    const from = previousRef.current == null ? 0 : previousRef.current;
+    previousRef.current = numericTo;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduced || from === numericTo) { setValue(numericTo); return; }
     const start = performance.now();
     let raf;
     const tick = now => {
       const p = Math.min((now - start) / duration, 1);
       // ease-out cubic
       const eased = 1 - Math.pow(1 - p, 3);
-      setValue(Math.round(eased * to));
+      setValue(Math.round(from + (numericTo - from) * eased));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [to, duration, enabled]);
+  }, [numericTo, to, duration, enabled]);
   return value;
 }
 
@@ -344,28 +355,43 @@ function SplitText({children, className='', stagger=18, delay=0}) {
   );
 }
 
-// MagneticButton: wraps a button so it gently follows the cursor (desktop only)
+// MagneticButton: wraps a button so it gently follows the cursor on fine
+// pointer devices. The offset is kept in a custom property so the component's
+// normal hover/pressed transform remains available to CSS.
 function MagneticButton({children, className='', strength=10, ...props}) {
   const ref = useRef(null);
   const x = useRef(0);
   const y = useRef(0);
+  const motionEnabled = useRef(false);
+  useEffect(() => {
+    const media = window.matchMedia?.('(hover: hover) and (pointer: fine)');
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const sync = () => { motionEnabled.current = Boolean(media?.matches && !reduced?.matches); };
+    sync();
+    media?.addEventListener?.('change', sync);
+    reduced?.addEventListener?.('change', sync);
+    return () => {
+      media?.removeEventListener?.('change', sync);
+      reduced?.removeEventListener?.('change', sync);
+    };
+  }, []);
   const onMove = e => {
-    if (!ref.current) return;
+    if (!ref.current || !motionEnabled.current) return;
     const rect = ref.current.getBoundingClientRect();
     x.current = ((e.clientX - rect.left) / rect.width - 0.5) * strength * 2;
     y.current = ((e.clientY - rect.top) / rect.height - 0.5) * strength * 2;
-    ref.current.style.transform = `translate(${x.current}px,${y.current}px)`;
+    ref.current.style.setProperty('--magnetic-x', `${x.current}px`);
+    ref.current.style.setProperty('--magnetic-y', `${y.current}px`);
   };
   const onLeave = () => {
     if (!ref.current) return;
-    ref.current.style.transition = 'transform 0.4s cubic-bezier(0.23,1,0.32,1)';
-    ref.current.style.transform = 'translate(0px,0px)';
-    setTimeout(() => { if (ref.current) ref.current.style.transition = ''; }, 400);
+    ref.current.style.setProperty('--magnetic-x', '0px');
+    ref.current.style.setProperty('--magnetic-y', '0px');
   };
   return (
     <button
       ref={ref}
-      className={`button ${className}`}
+      className={`button magnetic-button ${className}`}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       {...props}
@@ -472,11 +498,15 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
   const restoreRef=useRef(null);
   const onCloseRef=useRef(onClose);
   const closeTimerRef=useRef(null);
+  const requestCloseRef=useRef(null);
   const titleId=useId().replace(/:/g,'');
   const drawerId=useId();
   const [mounted,setMounted]=useState(open);
   const [closing,setClosing]=useState(false);
   useEffect(()=>{onCloseRef.current=onClose},[onClose]);
+  useEffect(()=>()=>{
+    if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);
+  },[]);
   useEffect(()=>{
     if(open){
       if(closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
@@ -484,11 +514,14 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
     }
     if(!mounted)return;
     setClosing(true);
-    closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false)},220);
+    closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false)},DRAWER_EXIT_MS);
     return ()=>{if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current)};
   },[open,mounted]);
   useEffect(()=>{
-    if(!open) return;
+    // Keep the body lock, focus trap and stack entry for the entire exit
+    // transition.  Tying cleanup to `open` made the sheet disappear from the
+    // accessibility tree while it was still visibly animating.
+    if(!mounted) return;
     drawerStack.push(drawerId);
     document.body.classList.add('drawer-open');
     restoreRef.current=document.activeElement;
@@ -499,7 +532,7 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
     document.body.style.overflow='hidden';
     const onKey=e=>{
       if(drawerStack[drawerStack.length-1]!==drawerId)return;
-      if(e.key==='Escape'){onCloseRef.current?.();return;}
+      if(e.key==='Escape'){requestCloseRef.current?.();return;}
       if(e.key!=='Tab')return;
       const dialog=dialogRef.current;
       if(!dialog)return;
@@ -525,8 +558,18 @@ function Drawer({open, title, eyebrow, onClose, children, wide=false, centered=f
       if(stackIndex>=0)drawerStack.splice(stackIndex,1);
       window.removeEventListener('keydown',onKey);restoreRef.current?.focus?.();
     };
-  },[open,drawerId]);
-  const requestClose=()=>{setClosing(true);if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);closeTimerRef.current=window.setTimeout(()=>{setMounted(false);setClosing(false);onCloseRef.current?.()},220)};
+  },[mounted,drawerId]);
+  const requestClose=()=>{
+    if(closing)return;
+    setClosing(true);
+    if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current=window.setTimeout(()=>{
+      setMounted(false);
+      setClosing(false);
+      onCloseRef.current?.();
+    },DRAWER_EXIT_MS);
+  };
+  requestCloseRef.current=requestClose;
   if (!mounted) return null;
   const drawer = <div className={`drawer-backdrop ${centered?'drawer-centered-backdrop':''} ${closing?'is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&requestClose()}><aside ref={dialogRef} className={`drawer ${wide?'drawer-wide':''} ${centered?'drawer-centered':''} ${closing?'is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}><header className="drawer-head"><div><span className="eyebrow">{eyebrow}</span><h2 id={titleId}>{title}</h2></div><button ref={closeRef} type="button" className="icon-button" onClick={requestClose} aria-label="关闭">×</button></header>{children}</aside></div>;
   return createPortal(drawer, document.body);
@@ -558,13 +601,17 @@ function requestModal(options={}) {
 const confirmModal = options => requestModal({kind:'confirm', ...options});
 function ModalHost() {
   const [request,setRequest]=useState(null);
+  const [closing,setClosing]=useState(false);
   const activeRef=useRef(null);
   const queueRef=useRef([]);
   const showNext=useRef(()=>{});
+  const closeTimerRef=useRef(null);
+  const finishRef=useRef(null);
   showNext.current=()=>{
     const next=queueRef.current.shift();
     if(!next){activeRef.current=null;setRequest(null);return;}
     activeRef.current=next;
+    setClosing(false);
     setRequest(next.options);
   };
   const ask=useRef(options=>new Promise(resolve=>{
@@ -574,24 +621,45 @@ function ModalHost() {
   useEffect(()=>{
     const bridge=options=>ask.current(options);
     window.__dyfireModalRequest=bridge;
-    return()=>{if(window.__dyfireModalRequest===bridge)delete window.__dyfireModalRequest; const active=activeRef.current; if(active)active.resolve(false); queueRef.current.splice(0).forEach(item=>item.resolve(false));};
+    return()=>{
+      if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);
+      if(window.__dyfireModalRequest===bridge)delete window.__dyfireModalRequest;
+      const active=activeRef.current;
+      if(active&&!active.done)active.resolve(false);
+      queueRef.current.splice(0).forEach(item=>item.resolve(false));
+    };
   },[]);
   const finish=value=>{
     const active=activeRef.current;
-    if(!active)return;
-    activeRef.current=null;
-    setRequest(null);
+    if(!active||active.done||closing)return;
+    active.done=true;
     active.resolve(value);
-    window.setTimeout(()=>showNext.current(),230);
+    setClosing(true);
+    if(closeTimerRef.current)window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current=window.setTimeout(()=>{
+      activeRef.current=null;
+      setRequest(null);
+      setClosing(false);
+      showNext.current();
+    },MODAL_EXIT_MS);
   };
+  finishRef.current=finish;
   const prompt=Boolean(request?.kind==='prompt');
   const [value,setValue]=useState('');
   useEffect(()=>{setValue(request?.defaultValue||'')},[request]);
+  useEffect(()=>{
+    if(!request)return;
+    const onKey=event=>{
+      if(event.key==='Escape')finishRef.current?.(request.kind==='prompt'?null:false);
+    };
+    window.addEventListener('keydown',onKey);
+    return()=>window.removeEventListener('keydown',onKey);
+  },[request]);
   if(!request)return null;
   const submit=event=>{event.preventDefault();if(prompt&&!value.trim())return;finish(prompt?value:true)};
   return createPortal(
-    <div className="modal-overlay" onMouseDown={e=>e.target===e.currentTarget&&finish(prompt?null:false)}>
-      <div className={`modal-dialog${prompt?' modal-dialog-prompt':''}`} role="dialog" aria-modal="true" aria-labelledby="modal-dialog-title">
+    <div className={`modal-overlay${closing?' is-closing':''}`} onMouseDown={e=>e.target===e.currentTarget&&finish(prompt?null:false)}>
+      <div className={`modal-dialog${prompt?' modal-dialog-prompt':''}${closing?' is-closing':''}`} role="dialog" aria-modal="true" aria-labelledby="modal-dialog-title">
         <header className="modal-dialog-head">
           {request.eyebrow&&<span className="eyebrow">{request.eyebrow}</span>}
           <h2 id="modal-dialog-title">{request.title||'请确认'}</h2>
@@ -606,7 +674,36 @@ function ModalHost() {
     document.body
   );
 }
-function Toast({message, onClose}) { useEffect(()=>{if(!message)return;const timer=window.setTimeout(onClose,4200);return()=>window.clearTimeout(timer)},[message,onClose]); if (!message) return null; return <div className="toast" role="status" aria-live="polite"><span>{message}</span><button type="button" onClick={onClose} aria-label="关闭提示">×</button></div>; }
+function Toast({message, onClose}) {
+  const [visibleMessage,setVisibleMessage]=useState(message||'');
+  const [closing,setClosing]=useState(false);
+  const timerRef=useRef(null);
+  const onCloseRef=useRef(onClose);
+  onCloseRef.current=onClose;
+  const dismiss=()=>{
+    if(timerRef.current)window.clearTimeout(timerRef.current);
+    setClosing(true);
+    timerRef.current=window.setTimeout(()=>{
+      setVisibleMessage('');
+      setClosing(false);
+      onCloseRef.current?.();
+    },TOAST_EXIT_MS);
+  };
+  useEffect(()=>{
+    if(timerRef.current)window.clearTimeout(timerRef.current);
+    if(message){
+      setVisibleMessage(message);
+      setClosing(false);
+      timerRef.current=window.setTimeout(dismiss,4200);
+    }else if(visibleMessage){
+      setClosing(true);
+      timerRef.current=window.setTimeout(()=>{setVisibleMessage('');setClosing(false)},TOAST_EXIT_MS);
+    }
+    return()=>{if(timerRef.current)window.clearTimeout(timerRef.current)};
+  },[message]);
+  if(!visibleMessage)return null;
+  return <div className={`toast${closing?' is-closing':''}`} role="status" aria-live="polite"><span>{visibleMessage}</span><button type="button" onClick={dismiss} aria-label="关闭提示">×</button></div>;
+}
 function LoadingState({label='正在准备你的工作区…'}) { return <div className="loading-state" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/><span>{label}</span></div>; }
 function ErrorState({message,onRetry}) { return <div className="error-state" role="alert"><span className="error-state-mark" aria-hidden="true">!</span><div><h2>暂时无法读取</h2><p>{message}</p>{onRetry&&<Button variant="quiet" onClick={onRetry}>重新加载</Button>}</div></div>; }
 class RouteErrorBoundary extends React.Component {

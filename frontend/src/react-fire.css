@@ -1113,3 +1113,177 @@ html[data-theme="light"] .modal-dialog-head { border-bottom-color: rgba(48,39,35
   }
   .fire-heat-grid i { width:10px; height:10px; aspect-ratio:auto; }
 }
+
+/* -------------------------------------------------------------------------
+   Motion foundation
+
+   Keep interaction feedback predictable across the legacy workspace styles
+   and the fire console skin.  Components can opt into a semantic duration
+   without having to invent a new cubic-bezier or a new number on each page.
+   ------------------------------------------------------------------------- */
+:root {
+  --motion-feedback: 120ms;
+  --motion-quick: 150ms;
+  --motion-standard: 180ms;
+  --motion-enter: 220ms;
+  --motion-exit: 180ms;
+  --motion-emphasis: 320ms;
+  --motion-ease-standard: cubic-bezier(.2, .7, .2, 1);
+  --motion-ease-enter: cubic-bezier(.2, .8, .2, 1);
+  --motion-ease-exit: cubic-bezier(.4, 0, 1, 1);
+}
+
+/* Theme changes should feel intentional without animating layout. */
+html,
+body,
+.fire-nav,
+.sidebar,
+.mobile-dock,
+.card,
+.status-banner,
+.drawer,
+.modal-dialog,
+.toast {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-duration: var(--motion-enter);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+/* Short feedback is shared by controls with existing property-specific
+   transitions (transform/filter are deliberately kept by the component). */
+:where(
+  .button,
+  .icon-button,
+  .fire-theme,
+  .fire-account,
+  .fire-nav-tabs a,
+  .admin-subview-tabs button,
+  .workspace-tabs button,
+  .task-row-menu-btn,
+  .task-row-menu-dropdown button,
+  .contact-row,
+  .quick-links a,
+  .mosaic-task-row,
+  .mosaic-contact-list a,
+  .task-line,
+  .task-row,
+  .run-row,
+  .fire-friend-card
+) {
+  transition-duration: var(--motion-quick);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+/* RouteMotionDiv owns one short route fade. The older stylesheet also
+   animated every direct child, which caused a double fade and a visible
+   first-frame flash, so only the wrapper keeps an entry animation. */
+.route-view {
+  animation: route-reveal var(--motion-enter) var(--motion-ease-enter) both;
+  min-width: 0;
+}
+.route-view > * { animation: none !important; }
+
+/* MagneticButton stores its pointer offset separately from the button's
+   hover/pressed transform. It is activated only for fine pointers by the
+   component and remains inert under reduced motion. */
+.magnetic-button {
+  --magnetic-x: 0px;
+  --magnetic-y: 0px;
+  transform: translate(var(--magnetic-x), var(--magnetic-y));
+  transition-property: transform, filter, background-color, border-color;
+  transition-duration: var(--motion-quick);
+  transition-timing-function: var(--motion-ease-standard);
+}
+.magnetic-button:hover { transform: translate(var(--magnetic-x), var(--magnetic-y)) translateY(-1px); }
+.magnetic-button:active { transform: translate(var(--magnetic-x), var(--magnetic-y)) translateY(0) scale(.985); }
+
+/* Keep entrance and loading effects short enough for repeated navigation. */
+.page-header h1::after,
+.fire-auth-card,
+.modal-overlay,
+.modal-dialog,
+.drawer-backdrop,
+.drawer,
+.toast,
+.admin-toast {
+  animation-duration: var(--motion-enter);
+  animation-timing-function: var(--motion-ease-enter);
+}
+.drawer.is-closing,
+.drawer-backdrop.is-closing,
+.drawer-centered-backdrop.is-closing .drawer {
+  animation-duration: var(--motion-exit);
+  animation-timing-function: var(--motion-ease-exit);
+}
+.drawer-backdrop.is-closing { animation-name: fade-out; }
+.modal-overlay.is-closing { animation-name: modal-fade-out; }
+.modal-dialog.is-closing { animation-name: modal-out; }
+.toast.is-closing { animation-name: toast-out; }
+.drawer-backdrop.is-closing,
+.modal-overlay.is-closing,
+.toast.is-closing { pointer-events: none; }
+.drawer-backdrop.is-closing,
+.modal-overlay.is-closing,
+.toast.is-closing { pointer-events: none; }
+.fire-ring .ring-progress { transition-duration: var(--motion-emphasis); transition-timing-function: var(--motion-ease-enter); }
+.onboarding-progress i { transition-duration: var(--motion-standard); transition-timing-function: var(--motion-ease-standard); }
+
+/* Hover feedback uses compositor-friendly transforms instead of changing
+   padding, which otherwise reflows every row below the pointer. */
+.mosaic-task-row,
+.mosaic-contact-list a,
+.quick-links a {
+  transition-property: background-color, border-color, color, transform, box-shadow;
+  transition-duration: var(--motion-quick);
+  transition-timing-function: var(--motion-ease-standard);
+}
+.mosaic-task-row:hover { padding-left: 24px; transform: translateX(2px); }
+.mosaic-contact-list a:hover { padding-left: 0; transform: translateX(2px); }
+.quick-links a:hover { padding-left: 0; transform: translateX(2px); }
+
+/* Non-essential looping effects stay subtle and obey the same cadence. */
+.empty-mark { animation-duration: 2.4s; }
+.loading-spinner { animation-duration: 750ms; }
+.scan-loading-spinner { animation-duration: 800ms; }
+.skeleton-stack div { animation-duration: 1.4s; }
+
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes modal-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes toast-out { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(8px); } }
+
+/* System-level reduced motion: retain state and status changes, remove
+   decorative movement, shimmer, pulse and JavaScript-like transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .route-view,
+  .drawer,
+  .drawer-backdrop,
+  .modal-overlay,
+  .modal-dialog,
+  .toast,
+  .admin-toast,
+  .fire-auth-card,
+  .page-header h1::after,
+  .empty-mark,
+  .loading-spinner,
+  .scan-loading-spinner,
+  .skeleton-stack div,
+  .split-char {
+    animation: none !important;
+  }
+  .magnetic-button,
+  .magnetic-button:hover,
+  .magnetic-button:active { transform: none !important; }
+  .button::after { display: none !important; }
+  .mosaic-task-row:hover,
+  .mosaic-contact-list a:hover,
+  .quick-links a:hover { transform: none; }
+}
