@@ -180,7 +180,9 @@ def build_account_scan_router(
                 scan = service.start_recovery(user.id, account_id.strip())
             except NotFound:
                 return _error(404, "not_found", "未找到抖音账号")
-            except Conflict:
+            except Conflict as error:
+                if str(error) == "queue_full":
+                    return _error(429, "queue_full", "当前验证队列繁忙，请稍后再试")
                 return _error(409, "slot_busy", "复核通道正在使用，请稍后重试")
             projection = service.public_status(scan)
         return JSONResponse(projection, status_code=201, headers=NO_STORE)

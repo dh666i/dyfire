@@ -100,6 +100,17 @@ class ScanSessionServiceTests(unittest.TestCase):
         self.clock.value += timedelta(hours=1)
         self.assertEqual(ScanStatus.QUEUED, self.service.start(self.owner.id).status)
 
+    def test_recovery_obeys_global_queue_limit(self):
+        account = self._account()
+        for index in range(20):
+            user = User(username=f"recovery-queue-{index}", password_hash="hash", role="user")
+            self.session.add(user)
+            self.session.flush()
+            self.service.start(user.id)
+
+        with self.assertRaisesRegex(Conflict, "queue_full"):
+            self.service.start_recovery(self.owner.id, account.id)
+
     def _needs_verification(self):
         scan = self._claim_and_publish()
         return self.service.mark_needs_verification(scan.id)
@@ -677,6 +688,19 @@ class ScanSessionServiceTests(unittest.TestCase):
 
         self.assertEqual("recovery", public["mode"])
         self.assertEqual("正在恢复原账号验证页面，无需重新扫码", public["message"])
+
+    def test_expired_recovery_keeps_account_for_resume(self):
+        account = self._account()
+        scan = self.service.start_recovery(self.owner.id, account.id)
+        self.clock.value += timedelta(minutes=31)
+
+        self.assertEqual(1, self.service.expire_stale())
+        self.assertEqual(ScanStatus.EXPIRED, scan.status)
+        self.assertEqual(account.id, scan.account_id)
+
+        resumed = self.service.start_recovery(self.owner.id, account.id)
+        self.assertEqual(account.id, resumed.account_id)
+        self.assertEqual("recovery", resumed.mode)
 
     def test_stale_worker_cannot_publish_after_owner_cancels(self):
         scan = self.service.start(self.owner.id)

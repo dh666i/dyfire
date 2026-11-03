@@ -700,24 +700,6 @@ class Worker:
                     from spark_console.services.account_health import record
                     health_recorded = record(db, account_id, credential_snapshot, result.health_state or 'temporary',
                         result.health_reason or '登录检测报告异常，尚未复核', now=finished_at)
-                    if health_recorded and result.health_state == "verification":
-                        # Hand the account's existing storage state to the same
-                        # cloud recovery flow used by the account page. The
-                        # user can open the live challenge without scanning a
-                        # new QR code; duplicate recovery requests are reused.
-                        from spark_console.services.scan_sessions import ScanSessionService
-                        try:
-                            ScanSessionService(db).start_recovery(
-                                task.owner_user_id, account_id
-                            )
-                        except Exception:
-                            # A concurrent recovery or another account session
-                            # must not turn the original send result into a new
-                            # failure. The account remains blocked safely.
-                            logger.info(
-                                "verification recovery enqueue deferred account=%s",
-                                account_id,
-                            )
                 if (not result.success and result.stage == "authenticating"
                     and result.error_code == "account_health_pending"
                     and result.health_state == "temporary" and health_recorded):

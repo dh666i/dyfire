@@ -5,7 +5,7 @@ import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
@@ -254,6 +254,16 @@ class ScanSessionService:
             if active.account_id == account_id and getattr(active, "mode", "login") == "recovery":
                 return active
             raise Conflict("slot_busy")
+        waiting = self.session.scalar(
+            select(func.count())
+            .select_from(DouyinLoginSession)
+            .where(
+                DouyinLoginSession.status.in_(ACTIVE_STATUSES),
+                DouyinLoginSession.expires_at > current,
+            )
+        ) or 0
+        if waiting >= 20:
+            raise Conflict("queue_full")
         scan = DouyinLoginSession(
             owner_user_id=owner_id,
             account_id=account_id,
@@ -840,7 +850,10 @@ class ScanSessionService:
                 status=ScanStatus.EXPIRED,
                 slot=None,
                 qr_png=None,
-                account_id=None,
+                account_id=case(
+                    (DouyinLoginSession.mode == "recovery", DouyinLoginSession.account_id),
+                    else_=None,
+                ),
                 error_code="login_timeout",
                 finished_at=current,
                 updated_at=current,
@@ -881,7 +894,10 @@ class ScanSessionService:
                 status=ScanStatus.FAILED,
                 slot=None,
                 qr_png=None,
-                account_id=None,
+                account_id=case(
+                    (DouyinLoginSession.mode == "recovery", DouyinLoginSession.account_id),
+                    else_=None,
+                ),
                 error_code="automation_failed",
                 finished_at=current,
                 updated_at=current,
@@ -1156,7 +1172,11 @@ class ScanSessionService:
                 status=ScanStatus.EXPIRED,
                 slot=None,
                 qr_png=None,
-                account_id=None,
+                account_id=(
+                    scan.account_id
+                    if getattr(scan, "mode", "login") == "recovery"
+                    else None
+                ),
                 error_code="login_timeout",
                 finished_at=current,
                 updated_at=current,
