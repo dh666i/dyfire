@@ -157,6 +157,7 @@ class AccountScanWebTests(unittest.TestCase):
         self.assertEqual(
             {
                 "id",
+                "mode",
                 "status",
                 "remaining_seconds",
                 "error",
@@ -255,6 +256,23 @@ class AccountScanWebTests(unittest.TestCase):
             scan = db.scalar(select(DouyinLoginSession))
             self.assertIsNotNone(scan)
             self.assertEqual(self.account_id, scan.account_id)
+
+    def test_recovery_reuses_the_active_same_account_session(self):
+        created = self.owner_client.post(
+            "/accounts/recovery",
+            data={"csrf_token": self.owner_csrf, "account_id": self.account_id},
+        )
+        resumed = self.owner_client.post(
+            "/accounts/recovery",
+            data={"csrf_token": self.owner_csrf, "account_id": self.account_id},
+        )
+
+        self.assertEqual(201, created.status_code)
+        self.assertEqual(200, resumed.status_code)
+        self.assertEqual(created.json()["id"], resumed.json()["id"])
+        self.assertEqual("recovery", resumed.json()["mode"])
+        with Session(self.engine) as db:
+            self.assertEqual(1, len(db.scalars(select(DouyinLoginSession)).all()))
 
     def test_same_owner_resumes_active_scan_instead_of_reporting_busy(self):
         created = self.owner_client.post(
@@ -414,6 +432,7 @@ class AccountScanWebTests(unittest.TestCase):
         self.assertEqual(
             {
                 "id",
+                "mode",
                 "status",
                 "remaining_seconds",
                 "error",
@@ -433,6 +452,7 @@ class AccountScanWebTests(unittest.TestCase):
             set(response.json()),
         )
         self.assertEqual("awaiting_scan", response.json()["status"])
+        self.assertEqual("login", response.json()["mode"])
         self.assertNotIn("qr_png", response.text)
         self.assertNotIn(self.owner_id, response.text)
         for client in (self.other_client, self.admin_client):

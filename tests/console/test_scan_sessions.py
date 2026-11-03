@@ -633,6 +633,7 @@ class ScanSessionServiceTests(unittest.TestCase):
         self.assertEqual(
             {
                 "id",
+                "mode",
                 "status",
                 "remaining_seconds",
                 "error",
@@ -652,6 +653,7 @@ class ScanSessionServiceTests(unittest.TestCase):
             set(public),
         )
         self.assertEqual(scan.id, public["id"])
+        self.assertEqual("login", public["mode"])
         self.assertEqual("awaiting_scan", public["status"])
         self.assertEqual(239, public["remaining_seconds"])
         self.assertIsNone(public["error"])
@@ -667,6 +669,14 @@ class ScanSessionServiceTests(unittest.TestCase):
         self.assertNotIn("owner_user_id", serialized)
         self.assertNotIn("qr_png", serialized)
         self.assertNotIn("slot", serialized)
+
+    def test_recovery_public_status_explains_saved_session_reuse(self):
+        account = self._account()
+        scan = self.service.start_recovery(self.owner.id, account.id)
+        public = self.service.public_status(scan, self.clock.value)
+
+        self.assertEqual("recovery", public["mode"])
+        self.assertEqual("正在恢复原账号验证页面，无需重新扫码", public["message"])
 
     def test_stale_worker_cannot_publish_after_owner_cancels(self):
         scan = self.service.start(self.owner.id)

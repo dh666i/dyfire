@@ -242,13 +242,17 @@ class ScanSessionService:
 
     def start_recovery(self, owner_id: str, account_id: str) -> DouyinLoginSession:
         current = self._now()
+        self.expire_stale()
         account = self.session.scalar(select(DouyinAccount).where(
             DouyinAccount.id == account_id,
             DouyinAccount.owner_user_id == owner_id,
         ))
         if account is None:
             raise NotFound("account not found")
-        if self.active_owned(owner_id) is not None:
+        active = self.active_owned(owner_id)
+        if active is not None:
+            if active.account_id == account_id and getattr(active, "mode", "login") == "recovery":
+                return active
             raise Conflict("slot_busy")
         scan = DouyinLoginSession(
             owner_user_id=owner_id,
@@ -265,6 +269,15 @@ class ScanSessionService:
                 self.session.add(scan)
                 self.session.flush()
         except IntegrityError:
+            # Concurrent clicks for the same account share the claimed recovery
+            # session instead of leaving the user with a misleading busy error.
+            active = self.active_owned(owner_id)
+            if (
+                active is not None
+                and active.account_id == account_id
+                and getattr(active, "mode", "login") == "recovery"
+            ):
+                return active
             raise Conflict("slot_busy") from None
         return scan
 
@@ -275,6 +288,7 @@ class ScanSessionService:
                 DouyinLoginSession.owner_user_id == owner_id,
                 DouyinLoginSession.slot.is_not(None),
                 DouyinLoginSession.status.in_(ACTIVE_STATUSES),
+                DouyinLoginSession.expires_at > self._now(),
             )
             .order_by(DouyinLoginSession.created_at.desc())
             .limit(1)
@@ -943,10 +957,18 @@ class ScanSessionService:
         ):
             public_error = "automation_failed"
         message = ERROR_MESSAGES.get(public_error, STATUS_MESSAGES[status])
+        if getattr(scan, "mode", "login") == "recovery":
+            if status == ScanStatus.SUCCEEDED:
+                message = "账号复核完成，原账号、好友和续火任务已保留"
+            elif status in ACTIVE_STATUSES and public_error is None:
+                message = "正在恢复原账号验证页面，无需重新扫码"
+            elif status in TERMINAL_STATUSES and status != ScanStatus.SUCCEEDED:
+                message = "原账号复核未完成，请重新打开验证页面"
         if verification_kind == SMS_VERIFICATION:
             message = ERROR_MESSAGES[NEEDS_VERIFICATION]
         return {
             "id": scan.id,
+            "mode": getattr(scan, "mode", "login"),
             "status": status.value,
             "remaining_seconds": remaining_seconds,
             "error": public_error,

@@ -157,13 +157,25 @@ def build_account_scan_router(
         csrf_token: str = Form(default=""),
     ):
         with session_scope(engine) as db:
+            if engine.dialect.name == "sqlite":
+                db.execute(text("BEGIN IMMEDIATE"))
             user, record = auth.current(request, db)
             auth.csrf(record, csrf_token)
-            if response := limited(user.id, "start", START_LIMIT):
-                return response
             if user.role != "admin" and not SubscriptionService(db, AuditService(db)).has_task_access(user.id):
                 return _error(403, "subscription_inactive", "会员未开通或已过期，请开通后重试")
             service = ScanSessionService(db)
+            service.expire_stale()
+            active = service.active_owned(user.id)
+            if (
+                active is not None
+                and active.account_id == account_id.strip()
+                and getattr(active, "mode", "login") == "recovery"
+            ):
+                return JSONResponse(
+                    service.public_status(active), status_code=200, headers=NO_STORE
+                )
+            if response := limited(user.id, "start", START_LIMIT):
+                return response
             try:
                 scan = service.start_recovery(user.id, account_id.strip())
             except NotFound:
