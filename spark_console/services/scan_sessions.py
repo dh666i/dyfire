@@ -89,6 +89,9 @@ ALLOWED = {
         ScanStatus.FAILED,
     },
     ScanStatus.CONFIRMING: {
+        # A verification callback may already have advanced recovery here.
+        # Reconfirm atomically before saving without rejecting that session.
+        ScanStatus.CONFIRMING,
         ScanStatus.SUCCEEDED,
         ScanStatus.CANCELLED,
         ScanStatus.EXPIRED,
@@ -977,7 +980,12 @@ class ScanSessionService:
             if status == ScanStatus.SUCCEEDED:
                 message = "账号复核完成，原账号、好友和续火任务已保留"
             elif status in ACTIVE_STATUSES and public_error is None:
-                message = "正在恢复原账号验证页面，无需重新扫码"
+                message = {
+                    ScanStatus.QUEUED: "等待复核通道，原账号与任务已保留",
+                    ScanStatus.LOADING_QR: "正在打开原账号页面并检查登录状态",
+                    ScanStatus.AWAITING_SCAN: "正在检查原账号状态；若无需验证，将自动恢复",
+                    ScanStatus.CONFIRMING: "登录状态已确认，正在保存并恢复账号",
+                }[status]
             elif status in TERMINAL_STATUSES and status != ScanStatus.SUCCEEDED:
                 message = "原账号复核未完成，请重新打开验证页面"
         if verification_kind == SMS_VERIFICATION:

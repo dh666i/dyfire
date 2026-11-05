@@ -55,7 +55,7 @@ async def read_login_api(context):
         return 'unknown', f'{category}（{type(error).__name__[:40]}）'
 
 
-async def inspect_session(page, context, *, api_result=None):
+async def inspect_session(page, context, *, api_result=None, allow_hydrating_chat=True):
     parsed = urlsplit(str(getattr(page, 'url', '') or ''))
     path = parsed.path if parsed.path in ('/', '/chat', '/login', '/passport/web/login/') else '其他页面'
     chat_page = parsed.hostname == 'www.douyin.com' and path.rstrip('/') == '/chat'
@@ -92,7 +92,8 @@ async def inspect_session(page, context, *, api_result=None):
     # or verification signal here, so let target selection own the bounded
     # list/search retry instead of poisoning account health.
     if (
-        chat_page
+        allow_hydrating_chat
+        and chat_page
         and not login
         and api not in ('logged_out', 'valid')
         and '业务码缺失或格式异常' in diagnostic

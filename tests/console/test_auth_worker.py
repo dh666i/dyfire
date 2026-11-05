@@ -515,6 +515,44 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
             account = session.get(DouyinAccount, account_id)
             self.assertEqual(original_ciphertext, account.encrypted_cookies)
 
+    async def test_recovery_real_scanner_completes_from_chat_without_account_api(self):
+        from tests.console.test_auth_recovery import make_recovery_scanner
+        from spark_console.models import AccountHealth, AccountOperation
+        from spark_console.services.account_health import record, snapshot
+
+        with session_scope(self.engine) as session:
+            account = AccountService(
+                session, CookieCipher(b"k" * 32), AuditService(session)
+            ).create_from_storage_state(self.owner_id, "原账号备注", _storage_state(), "original-account")
+            account_id = account.id
+            record(session, account_id, snapshot(account), "verification", "之前出现验证控件")
+            task = SparkTask(
+                owner_user_id=self.owner_id, douyin_account_id=account_id,
+                target_name="保留的好友", send_time="09:00", message_template="今日火花", enabled=False,
+            )
+            session.add(task)
+            session.flush()
+            task_id = task.id
+            scan_id = ScanSessionService(session).start_recovery(self.owner_id, account_id).id
+
+        scanner, _, context, _ = make_recovery_scanner(timeout=2)
+        self.assertTrue(await AuthWorker(self.settings, self.engine, scanner=scanner).run_once())
+        persisted = self._persisted(scan_id)
+        self.assertEqual(ScanStatus.SUCCEEDED, persisted["status"])
+        self.assertEqual(account_id, persisted["account_id"])
+        self.assertIsNone(persisted["slot"])
+        self.assertIsNone(persisted["qr_png"])
+        with Session(self.engine) as session:
+            account = session.get(DouyinAccount, account_id)
+            self.assertEqual("valid", account.validation_state)
+            self.assertEqual("原账号备注", account.display_name)
+            self.assertIsNone(session.get(AccountOperation, account_id))
+            self.assertEqual("已完成抖音登录验证", session.get(AccountHealth, account_id).reason)
+            self.assertIsNone(session.get(AccountHealth, account_id).next_check_at)
+            self.assertEqual(account_id, session.get(SparkTask, task_id).douyin_account_id)
+            self.assertFalse(session.get(SparkTask, task_id).enabled)
+        self.assertEqual({}, context.storage_state.return_value)  # Worker clears decrypted state.
+
     async def test_typed_scanner_errors_map_to_fixed_public_codes(self):
         cases = (
             (QrLoadFailed(), "qr_load_failed"),

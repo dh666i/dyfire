@@ -215,6 +215,16 @@ class DouyinQrScanner:
                         page.goto(CHAT_LOGIN_URL, wait_until="domcontentloaded", timeout=120_000),
                         cancelled, deadline,
                     )
+                    # Recovery also publishes a first browser frame through
+                    # on_qr: it advances the session out of LOADING_QR so that
+                    # verification and successful completion are legal state
+                    # transitions. No new QR login is started here.
+                    png = await self._await_stage(
+                        page.screenshot(type="png"), cancelled, deadline
+                    )
+                    if not isinstance(png, bytes) or not png.startswith(PNG_SIGNATURE):
+                        raise QrLoadFailed()
+                    await self._await_stage(_invoke(on_qr, png), cancelled, deadline)
                     await self._await_stage(
                         self._wait_for_recovery(
                             page, context, cancelled,
@@ -223,6 +233,9 @@ class DouyinQrScanner:
                             on_needs_verification=on_needs_verification,
                             on_interaction_result=on_interaction_result,
                         ), cancelled, deadline,
+                    )
+                    await self._await_stage(
+                        _invoke(on_confirming, True), cancelled, deadline
                     )
                     storage_state = await self._await_stage(context.storage_state(), cancelled, deadline)
                     return ScannedAccount("抖音账号", None, storage_state, profile=None)
@@ -321,21 +334,46 @@ class DouyinQrScanner:
             page, next_interaction, on_verification_state=on_needs_verification,
             on_interaction_result=on_interaction_result,
         )) if next_interaction else None
-        from core.session_health import SessionEvidence, inspect_session
+        from core.session_health import (
+            SESSION_API_RECHECK_INTERVAL,
+            SessionEvidence,
+            inspect_session,
+            read_login_api,
+        )
         last_verification_reason = None
+        cached_api = None
+        last_api_check = float("-inf")
+        loop = asyncio.get_running_loop()
         try:
             while True:
                 if cancelled():
                     raise ScanCancelled()
                 try:
-                    evidence = await inspect_session(page, context)
+                    # Inspect challenges before probing the optional account
+                    # API. A real conversation list can confirm an existing
+                    # session when that API is unavailable or changes shape;
+                    # an empty, hydrating shell cannot complete recovery.
+                    evidence = await inspect_session(
+                        page, context,
+                        api_result=("unknown", "尚未检查接口"),
+                        allow_hydrating_chat=False,
+                    )
+                    if evidence.state != "verification":
+                        if cached_api is None or loop.time() - last_api_check >= SESSION_API_RECHECK_INTERVAL:
+                            cached_api = await read_login_api(context)
+                            last_api_check = loop.time()
+                        evidence = await inspect_session(
+                            page, context, api_result=cached_api,
+                            allow_hydrating_chat=False,
+                        )
                 except Exception as error:
                     evidence = SessionEvidence("temporary", f"复核页面暂时无法读取：{type(error).__name__}")
                 if evidence.state == "verification":
+                    cached_api = None
                     if evidence.reason != last_verification_reason and on_needs_verification:
                         await _invoke(on_needs_verification, {"required": True, "verification_kind": "app", "reason": evidence.reason})
                     last_verification_reason = evidence.reason
-                if evidence.state != "verification" and await self._account_session_is_authenticated(context):
+                if evidence.state == "valid":
                     return
                 await asyncio.sleep(self.poll_interval_seconds)
         finally:

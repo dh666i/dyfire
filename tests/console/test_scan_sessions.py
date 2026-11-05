@@ -687,7 +687,13 @@ class ScanSessionServiceTests(unittest.TestCase):
         public = self.service.public_status(scan, self.clock.value)
 
         self.assertEqual("recovery", public["mode"])
-        self.assertEqual("正在恢复原账号验证页面，无需重新扫码", public["message"])
+        self.assertEqual("等待复核通道，原账号与任务已保留", public["message"])
+        self.service.claim_next()
+        self.assertEqual("正在打开原账号页面并检查登录状态", self.service.public_status(scan)["message"])
+        self.service.publish_qr(scan.id, PNG_SIGNATURE + b"recovery-first-frame")
+        self.assertEqual("正在检查原账号状态；若无需验证，将自动恢复", self.service.public_status(scan)["message"])
+        self.service.mark_confirming(scan.id)
+        self.assertEqual("登录状态已确认，正在保存并恢复账号", self.service.public_status(scan)["message"])
 
     def test_expired_recovery_keeps_account_for_resume(self):
         account = self._account()
@@ -701,6 +707,18 @@ class ScanSessionServiceTests(unittest.TestCase):
         resumed = self.service.start_recovery(self.owner.id, account.id)
         self.assertEqual(account.id, resumed.account_id)
         self.assertEqual("recovery", resumed.mode)
+
+    def test_recovery_can_complete_after_verification_already_marked_confirming(self):
+        account = self._account()
+        scan = self.service.start_recovery(self.owner.id, account.id)
+        self.service.claim_next()
+        self.service.publish_qr(scan.id, PNG_SIGNATURE + b"recovery-frame")
+        self.service.mark_needs_verification(scan.id, {"verification_kind": "app"})
+        self.service.mark_confirming(scan.id)
+        completed = self.service.complete(scan.id, account.id)
+        self.assertEqual(ScanStatus.SUCCEEDED, completed.status)
+        self.assertIsNone(completed.error_code)
+        self.assertIsNone(completed.slot)
 
     def test_stale_worker_cannot_publish_after_owner_cancels(self):
         scan = self.service.start(self.owner.id)
