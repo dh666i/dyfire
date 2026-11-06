@@ -60,6 +60,7 @@ class PasswordReset(Base):
     __tablename__='password_resets'
     user_id: Mapped[str] = mapped_column(ForeignKey('users.id',ondelete='CASCADE'),primary_key=True)
     digest: Mapped[str] = mapped_column(String(64))
+    digest_version: Mapped[int] = mapped_column(Integer, default=2, server_default=text('1'))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=utc_now)
     attempts: Mapped[int] = mapped_column(Integer,default=0)
@@ -72,8 +73,11 @@ class MailPreference(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     code_hash: Mapped[str | None] = mapped_column(String(64))
+    code_version: Mapped[int] = mapped_column(Integer, default=2, server_default=text('1'))
     code_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+
 
 
 class MailAccountState(Base):
@@ -95,6 +99,8 @@ class MailDelivery(Base):
     event: Mapped[str] = mapped_column(String(24))
     subject: Mapped[str] = mapped_column(String(200))
     body: Mapped[str] = mapped_column(Text)
+    body_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    body_nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
     status: Mapped[str] = mapped_column(String(24), default='queued', index=True)
     error: Mapped[str | None] = mapped_column(String(240))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -277,59 +283,6 @@ class InviteCodeSecret(Base):
     nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
 
 
-class AdminTotpCredential(Base):
-    """Optional administrator TOTP credential, encrypted at rest.
-
-    A pending row is created during setup and becomes enabled only after the
-    administrator confirms a code from the authenticator.  Existing sessions
-    and the normal password login flow intentionally do not consult this row;
-    enforcement is a separately reviewed rollout step.
-    """
-
-    __tablename__ = "admin_totp_credentials"
-
-    user_id: Mapped[str] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
-    ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # RFC 6238 time-step accepted for the last successful confirmation or
-    # future enforcement check.  It prevents the same OTP being replayed.
-    last_used_counter: Mapped[int | None] = mapped_column(BigInteger)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, onupdate=utc_now
-    )
-
-
-class AdminTotpRecoveryCode(Base):
-    """One-time administrator recovery verifier.
-
-    Only a salted verifier is persisted.  The printable code is returned at
-    issuance time and cannot be reconstructed from this row later.
-    """
-
-    __tablename__ = "admin_totp_recovery_codes"
-    __table_args__ = (
-        Index(
-            "ix_admin_totp_recovery_codes_user_used",
-            "user_id",
-            "used_at",
-        ),
-    )
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
-    user_id: Mapped[str] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    code_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    salt: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-
-
 class UserSubscription(Base):
     __tablename__ = "user_subscriptions"
     __table_args__ = (
@@ -371,11 +324,11 @@ class RedemptionCode(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
-    # Keep the plaintext available to administrators.  Redemption codes are
-    # deliberately retrievable in the admin console, matching the product's
-    # one-click copy workflow.  Legacy rows may be null because their original
-    # plaintext was never persisted.
+    # Legacy plaintext is sealed on authorized retrieval or by maintenance.
+    # New codes are stored only as a lookup hash plus retrievable ciphertext.
     code: Mapped[str | None] = mapped_column(String(128), unique=True)
+    code_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    code_nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
     code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
     max_accounts: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -526,11 +479,14 @@ class DouyinLoginInput(Base):
 
 class DouyinAccountIdentity(Base):
     __tablename__ = "douyin_account_identities"
+    __table_args__ = (Index("uq_douyin_account_user_id", "douyin_user_id", unique=True),)
 
     account_id: Mapped[str] = mapped_column(
         ForeignKey("douyin_accounts.id", ondelete="CASCADE"), primary_key=True
     )
     douyin_unique_id: Mapped[str | None] = mapped_column(String(64))
+    # Passport user_id is stable. The editable public Douyin ID is display only.
+    douyin_user_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -659,7 +615,6 @@ class WebSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     csrf_token: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    elevated_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

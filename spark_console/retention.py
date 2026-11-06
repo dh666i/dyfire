@@ -47,7 +47,7 @@ ACTIVE_LOGIN_STATUSES = frozenset(
     {"queued", "loading_qr", "awaiting_scan", "confirming"}
 )
 TERMINAL_MAIL_STATUSES = frozenset({"accepted", "failed", "cancelled"})
-PROTECTED_MAIL_STATUSES = frozenset({"queued", "sending", "uncertain"})
+PROTECTED_MAIL_STATUSES = frozenset({"queued", "queued_secure", "sending", "uncertain"})
 
 DEFAULT_RUNS_DAYS = 365
 DEFAULT_SESSIONS_DAYS = 30

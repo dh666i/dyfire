@@ -198,8 +198,23 @@ class UserService:
     def authenticate(self, username: str, password: str) -> User | None:
         user = self.session.scalar(select(User).where(User.username == username.strip().lower()))
         if user is None or user.status != "active":
+            self.passwords.verify_unknown(password)
             return None
         now = utc_now()
+        # A correct password can recover from a hostile source's lockout.
+        # Source limits still apply, and incorrect attempts never extend an
+        # already active target lock. Verify before branching to avoid timing
+        # differences between locked and ordinary accounts.
+        valid = self.passwords.verify(user.password_hash, password)
+        if valid:
+            changed = self.session.execute(update(User).where(
+                User.id == user.id, User.password_hash == user.password_hash,
+                User.status == "active",
+            ).values(failed_login_count=0, locked_until=None)).rowcount
+            if changed != 1:
+                return None
+            self.session.refresh(user)
+            return user
         if user.locked_until is not None:
             if _aware(user.locked_until) > now:
                 return None
@@ -207,7 +222,7 @@ class UserService:
             user.failed_login_count = 0
             user.locked_until = None
             self.session.flush()
-        if not self.passwords.verify(user.password_hash, password):
+        if not valid:
             # Increment in SQL so concurrent failures cannot lose updates or
             # race past the lock threshold on databases with row-level locks.
             self.session.execute(
@@ -237,6 +252,8 @@ class UserService:
         user = self.session.get(User, user_id)
         if user is None:
             raise NotFound("user not found")
+        if user.role == "admin":
+            raise ValidationError("管理员密码请通过账户安全或密码恢复流程修改")
         temporary = self.temporary_password()
         user.password_hash = self.passwords.hash(temporary)
         user.must_change_password = True

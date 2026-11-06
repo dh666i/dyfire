@@ -795,6 +795,8 @@ def build_admin_router(
                 ).reset_password(admin.id, user_id)
             except NotFound as error:
                 raise HTTPException(404, str(error)) from error
+            except ValidationError as error:
+                raise HTTPException(400, str(error)) from error
             users, pagination = list_users(db)
             return page_renderer(
                 request,
@@ -1047,7 +1049,7 @@ def build_admin_router(
             auth.csrf(record, csrf_token)
             if not 1 <= quantity <= 20:
                 raise HTTPException(400, "每次最多生成 20 个兑换码")
-            service = SubscriptionService(db, AuditService(db))
+            service = SubscriptionService(db, AuditService(db), cipher=cipher)
             try:
                 plaintext_codes = [
                     service.create_redemption_code(

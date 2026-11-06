@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import inspect
 import logging
+from core.account_profile import authenticated_user_id
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -132,6 +133,7 @@ class ScannedAccount:
     conversation_names: tuple[str, ...] = ()
     contact_identities: tuple[DouyinUserIdentity, ...] = ()
     profile: dict | None = None
+    platform_user_id: str | None = None
 
 
 def _default_playwright_factory():
@@ -238,7 +240,13 @@ class DouyinQrScanner:
                         _invoke(on_confirming, True), cancelled, deadline
                     )
                     storage_state = await self._await_stage(context.storage_state(), cancelled, deadline)
-                    return ScannedAccount("抖音账号", None, storage_state, profile=None)
+                    from core.account_profile import read_self_profile
+                    profile = await self._await_stage(read_self_profile(context), cancelled, deadline)
+                    return ScannedAccount(
+                        profile.get("nickname") or "抖音账号", profile.get("unique_id") or None,
+                        storage_state, profile=profile,
+                        platform_user_id=profile.get("platform_user_id"),
+                    )
                 await self._await_stage(
                     page.goto(
                         CHAT_LOGIN_URL,
@@ -312,6 +320,7 @@ class DouyinQrScanner:
                     conversation_names,
                     contact_identities,
                     profile,
+                    profile.get("platform_user_id"),
                 )
             finally:
                 try:
@@ -1331,16 +1340,12 @@ class DouyinQrScanner:
     async def _account_session_is_authenticated(context) -> bool:
         try:
             response = await context.request.get(ACCOUNT_INFO_URL, timeout=10_000)
+            if not 200 <= response.status < 300:
+                return False
             body = await response.json()
         except Exception:
             return False
-        data = body.get("data") if isinstance(body, dict) else None
-        return bool(
-            isinstance(data, dict)
-            and body.get("message") == "success"
-            and data.get("error_code") == 0
-            and data.get("user_id")
-        )
+        return authenticated_user_id(body) is not None
 
     @staticmethod
     def _auth_cookie_fingerprint(cookies) -> frozenset[tuple[str, str, str, str]]:

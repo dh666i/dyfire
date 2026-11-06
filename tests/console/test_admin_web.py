@@ -221,7 +221,7 @@ class AdminWebTests(unittest.TestCase):
             invites.revoke(self.admin.id, revoked_invite.id)
             self.active_invite_id = active_invite.id
             self.revoked_invite_id = revoked_invite.id
-            subscriptions = SubscriptionService(db, audit)
+            subscriptions = SubscriptionService(db, audit, cipher=CookieCipher(self.settings.cookie_key_file.read_bytes()))
             active_code, _ = subscriptions.create_redemption_code(self.admin.id)
             revoked_code, _ = subscriptions.create_redemption_code(self.admin.id)
             subscriptions.revoke_redemption_code(self.admin.id, revoked_code.id)
@@ -798,10 +798,11 @@ class AdminWebTests(unittest.TestCase):
             "/api/admin/redemption-codes", params={"q": plaintext}
         )
         self.assertEqual(200, codes.status_code, codes.text)
-        row = next(
-            item for item in codes.json()["items"]
-            if item["code"] == plaintext
-        )
+        row = codes.json()["items"][0]
+        self.assertIsNone(row['code'])
+        copied = self.real_client.post(f"/api/admin/redemption-codes/{row['id']}/reveal", json={'csrf_token': self.admin_csrf})
+        self.assertEqual(200, copied.status_code)
+        self.assertEqual(plaintext, copied.json()['code'])
         self.assertEqual("待兑换", row["status"])
         self.assertIsNone(row["redeemed_at"])
         self.assertIsNone(row["expires_at"])

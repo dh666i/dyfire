@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from spark_console.crypto import CookieCipher
 from spark_console.db import create_schema
 from spark_console.models import (
     AuditEvent,
@@ -58,7 +59,7 @@ class SubscriptionServiceTests(unittest.TestCase):
         self.session.add_all((self.admin, self.user, self.other))
         self.session.flush()
         self.service = SubscriptionService(
-            self.session, AuditService(self.session), now=lambda: self.now
+            self.session, AuditService(self.session), now=lambda: self.now, cipher=CookieCipher(b"c"*32)
         )
 
     def tearDown(self):
@@ -148,13 +149,15 @@ class SubscriptionServiceTests(unittest.TestCase):
             for event in self.session.scalars(select(AuditEvent)).all()
         )
         self.assertNotIn(plaintext, audit_text)
-        self.assertFalse(hasattr(self.service, "reveal_redemption_code"))
+        self.assertIsNone(code.code)
+        self.assertEqual(plaintext, self.service.reveal_redemption_code(self.admin.id, code.id))
 
     def test_new_redemption_code_is_retrievable_and_does_not_expire_before_use(self):
         code, plaintext = self.create_code(duration_days=30)
 
-        self.assertEqual(plaintext, code.code)
-        self.assertIsNotNone(code.code)
+        self.assertIsNone(code.code)
+        self.assertEqual(plaintext, self.service.reveal_redemption_code(self.admin.id, code.id))
+        self.assertIsNotNone(code.code_ciphertext)
         self.assertIsNone(code.redeemed_at)
         # The compatibility sentinel is deliberately far in the future for
         # the deployed SQLite schema; it is never treated as a pre-redemption

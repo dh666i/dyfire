@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
@@ -11,9 +12,18 @@ from argon2.exceptions import InvalidHashError, VerifyMismatchError
 from spark_console.models import WebSession
 
 
+@lru_cache(maxsize=1)
+def _unknown_user_hash():
+    return PasswordHasher().hash(secrets.token_urlsafe(32))
+
+
 class PasswordService:
     def __init__(self) -> None:
         self._hasher = PasswordHasher()
+        self._dummy_hash = _unknown_user_hash()
+
+    def verify_unknown(self, password: str) -> None:
+        self.verify(self._dummy_hash, password)
 
     def hash(self, password: str) -> str:
         if not password:
@@ -58,6 +68,7 @@ class SessionService:
             token_hash=self.token_hash(raw),
             csrf_token=secrets.token_urlsafe(32),
             expires_at=issued_at + self._lifetime,
+            created_at=issued_at,
         )
         return raw, record
 

@@ -79,23 +79,7 @@ class SessionTests(unittest.TestCase):
                     auth.csrf(record, supplied)
                 self.assertEqual(error.exception.status_code, 403)
 
-    def test_step_up_is_scoped_to_one_session_and_expires(self):
-        auth = WebAuth(SessionService(session_key=b"s" * 32))
-        now = datetime(2026, 8, 25, tzinfo=timezone.utc)
-        record = SimpleNamespace(elevated_until=now + timedelta(minutes=1))
-        self.assertTrue(auth.is_elevated(record, now=now))
-        self.assertFalse(
-            auth.is_elevated(record, now=now + timedelta(minutes=1))
-        )
-        with self.assertRaises(HTTPException) as error:
-            auth.require_elevated(record, now=now + timedelta(minutes=1))
-        self.assertEqual(428, error.exception.status_code)
 
-    def test_step_up_requires_a_marker_even_for_a_valid_session(self):
-        auth = WebAuth(SessionService(session_key=b"s" * 32))
-        record = SimpleNamespace(elevated_until=None)
-        with self.assertRaisesRegex(HTTPException, "需要重新验证管理员密码"):
-            auth.require_elevated(record)
 
 
 if __name__ == "__main__":

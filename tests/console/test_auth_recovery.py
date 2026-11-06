@@ -77,7 +77,7 @@ def test_live_chat_completes_recovery_when_optional_api_changes_shape():
     assert confirmed == [True]
     assert browser.new_context.await_args.kwargs["storage_state"]["cookies"][0]["name"] == "original-marker"
     scanner._open_chat_login.assert_not_awaited()
-    context.request.get.assert_awaited_once()
+    assert context.request.get.await_count == 2  # Health evidence plus final identity read.
     context.close.assert_awaited_once()
     browser.close.assert_awaited_once()
 

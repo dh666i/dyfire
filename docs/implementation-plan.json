@@ -1,0 +1,668 @@
+{
+  "baseline": "0.3.41",
+  "working_version": "0.3.42",
+  "excluded_scope": [
+    "运营主体信息",
+    "对外政策联系方式配置",
+    "隐私告知",
+    "服务条款",
+    "退款与故障补偿规则及入口",
+    "管理员验证器",
+    "管理员登录二次验证",
+    "管理员额外验证弹窗"
+  ],
+  "constraints": [
+    "不使用子代理",
+    "不启用周期自动备份",
+    "保留现有价格和已售权益",
+    "真实平台不自动发测试消息",
+    "保留现有React视觉和普通/管理员隔离"
+  ],
+  "milestones": [
+    {
+      "id": "A",
+      "name": "账号与任务正确性",
+      "status": "verified_not_deployed",
+      "pr": 1
+    },
+    {
+      "id": "B",
+      "name": "依赖、页面和登录安全",
+      "status": "verified_not_deployed"
+    },
+    {
+      "id": "C",
+      "name": "邮件与异常闭环",
+      "status": "verified_not_deployed"
+    },
+    {
+      "id": "D",
+      "name": "发布与数据生命周期",
+      "status": "in_progress"
+    },
+    {
+      "id": "E",
+      "name": "统一工程、手机与交互验收",
+      "status": "in_progress"
+    },
+    {
+      "id": "F",
+      "name": "运营指标和容量验收",
+      "status": "in_progress"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "area": "发送正确性 / P0",
+      "task": "修复免费资格与重试分支不一致",
+      "acceptance": "免费任务遇到暂时异常仍可按既定额度恢复；超额、停用任务不被恢复",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 2,
+      "area": "账号身份 / P0",
+      "task": "同一抖音账号以平台稳定身份去重，并在重认证后核对身份",
+      "acceptance": "采集并验证平台稳定 UID/可验证身份，数据库唯一约束；可改抖音号仅展示。存量 4 个缺身份账号先补齐验证，不直接猜测归并或强制退出",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 3,
+      "area": "发送策略 / P1",
+      "task": "将状态分类、资格、重试与恢复策略集中",
+      "acceptance": "同一异常在用户端、后台、调度器显示相同事实与处理动作",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 4,
+      "area": "结果证据 / P1",
+      "task": "增强待核实的只读对账能力",
+      "acceptance": "利用可验证消息身份、时间范围、回执核对；证据不足保留待核实，不自动重发",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 5,
+      "area": "目标定位 / P1",
+      "task": "增加不发送消息的任务自检",
+      "acceptance": "检查账号、目标会话、编辑器与表情入口；不输入、不提交消息，遵守账号操作锁",
+      "status": "planned"
+    },
+    {
+      "id": 6,
+      "area": "故障诊断 / P1",
+      "task": "失败自动生成最小诊断包",
+      "acceptance": "版本、阶段耗时、原因码、选择器命中、脱敏页面信息可关联；默认不含 Cookie、验证码、聊天正文",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 7,
+      "area": "故障影响 / P1",
+      "task": "按账号合并一次持续异常事件",
+      "acceptance": "同一验证事件下的跳过可归并，展示首次发现、影响任务数、提醒、用户操作与恢复时间",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 8,
+      "area": "链路演练 / P1",
+      "task": "执行中 Worker 退出、重启、慢网络测试",
+      "acceptance": "已提交不重发，未提交可有界恢复，租约丢失后旧 Worker 不继续操作",
+      "status": "planned"
+    },
+    {
+      "id": 9,
+      "area": "账号体验 / P1",
+      "task": "用“检查登录—需要操作—保存确认”表达流程",
+      "acceptance": "已登录直接完成；真正的验证才展示对应输入，不强制经历每一个步骤",
+      "status": "planned"
+    },
+    {
+      "id": 10,
+      "area": "验证交互 / P1",
+      "task": "补齐用户亲自操作的远程交互能力",
+      "acceptance": "点击、必要键盘按键、滚动、触摸和拖动按实际挑战类型支持；不自动破解或跳过挑战",
+      "status": "planned"
+    },
+    {
+      "id": 11,
+      "area": "验证输入 / P1",
+      "task": "按页面实际区分短信、密码、App 确认等",
+      "acceptance": "不把所有额外验证都写成短信；敏感输入不回显、不进入日志",
+      "status": "planned"
+    },
+    {
+      "id": 12,
+      "area": "手机扫码 / P1",
+      "task": "同设备绑定提供明确说明与可行路径",
+      "acceptance": "在真实 iOS/Android 上验证扫码入口；仅在抖音确实支持时使用官方唤起/分享流程，不伪造“免验证快捷登录”",
+      "status": "planned"
+    },
+    {
+      "id": 13,
+      "area": "页面尺寸 / P1",
+      "task": "云端画面全屏、适配缩放、输入区固定",
+      "acceptance": "二维码可识别；手机键盘弹出后不遮挡提交和关闭，图像坐标换算正确",
+      "status": "planned"
+    },
+    {
+      "id": 14,
+      "area": "登录连续性 / P1",
+      "task": "固定真实浏览器环境配置并记录变更",
+      "acceptance": "auth、worker、directory、health 使用兼容的浏览器版本、语言、时区；升级可追踪，不随机改环境",
+      "status": "planned"
+    },
+    {
+      "id": 15,
+      "area": "状态范围 / P2",
+      "task": "验证 IndexedDB 是否参与登录，再决定保存",
+      "acceptance": "有实验表明收益后再升级加密状态格式与校验；旧账号兼容，不盲存整个浏览器目录",
+      "status": "planned"
+    },
+    {
+      "id": 16,
+      "area": "恢复选择 / P2",
+      "task": "本地辅助登录作为可选高阶能力",
+      "acceptance": "确有需求才开发；短期配对授权与加密传输，不让普通客户必须安装 Python 或上传明文状态文件",
+      "status": "planned"
+    },
+    {
+      "id": 17,
+      "area": "今日首页 / P1",
+      "task": "在已有账号优先布局中增加明确行动",
+      "acceptance": "优先展示需处理账号、今日未发、下一次计划；正常时保持简洁",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 18,
+      "area": "任务状态 / P1",
+      "task": "将计划启用与今日执行结果分开",
+      "acceptance": "暂停、启用、今日成功、今日跳过、待核实不互相覆盖",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 19,
+      "area": "好友列表 / P1",
+      "task": "强化同步范围、时间与重复目标说明",
+      "acceptance": "继续只搜索已同步会话；标注已添加，姓名变化不破坏稳定身份绑定",
+      "status": "planned"
+    },
+    {
+      "id": 20,
+      "area": "少量数据 / P1",
+      "task": "建立 0、1、3、20、100 条数据布局",
+      "acceptance": "少量好友使用自然高度/紧凑列表，不留出巨型空区域；大量数据分页可用",
+      "status": "planned"
+    },
+    {
+      "id": 21,
+      "area": "表单编辑 / P1",
+      "task": "编辑固定目标、保护未保存修改",
+      "acceptance": "编辑已有任务不重复展示选好友流程；关闭未保存表单有保护；保存后保留列表位置",
+      "status": "planned"
+    },
+    {
+      "id": 22,
+      "area": "数据更新 / P1",
+      "task": "前台恢复刷新、后台轮询降频",
+      "acceptance": "当前页面及时更新，后台标签页降低轮询；取消过期请求，避免恢复窗口时集中请求",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 23,
+      "area": "轻量交互 / P1",
+      "task": "统一等待、成功、冲突、网络未知反馈",
+      "acceptance": "有确认回执才显示保存完成；网络超时不误称写入失败并让用户重复创建",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 24,
+      "area": "移动工作区 / P1",
+      "task": "保留底部 Dock，设置一致安全边距",
+      "acceptance": "360/390/430 宽度，无横向溢出；最后一行不被 Dock 遮挡",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 25,
+      "area": "手机抽屉 / P1",
+      "task": "动态视口、键盘、安全区统一",
+      "acceptance": "iOS Safari、Android Chrome 下展开/收起、滚动锁、返回与焦点恢复正常",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 26,
+      "area": "可触达性 / P1",
+      "task": "所有触屏主要按钮有足够点击面积",
+      "acceptance": "常用目标以约 44 CSS px 为设计目标，删除等危险动作不与主按钮挤在一起",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 27,
+      "area": "深浅主题 / P1",
+      "task": "将颜色和表面属性整理为语义 token",
+      "acceptance": "姓名、禁用文字、菜单、弹窗、表格、表单错误在两种主题都有独立检查",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 28,
+      "area": "动效 / P1",
+      "task": "保留已认可设计，统一动效节奏",
+      "acceptance": "局部状态过渡，不拖慢关键动作；减少动态效果偏好生效；无逐卡永久循环",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 29,
+      "area": "无障碍 / P1",
+      "task": "键盘、对比度、状态文本并行表达",
+      "acceptance": "焦点可见，菜单/弹窗可关闭，状态不只靠颜色；错误被读屏识别",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 30,
+      "area": "客户管理 / P1",
+      "task": "增强已有客户工作台的异常处理闭环",
+      "acceptance": "同页展示账号、任务、订阅、今日结果与处理记录；继续沿用现有合并方式",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 31,
+      "area": "管理详情 / P1",
+      "task": "编辑展示修改前后差异",
+      "acceptance": "用户、任务、额度修改准确说明影响范围，提交后可查审计",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 32,
+      "area": "支持工具 / P1",
+      "task": "一键复制脱敏排障编号",
+      "acceptance": "用户只需报编号；管理员直接跳到相关运行、账号事件和版本",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 33,
+      "area": "运营通知 / P1",
+      "task": "公告与定向维护通知",
+      "acceptance": "全站/受影响客户可区分；有有效期和阅读状态，不新增拥挤导航层级",
+      "status": "planned"
+    },
+    {
+      "id": 34,
+      "area": "管理权限 / P2",
+      "task": "有第二位员工时再做最小权限角色",
+      "acceptance": "客服可处理普通客户，不能读取凭据或部署；管理员账号的重置/角色修改使用独立受控流程，禁止普通客服接管管理员",
+      "status": "planned"
+    },
+    {
+      "id": 35,
+      "area": "订阅一致性 / P1",
+      "task": "免费、续费、过期、降级使用同一规则",
+      "acceptance": "页面、创建、启用、执行、恢复全部一致；超额计划明确标注可执行资格",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 36,
+      "area": "兑换体验 / P1",
+      "task": "兑换前说明权益生效与叠加结果",
+      "acceptance": "展示期限、账号/任务额度、旧订阅如何衔接，不让用户猜测",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 37,
+      "area": "营收数据 / P1",
+      "task": "添加最小交易/收款来源记录",
+      "acceptance": "区分付费、赠送、管理员补偿；不得仅凭订阅额度推算真实收入",
+      "status": "planned"
+    },
+    {
+      "id": 38,
+      "area": "单位成本 / P1",
+      "task": "按账号统计浏览器耗时与服务成本",
+      "acceptance": "明确每活跃付费账号月收入、执行成本、客服成本和异常处理时间",
+      "status": "planned"
+    },
+    {
+      "id": 39,
+      "area": "合理使用 / P1",
+      "task": "为不限好友方案制定透明的资源规则",
+      "acceptance": "管理单账号发送节奏与异常密集任务；既有已售权益不被静默缩水",
+      "status": "planned"
+    },
+    {
+      "id": 40,
+      "area": "售后 / P1",
+      "task": "故障说明与补偿建议有事实依据",
+      "acceptance": "展示漏掉几次、是否已提交、是否可补；补偿由明确政策和人工/授权动作决定",
+      "status": "excluded_by_user"
+    },
+    {
+      "id": 41,
+      "area": "前端结构 / P1",
+      "task": "拆分页面、业务 hooks、API 客户端、组件",
+      "acceptance": "维持同一视觉和接口；任务编辑不会连带改坏管理员页面",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 42,
+      "area": "接口契约 / P1",
+      "task": "Pydantic schema 与前端类型/状态映射联动",
+      "acceptance": "字段新增、枚举更改、分页空态均有契约检查；减少 normalize 中静默兜底",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 43,
+      "area": "样式结构 / P1",
+      "task": "收敛重复 CSS，建立 tokens 与组件样式",
+      "acceptance": "减少覆盖链和 !important；按实际页面引用图清理，避免将旧模板样式体积算到全部生产页面上",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 44,
+      "area": "资源加载 / P1",
+      "task": "路由分包、字体按需与明确缓存策略",
+      "acceptance": "哈希资源长缓存，HTML/私人数据使用合适缓存；保留中文覆盖，测实际网络瀑布，不把字体仓库总量当每次下载量",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 45,
+      "area": "页面请求 / P1",
+      "task": "路由取消、请求代次、缓存与刷新统一",
+      "acceptance": "快速切换不会用旧响应覆盖新页面；多处组件不重复拉同一大 bootstrap",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 46,
+      "area": "旧代码 / P1",
+      "task": "梳理入口、路由、静态资源、兼容节点后分批移除",
+      "acceptance": "生产只有一套主 React 页面，旧处理器不能盲删；旧 CLI 发送依赖先提取为共享模块，删除兼容标记前改用 API 自动化",
+      "status": "planned"
+    },
+    {
+      "id": 47,
+      "area": "浏览器容量 / P1",
+      "task": "真正实施空闲 Chromium 回收",
+      "acceptance": "回收后无浏览器子进程；下次能从加密状态恢复；内存确实下降",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 48,
+      "area": "队列容量 / P1",
+      "task": "显示未来高峰、预计排队与安全余量",
+      "acceptance": "不只数每天任务总量，按 5/15 分钟窗口、执行 P95 和恢复窗口评估",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 49,
+      "area": "压测 / P1",
+      "task": "将数据量基线与真实执行容量分别验收",
+      "acceptance": "现有 500 用户基线主要验证数据/API；另做隔离并发、同刻任务、慢会话与登录混合测试，限制真实平台请求",
+      "status": "planned"
+    },
+    {
+      "id": 50,
+      "area": "扩容 / P2",
+      "task": "先测登录/复核/同步串行等待，再按账号增加执行分片",
+      "acceptance": "auth循环按扫码、健康检查、目录任务串行处理，不是一把覆盖全部服务的全局Worker锁；保持账号操作互斥与浏览器资源预算，多写并发确有需要才迁PostgreSQL",
+      "status": "planned"
+    },
+    {
+      "id": 51,
+      "area": "队列架构 / P2",
+      "task": "默认继续数据库领取，扩容时分阶段引入队列",
+      "acceptance": "多 Web 副本前需统一分布式限流；Redis 不代替持久化提交检查点，禁止承诺外部平台绝对恰好一次",
+      "status": "planned"
+    },
+    {
+      "id": 52,
+      "area": "状态流量 / P2",
+      "task": "降低扫码截图写库与重复下载成本",
+      "acceptance": "按画面变化和前台可见性采样；保留现有 frame_revision 优化，不先增加对象存储服务",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 53,
+      "area": "业务监控 / P1",
+      "task": "计划兑现率、阻塞时长、排队延迟、恢复耗时",
+      "acceptance": "告警关联用户受影响程度；主机 CPU 图不替代业务监控",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 54,
+      "area": "外部可用性 / P1",
+      "task": "监测香港入口、成都源站与 Worker 心跳",
+      "acceptance": "外部只上报匿名健康/延迟；全站打不开时仍能向管理员发出提醒",
+      "status": "planned"
+    },
+    {
+      "id": 55,
+      "area": "更新诊断 / P1",
+      "task": "明确拉取进度、数据库读取与失败阶段",
+      "acceptance": "对旧长进程读库异常复现、显式关闭连接；保持更新前活跃操作检查、固定摘要和可验证回滚",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 56,
+      "area": "更新门禁 / P1",
+      "task": "用同一发布提交的测试结果与镜像证据验收",
+      "acceptance": "固定 digest 已有；进一步扫描镜像、清理敏感构建上下文并验证构建来源，按仓库套餐可用能力选工具",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 57,
+      "area": "恢复能力 / P1",
+      "task": "保留可验证的发布快照与人工导出/恢复流程",
+      "acceptance": "不启用用户已拒绝的周期自动备份；快照保留与清理另行设计，优先删除经过确认的过期副本，不擅自删线上恢复点",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 58,
+      "area": "密钥生命周期 / P1-P2",
+      "task": "最小挂载、用途 AAD、key id 与安全轮换",
+      "acceptance": "TOTP 当前已有独立 AAD；CookieCipher 仍复用在若干用途。密钥长度与版本校验清晰，迁移不能令旧账号解密失败",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 59,
+      "area": "管理员安全 / P0-P1",
+      "task": "将已有 TOTP 真正接入管理员登录与恢复",
+      "acceptance": "先验收恢复码和丢失设备处理，再启用；关键安全动作有短期重新确认，普通编辑不重复索要密码",
+      "status": "excluded_by_user"
+    },
+    {
+      "id": 60,
+      "area": "依赖安全 / P0-P1",
+      "task": "联动升级 Python 依赖、开发工具和基础镜像",
+      "acceptance": "FastAPI/Starlette 联动解析兼容范围；对加密主版本升级做旧数据回归；OS、浏览器、构建工具独立扫描和维护",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 61,
+      "area": "滥用控制 / P1",
+      "task": "同平台账号去重、注册与扫码资源预算",
+      "acceptance": "身份去重先修；生产可信代理已配置，不扩大信任 CIDR。多副本前用统一限流，当前单实例不为形式强加 Redis",
+      "status": "planned"
+    },
+    {
+      "id": 62,
+      "area": "退订与解绑 / P1",
+      "task": "明确撤销托管后的任务和凭据处理",
+      "acceptance": "用户可停止服务并解绑；抖音端撤销设备登录需本人操作。将普通用户的数据删除申请与管理员删用户区分",
+      "status": "planned"
+    },
+    {
+      "id": 63,
+      "area": "新用户激活 / P1",
+      "task": "围绕首次成功形成可见进度",
+      "acceptance": "注册→绑定→选好友→创建→首次成功；每一步有说明、恢复路径和可量化漏斗",
+      "status": "planned"
+    },
+    {
+      "id": 64,
+      "area": "产品边界 / P1",
+      "task": "展示真实发送状态与平台限制",
+      "acceptance": "已发出不自动宣称对方已读或火花天数增加；实际火花天数只有读取到平台数据才展示，并标注更新时间",
+      "status": "planned"
+    },
+    {
+      "id": 65,
+      "area": "下拉控件 / P0",
+      "task": "修复空引用、回车额外移位、内部滚动误关",
+      "acceptance": "点选不抛异常；方向键只移动高亮，回车提交当前高亮；菜单内滚动不关闭；补原生语义与 aria-activedescendant",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 66,
+      "area": "首次引导 / P1",
+      "task": "首次执行完成条件读取真实运行结果",
+      "acceptance": "绑定、建任务和第一次成功为独立进度，尚未执行时不会提前全部完成",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 67,
+      "area": "邮件接线 / P1；启用前门禁",
+      "task": "入库一套明确的消费者部署与健康检查",
+      "acceptance": "可选 oneshot+timer 或受控常驻服务；配置、入队、消费、SMTP 接受、收件箱确认全链路可验收，不堆两套消费者",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 68,
+      "area": "密码恢复 / P1",
+      "task": "重置成功清理锁定并统一用户名规范化",
+      "acceptance": "已写入新密码后可正常登录；大小写规则与登录一致，已发代码只能使用一次",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 69,
+      "area": "登录防滥用 / P1",
+      "task": "对未知用户进行等效哈希处理并改进锁定策略",
+      "acceptance": "不让一个来源持续阻塞受害者账号；统一响应，限制源头与目标，保留合理账户保护和恢复路径",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 70,
+      "area": "敏感邮件 / P1",
+      "task": "outbox 敏感正文加密、投递后清理及验证码 HMAC",
+      "acceptance": "队列持久性保留；数据库不长期留验证码/重置码明文；期限、尝试次数、原子一次性消费继续生效",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 71,
+      "area": "兑换码 / P1",
+      "task": "可复制明文改为受控解密展示",
+      "acceptance": "保留管理员一键复制需求；hash 查找、密文存储，解密查看有权限与审计，不改成无法找回的单一 hash",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 72,
+      "area": "快照体积 / P1",
+      "task": "发布快照预算、排除副本目录与可验证保留策略",
+      "acceptance": "当前 38 份约 1.13 GB；防止复制 data/backups 扩大冗余，保留必要回滚点，清理独立授权",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 73,
+      "area": "测试覆盖 / P1",
+      "task": "用可审计的完整收集替代易漏的手写清单",
+      "acceptance": "单元/API、浏览器、Postgres/Redis 集成分层；任何排除有理由，不能用盲目 glob 跑生产平台或历史网络探针",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 74,
+      "area": "构建产物 / P1",
+      "task": "清除 Git 中半套陈旧 dist，统一构建契约",
+      "acceptance": "从源码部署先构建；Docker/发布包始终含完整一致产物。清理跟踪不误删品牌图片或必要发布文件",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 75,
+      "area": "镜像维护 / P1",
+      "task": "将 .NET runtime-deps 底座换为匹配业务的受维护基础链",
+      "acceptance": ".NET 8 标签接近 EOL，但不能推断 Ubuntu 系统四天后停补丁；定期 rebase，Playwright 包与浏览器二进制匹配",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 76,
+      "area": "发布门禁 / P1",
+      "task": "发行提交统一完成必需验证再发布",
+      "acceptance": "reusable workflow/同提交状态校验等明确门禁；main 保护与依赖更新配置分开设置，不写跨 workflow 的无效 needs",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 77,
+      "area": "宿主更新器 / P1",
+      "task": "缩小 root 更新程序边界并增强 systemd 防护",
+      "acceptance": "Docker 权限本就接近 root，不能只改成 docker 组用户就宣称降权；目录白名单、有限写入、凭据权限与审计可验证",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 78,
+      "area": "产品协议 / 推广前评估",
+      "task": "隐私告知、服务条款、平台关系、主体与服务边界",
+      "acceptance": "条款与真实数据流程一致；不承诺永久登录或必然维持火花，法律适用按实际业务和官方规则专业核对",
+      "status": "excluded_by_user"
+    },
+    {
+      "id": 79,
+      "area": "用户数据 / P1",
+      "task": "最小化好友资料及实现可追踪的删除申请",
+      "acceptance": "不收聊天正文；列出账号、好友、头像、验证码、日志、快照留存与删除范围；已有管理员删除路径须逐表验收",
+      "status": "verified_not_deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+    },
+    {
+      "id": 80,
+      "area": "单一套餐源 / P1",
+      "task": "删除有效入口中的价格硬编码",
+      "acceptance": "客服卡片、管理员默认套餐、兑换预览都读取服务端套餐；旧计划兼容记录与当前可售目录分离",
+      "status": "verified_not_deployed",
+      "evidence": "客服套餐卡片与兑换预览读取服务端 plans；未部署生产"
+    }
+  ],
+  "last_reviewed": "2026-11-07",
+  "verification_note": "本地 Python 关键组、前端测试与 Vite 构建已通过；全量 Linux/PG/Redis/Chromium 门禁由 GitHub Actions 执行。Windows 恢复演练的符号链接场景需 Linux CI。未部署生产。"
+}

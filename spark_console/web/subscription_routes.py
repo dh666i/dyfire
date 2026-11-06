@@ -67,7 +67,7 @@ def admin_membership_map(db, users) -> dict[str, dict[str, object]]:
     return {user.id: membership_summary(db, user) for user in users}
 
 
-def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIRouter:
+def build_subscription_router(engine, auth: WebAuth, page, render_admin, cipher=None) -> APIRouter:
     router = APIRouter()
 
     @router.get("/subscription")
@@ -171,7 +171,7 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin) -> APIR
             auth.csrf(record, csrf_token)
             if not 1 <= quantity <= 20:
                 raise HTTPException(400, "每次最多生成 20 个兑换码")
-            service = SubscriptionService(db, AuditService(db))
+            service = SubscriptionService(db, AuditService(db), cipher=cipher)
             try:
                 plaintext_codes = [
                     service.create_redemption_code(

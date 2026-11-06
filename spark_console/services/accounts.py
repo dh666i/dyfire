@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from core.avatars import safe_avatar_url
 
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from core.account_profile import normalize_platform_user_id
 
 from spark_console.credentials import CredentialError, CredentialPayload
 from spark_console.crypto import CookieCipher
@@ -33,6 +35,10 @@ class AccountIdentityAlreadyBound(Conflict):
 
 
 class AccountReloginActive(Conflict):
+    pass
+
+
+class AccountIdentityUnavailable(Conflict):
     pass
 
 
@@ -75,10 +81,16 @@ class AccountService:
         douyin_unique_id: str | None = None,
         conversation_names=(),
         contact_identities=(),
+        *,
+        platform_user_id: str | None = None,
     ) -> DouyinAccount:
         name = self._validated_display_name(display_name)
         normalized_unique_id = self._normalized_unique_id(douyin_unique_id)
-        self._ensure_identity_available(normalized_unique_id)
+        uid = normalize_platform_user_id(platform_user_id)
+        if platform_user_id is not None and uid is None:
+            raise AccountIdentityUnavailable("无法确认抖音账号身份，原登录资料未改动")
+        if uid is None:
+            self._ensure_identity_available(normalized_unique_id)
 
         sealed = self._seal_storage_state(storage_state)
         account = DouyinAccount(
@@ -94,9 +106,12 @@ class AccountService:
         self.session.flush()
         self.session.add(
             DouyinAccountIdentity(
-                account_id=account.id, douyin_unique_id=normalized_unique_id
+                account_id=account.id, douyin_unique_id=normalized_unique_id,
             )
         )
+        self.session.flush()
+        if uid is not None:
+            self._claim_platform_identity(account.id, uid)
         seen = set()
         for display_name in conversation_names:
             normalized_name = str(display_name).strip()
@@ -231,22 +246,21 @@ class AccountService:
         account_id: str,
         storage_state: dict,
         douyin_unique_id: str | None = None,
+        *,
+        platform_user_id: str | None = None,
     ) -> DouyinAccount:
         account = self.get_owned(owner_id, account_id)
         identity = self.session.get(DouyinAccountIdentity, account.id)
-        previous_unique_id = (
-            self._normalized_unique_id(identity.douyin_unique_id)
-            if identity is not None
-            else None
-        )
         normalized_unique_id = self._normalized_unique_id(douyin_unique_id)
-        if previous_unique_id is not None and normalized_unique_id != previous_unique_id:
+        uid = normalize_platform_user_id(platform_user_id)
+        expected_uid = identity.douyin_user_id if identity is not None else None
+        if uid is None or expected_uid is None:
+            raise AccountIdentityUnavailable("无法确认原抖音账号身份，原登录资料未改动，请稍后重试")
+        if expected_uid != uid:
             raise AccountIdentityMismatch(
                 "扫码登录的抖音账号与所选账号不一致"
             )
-        self._ensure_identity_available(
-            normalized_unique_id, excluding_account_id=account.id
-        )
+        self._claim_platform_identity(account.id, uid)
         sealed = self._seal_storage_state(storage_state)
         account.encrypted_cookies = sealed.ciphertext
         account.cookie_nonce = sealed.nonce
@@ -255,20 +269,60 @@ class AccountService:
         account.last_verified_at = utc_now()
         from spark_console.services.account_health import recovered
         recovered(self.session, account)
-        if identity is None:
-            self.session.add(
-                DouyinAccountIdentity(
-                    account_id=account.id,
-                    douyin_unique_id=normalized_unique_id,
-                )
-            )
-        elif normalized_unique_id is not None:
+        if normalized_unique_id is not None:
             identity.douyin_unique_id = normalized_unique_id
         self.session.flush()
         self.audit.write(
             owner_id, "account.reauthenticated", "douyin_account", account.id
         )
         return account
+
+    def record_identity_if_current(self, account_id, expected, platform_user_id):
+        """Enroll a legacy identity only from its unchanged original credentials."""
+        uid = normalize_platform_user_id(platform_user_id)
+        if uid is None:
+            raise AccountIdentityUnavailable("无法确认原抖音账号身份，原登录资料未改动，请稍后重试")
+        matched = self.session.execute(update(DouyinAccount).where(
+            DouyinAccount.id == account_id,
+            DouyinAccount.encrypted_cookies == expected[0],
+            DouyinAccount.cookie_nonce == expected[1],
+            DouyinAccount.cookie_version == expected[2],
+        ).values(updated_at=DouyinAccount.updated_at))
+        if matched.rowcount != 1:
+            raise Conflict("账号登录资料已更新，请重新打开验证")
+        self._claim_platform_identity(account_id, uid)
+
+    def _claim_platform_identity(self, account_id, uid):
+        identity = self.session.get(DouyinAccountIdentity, account_id)
+        if identity is not None and identity.douyin_user_id not in (None, uid):
+            raise AccountIdentityMismatch("当前抖音账号与原账号不一致，原资料未改动")
+        if self.session.scalar(select(DouyinAccountIdentity.account_id).where(
+            DouyinAccountIdentity.douyin_user_id == uid,
+            DouyinAccountIdentity.account_id != account_id,
+        ).limit(1)) is not None:
+            raise AccountIdentityAlreadyBound("该抖音账号已经绑定")
+        try:
+            with self.session.begin_nested():
+                if identity is None:
+                    identity = DouyinAccountIdentity(account_id=account_id)
+                    self.session.add(identity)
+                identity.douyin_user_id = uid
+                self.session.flush()
+        except IntegrityError:
+            raise AccountIdentityAlreadyBound("该抖音账号已经绑定") from None
+
+    def require_legacy_identities_ready(self):
+        # Protect accounts currently providing service during cutover. Dormant
+        # legacy records are preserved; the real send path verifies their
+        # identity before any future message can be submitted.
+        pending = self.session.scalar(select(DouyinAccount.id).outerjoin(
+            DouyinAccountIdentity, DouyinAccountIdentity.account_id == DouyinAccount.id
+        ).where(
+            DouyinAccountIdentity.douyin_user_id.is_(None),
+            exists().where(SparkTask.douyin_account_id == DouyinAccount.id, SparkTask.enabled.is_(True)),
+        ).limit(1))
+        if pending is not None:
+            raise AccountIdentityUnavailable("账号身份核对暂未完成，请稍后重试或联系客服")
 
     def _ensure_identity_available(
         self,

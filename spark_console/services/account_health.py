@@ -105,7 +105,7 @@ def recovered(db, account):
         .join(SparkTask, SparkTask.id == TaskRun.task_id).where(
             SparkTask.douyin_account_id == account.id, TaskRun.status == "retrying")):
         finish_run(run, "skipped" if run.attempt == 0 else "failed", "authenticating", now,
-                   "health_retry_cancelled", "账号已重新登录，取消旧会话下的恢复任务")
+                   "health_retry_reauth", "账号已重新登录，取消旧会话下的恢复任务")
     skip_missed(db, account.id, now)
 
 

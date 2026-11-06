@@ -113,11 +113,15 @@ def write_manifest(path: str | Path, manifest: dict[str, Any]) -> Path:
             os.fsync(stream.fileno())
         os.chmod(temporary, 0o600)
         os.replace(temporary, target)
-        directory_fd = os.open(target.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        # POSIX supports syncing directory entries after rename. Windows does
+        # not expose directory handles through os.open; the file itself has
+        # already been fsynced before its atomic replacement.
+        if os.name != "nt":
+            directory_fd = os.open(target.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise

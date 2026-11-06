@@ -119,8 +119,13 @@ def test_restore_drill_rejects_symlink_source_and_output(tmp_path):
     source_link = tmp_path / "backup-link.db"
     output_target = tmp_path / "output.db"
     output_link = tmp_path / "output-link.db"
-    source_link.symlink_to(source)
-    output_link.symlink_to(output_target)
+    try:
+        source_link.symlink_to(source)
+        output_link.symlink_to(output_target)
+    except OSError as error:
+        if getattr(error, 'winerror', None) == 1314:
+            pytest.skip('Windows account lacks symlink privilege; exercised on Linux CI')
+        raise
 
     with pytest.raises(module.RecoveryDrillError, match="符号链接"):
         module.run(source_link)

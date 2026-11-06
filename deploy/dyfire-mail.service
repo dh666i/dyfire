@@ -1,0 +1,15 @@
+[Unit]
+Description=Dyfire bounded mail delivery
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/dyfire
+ExecStart=/usr/bin/docker compose --project-name douyin-spark-console --env-file /opt/dyfire/.env.console --file /opt/dyfire/compose.console.yml exec -T spark-web python -m spark_console.mail_worker
+TimeoutStartSec=3min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

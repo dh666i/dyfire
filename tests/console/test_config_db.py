@@ -595,9 +595,9 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual((11, "account_dispatch_shards"), migrations[10][:2])
         self.assertEqual((12, "retention_query_indexes"), migrations[11][:2])
         self.assertEqual((13, "account_queue_query_indexes"), migrations[12][:2])
-        self.assertEqual((14, "admin_totp_credentials"), migrations[13][:2])
+        self.assertEqual((14, "retired_authenticator_schema_compatibility"), migrations[13][:2])
         self.assertEqual((15, "audit_request_context"), migrations[14][:2])
-        self.assertEqual((16, "admin_totp_recovery_codes"), migrations[15][:2])
+        self.assertEqual((16, "retired_authenticator_recovery_schema_compatibility"), migrations[15][:2])
         self.assertEqual((17, "user_onboarding_state"), migrations[16][:2])
         self.assertEqual((18, "subscription_deferred_limits"), migrations[17][:2])
         self.assertEqual((19, "subscription_grant_supersession"), migrations[18][:2])
@@ -784,7 +784,7 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((19, "subscription_grant_supersession"), migrations[-1])
+            self.assertEqual((21, "security_lifecycle"), migrations[-1])
         finally:
             engine.dispose()
 

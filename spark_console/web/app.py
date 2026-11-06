@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine
 from core.avatars import safe_avatar_url
 
 from spark_console.config import Settings
-from spark_console.crypto import CookieCipher, SecretCipher
+from spark_console.crypto import CookieCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.run_attempts import for_runs as attempts_for_runs
 from spark_console.run_events import for_runs as events_for_runs
@@ -61,42 +61,13 @@ from spark_console.web.request_limits import RequestBodyLimitMiddleware
 from spark_console.web.proxy_headers import TrustedProxyMiddleware
 from spark_console.web.request_context import RequestCorrelationMiddleware
 from spark_console.web.subscription_routes import build_subscription_router
-from spark_console.web.elevation_routes import build_elevation_router
-from spark_console.web.mfa_routes import build_mfa_router
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
 
-RUN_STATUS_LABELS = {
-    "running": "执行中",
-    "success": "已发出",
-    "submitted_unconfirmed": "待核实",
-    "failed": "未发出",
-    "skipped": "已跳过",
-    "retrying": "等待重试",
-}
-RUN_STAGE_LABELS = {
-    "starting": "准备执行",
-    "authenticating": "验证登录",
-    "selecting_target": "查找好友",
-    "worker_error": "执行异常",
-    "sending": "发送消息",
-    "confirming": "确认送达",
-    "submitted": "已提交发送",
-    "claimed": "已领取",
-    "complete": "已完成",
-    "missed_startup": "执行器离线",
-    "late": "超过发送窗口",
-    "clock_check": "时间校验",
-    "entitlement_check": "会员校验",
-    "navigation": "打开聊天页",
-    "message_input": "填写消息",
-    "delivery_confirmation": "确认送达",
-    "account_queue": "等待账号",
-    "target_bound": "绑定好友",
-    "target_search": "查找好友",
-}
+from spark_console.run_policy import RUN_STATUS_LABELS, RUN_STAGE_LABELS, run_view_status, run_guidance
+
 UI_NOTICES = {
     "password-updated": ("success", "登录密码已更新。"),
     "task-created": ("success", "续火任务已创建并启用。"),
@@ -121,106 +92,11 @@ def shanghai_time(value) -> str:
     return aware.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
 
 
-LOGIN_ERROR_CODES = {"cookie_invalid", "credential_invalid", "account_verification_required"}
-MISS_ERROR_CODES = {
-    "health_retry_waiting",
-    "health_retry_expired",
-    "health_retry_exhausted",
-    "health_retry_cancelled",
-    "account_health_pending",
-    "account_health_blocked",
-    "account_busy",
-    "missed_window",
-    "worker_was_offline",
-    "target_ambiguous",
-}
-
 # Legacy server-rendered views are still reachable from old bookmarks and
 # automation links. Keep their initial payload bounded even though the main
 # product now uses the React bootstrap APIs.
 LEGACY_WORKSPACE_PAGE_SIZE = 100
 ACCOUNT_CONVERSATION_PAGE_SIZE = 100
-
-
-def run_view_status(run) -> dict[str, str]:
-    status = str(getattr(run, "status", "") or "")
-    error_code = str(getattr(run, "error_code", "") or "")
-    if status == "success":
-        return {"label": "已发出", "tone": "good", "kind": "success"}
-    if status == "submitted_unconfirmed" or error_code == "delivery_confirmation_unavailable":
-        return {"label": "待核实", "tone": "warn", "kind": "unconfirmed"}
-    if error_code in LOGIN_ERROR_CODES:
-        return {"label": "需要验证", "tone": "danger", "kind": "login"}
-    if error_code == "account_busy":
-        return {"label": "等待账号", "tone": "warn", "kind": "account_queue"}
-    if error_code == "target_ambiguous":
-        return {"label": "目标需确认", "tone": "danger", "kind": "failed"}
-    if status == "retrying" or error_code.startswith("retry_scheduled_") or error_code == "health_retry_waiting":
-        return {"label": "等待重试", "tone": "warn", "kind": "retry"}
-    if status == "running":
-        return {"label": "执行中", "tone": "progress", "kind": "running"}
-    if error_code == "subscription_inactive":
-        return {"label": "会员不可用", "tone": "danger", "kind": "failed"}
-    if error_code in MISS_ERROR_CODES:
-        return {"label": "本次未发出", "tone": "warn", "kind": "missed"}
-    if status == "skipped":
-        return {"label": "本次未发出", "tone": "warn", "kind": "missed"}
-    if status == "failed":
-        return {"label": RUN_STATUS_LABELS.get(status, "失败"), "tone": "danger", "kind": "failed"}
-    return {"label": RUN_STATUS_LABELS.get(status, status or "未知"), "tone": "off", "kind": "other"}
-
-
-def run_guidance(run) -> dict[str, str] | None:
-    code = str(getattr(run, "error_code", "") or "")
-    from spark_console.health_retry import WINDOW
-    window_minutes = int(WINDOW.total_seconds() // 60)
-    submitted = getattr(run, "submitted_at", None) is not None or str(getattr(run, "status", "")) == "submitted_unconfirmed"
-    if code == 'health_retry_waiting':
-        return {'text':f'这次还没发出去，多半是聊天页暂时没加载完，不必重新扫码。系统会在原计划后 {window_minutes} 分钟内继续重试。', 'action':'none'}
-    if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'} and not submitted:
-        return {'text':'这次没有发出去，通常不是账号掉线。明天的计划还在。若聊天里还没有这条，可以补发一次。', 'action':'retry'}
-    if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'}:
-        return {'text':'本次恢复重试已结束。请查看账号状态；下一天的正常计划不受影响。', 'action':'account'}
-    if code == 'health_retry_submitted':
-        return {'text':'消息已进入提交步骤，为避免重复消息不会自动重发，请核对抖音聊天记录。', 'action':'none'}
-    if code in {'account_health_pending', 'account_health_blocked'}:
-        return {'text':'账号暂缓发送，正在自动复核。通常不用重新扫码；需要验证时会在账号页标明。恢复后执行后续计划，本次不自动补发。', 'action':'account'}
-    if code == 'account_verification_required':
-        return {'text':'抖音要求安全验证，请前往账号页完成验证。系统不会自动尝试密码或验证码。', 'action':'account'}
-    if code == 'account_busy':
-        return {'text':'正在等待该账号的其他云端操作完成，无需重复操作。', 'action':'none'}
-    if code.startswith("retry_scheduled_"):
-        return {"text": "临时故障，系统已安排自动重试，无需重复创建任务。", "action": "none"}
-    if code in {"cookie_invalid", "credential_invalid"}:
-        return {"text": "请在账号页查看复核结果或重新登录；已启用任务将在恢复后继续后续计划。", "action": "account"}
-    if code == "subscription_inactive":
-        return {"text": "会员当前不可用，续费后可继续执行后续计划。", "action": "subscription"}
-    if code in {"target_not_found", "conversation_not_opened"}:
-        return {"text": "请检查目标好友，并从该账号的最近会话中重新选择。", "action": "task"}
-    if code == "target_ambiguous":
-        return {"text": "同步好友中存在多个同名目标。请编辑任务并重新选择具体好友，避免发错人。", "action": "task"}
-    if code in {"account_unavailable", "task_inactive"}:
-        return {"text": "发送账号或任务当前不可用，请检查任务设置。", "action": "task"}
-    if code in {"worker_was_offline", "missed_window"}:
-        return {"text": "本次已错过发送窗口且不会补发，后续每日计划不受影响。", "action": "none"}
-    if code == "delivery_confirmation_unavailable":
-        return {
-            "text": "系统已经执行发送，但未能从抖音页面取得确认。为避免重复消息，本次不会自动重发，请先到抖音聊天记录核对。",
-            "action": "none",
-        }
-    if code == "system_time_unhealthy":
-        return {"text": "服务器时间异常，请联系管理员处理。", "action": "none"}
-    if code in {"automation_failed", "unexpected_error"}:
-        return {"text": "页面操作未完成；如连续出现，请联系管理员并提供本次执行时间。", "action": "none"}
-    if code == "page_timeout":
-        return {"text": "抖音页面暂时没有完成加载，系统会在安全窗口内自动重试。", "action": "none"}
-    if code == "browser_unavailable":
-        return {"text": "云端浏览器连接暂时中断，系统会自动重试；连续出现时请复核账号状态。", "action": "none"}
-    if code == "message_input_failed":
-        return {"text": "消息还没有进入提交步骤，系统会自动重试，不会重复发送。", "action": "none"}
-    if code == "delivery_confirmation_timeout":
-        return {"text": "消息已经进入发送步骤，但页面确认超时。请先核对聊天记录，系统不会自动重发。", "action": "none"}
-    return None
 
 
 templates.env.filters["shanghai_time"] = shanghai_time
@@ -235,10 +111,6 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     # Forwarded scheme and client address are trusted only when the immediate
     # peer belongs to an explicitly configured proxy network.  An empty list
     # is the secure default for direct/local deployments.
-    app.add_middleware(
-        TrustedProxyMiddleware,
-        trusted_proxy_cidrs=settings.trusted_proxy_cidrs,
-    )
     app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.max_request_bytes)
     app.add_middleware(RequestCorrelationMiddleware)
     app.state.settings = settings
@@ -249,44 +121,12 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     redis_backend = RedisBackend.from_settings(settings)
     app.state.redis_backend = redis_backend
 
-    @app.middleware("http")
-    async def security_headers(request: Request, call_next):
-        response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-        response.headers.setdefault(
-            "Content-Security-Policy",
-            "default-src 'self'; base-uri 'self'; object-src 'none'; "
-            "frame-ancestors 'none'; form-action 'self'; "
-            "img-src 'self' data: blob: https:; font-src 'self' data:; "
-            "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
-            "connect-src 'self'",
-        )
-        response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
-        response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
-        # API responses include CSRF tokens and account-specific data.  Keep
-        # them out of browser and intermediary caches even when an individual
-        # route forgets to set its own no-store header.
-        if request.url.path.startswith("/api/"):
-            response.headers.setdefault("Cache-Control", "no-store")
-        if request.url.scheme == "https" and settings.hsts_max_age_seconds > 0:
-            hsts = f"max-age={settings.hsts_max_age_seconds}"
-            if settings.hsts_include_subdomains:
-                hsts += "; includeSubDomains"
-            response.headers.setdefault("Strict-Transport-Security", hsts)
-        return response
-
     app.mount("/static", StaticFiles(directory=str(PACKAGE_ROOT / "static")), name="static")
     passwords = PasswordService()
     sessions = SessionService(settings.session_key_file.read_bytes())
     auth = WebAuth(sessions)
-    # Administrative writes are authorized by the authenticated admin session
-    # and CSRF token. A second password step-up is intentionally not part of
-    # the product workflow; keep the elevation endpoint available only for
-    # compatibility with older clients.
+    # Administrative writes use the authenticated admin session and CSRF.
+    # Administrator actions use the same normal session, CSRF and role checks.
     from spark_console.web.update_routes import build_update_router
     app.include_router(build_update_router(engine, auth))
     @app.get('/api/version')
@@ -303,29 +143,12 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 'username': user.username,
                 'must_change_password': bool(user.must_change_password),
                 'is_admin': user.role == 'admin',
-                'elevated': auth.is_elevated(record),
-                'elevated_until': record.elevated_until.isoformat() if record.elevated_until else None,
             }
     registration_limiter = build_rate_limiter(
         redis_backend, namespace="registration"
     )
     login_limiter = build_rate_limiter(redis_backend, namespace="login")
-    elevation_limiter = build_rate_limiter(
-        redis_backend, limit=5, namespace="elevation"
-    )
-    app.include_router(build_elevation_router(engine, auth, passwords, elevation_limiter))
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
-    # TOTP enrollment is available for administrators but is not consulted by
-    # login or step-up until an explicit, separately reviewed rollout.
-    app.include_router(
-        build_mfa_router(
-            engine,
-            auth,
-            passwords,
-            build_rate_limiter(redis_backend, limit=5, namespace="mfa"),
-            SecretCipher(settings.session_key_file.read_bytes()),
-        )
-    )
     from spark_console.web.studio_routes import build_studio_router
     app.include_router(build_studio_router(engine, auth, cipher))
     from spark_console.web.spa_routes import build_spa_router
@@ -465,7 +288,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         )
     )
     app.include_router(
-        build_subscription_router(engine, auth, page, render_admin)
+        build_subscription_router(engine, auth, page, render_admin, cipher=cipher)
     )
     app.include_router(
         build_admin_router(engine, settings, auth, passwords, cipher, page)
@@ -667,7 +490,6 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             record.token_hash = rotated.token_hash
             record.csrf_token = rotated.csrf_token
             record.expires_at = rotated.expires_at
-            record.elevated_until = None
         response = RedirectResponse("/dashboard?notice=password-updated", status_code=303)
         response.set_cookie(
             "spark_session",
@@ -1302,6 +1124,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 return RedirectResponse("/runs?notice=retry-busy", status_code=303)
         return RedirectResponse("/runs?notice=retry-queued", status_code=303)
 
+    from spark_console.web.security_headers import SecurityHeadersMiddleware
+    app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+    # Resolve the real scheme/client before the SPA can return early.
+    app.add_middleware(TrustedProxyMiddleware, trusted_proxy_cidrs=settings.trusted_proxy_cidrs)
     return app
 
 

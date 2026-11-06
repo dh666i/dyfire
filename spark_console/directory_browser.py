@@ -2,27 +2,10 @@
 import asyncio
 from dataclasses import asdict
 
-from core.avatars import avatar_from_user_info
+from core.account_profile import read_self_profile, ACCOUNT_INFO_URL
 from core.web_chat import UserInfoCollector, WEB_CHAT_URL, ensure_web_chat_authenticated
 from spark_console.credentials import CredentialPayload
 from core.session_health import require_session, wait_for_session, inspect_session, SessionUnavailable
-
-ACCOUNT_INFO_URL = "https://www.douyin.com/passport/account/info/v2/?aid=6383"
-
-
-async def read_self_profile(context):
-    try:
-        response = await context.request.get(ACCOUNT_INFO_URL, timeout=5000)
-        body = await response.json()
-        data = body.get("data", {})
-        if body.get("message") != "success" or data.get("error_code") != 0 or not data.get("user_id"):
-            return {}
-        return {"nickname": str(data.get("name") or data.get("nickname") or "").strip()[:256],
-                "unique_id": str(data.get("unique_id") or "").strip()[:128],
-                "avatar_url": avatar_from_user_info(data)}
-    except Exception:
-        return {}
-
 
 # Only conversation rows and user-result rows with an explicit identity are read.
 # Never click a search result, a send button, or the chat editor.

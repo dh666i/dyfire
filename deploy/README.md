@@ -6,11 +6,11 @@
 
 1. 首次部署经过验证，镜像为 `ghcr.io/dh666i/dyfire@sha256:...` 的完整摘要。
 2. `installed.json` 记录实际部署的 `version`、`schema`（目前为 1）、`image`。不得填写尚未部署的镜像。
-3. 私有 GitHub 仓库只读令牌置于 `secrets/github-token`，root 所有、0600 权限。令牌只需读取仓库内容与发行信息。另用有 read:packages 权限的凭据在主机完成 `docker login ghcr.io`，不写入网页或仓库。
+3. 公开仓库读取 Release 不需要令牌；若保留私有凭据，令牌置于 `secrets/github.read.token`，root 所有、0600 权限。令牌只需读取仓库内容与发行信息。另用有 read:packages 权限的凭据在主机完成 `docker login ghcr.io`，不写入网页或仓库。
 4. 每个可更新发行版使用 `vX.Y.Z` 标签。GitHub Actions 会在容器健康检查通过后发布正式 Release，发行说明包含 `dyfire-manifest` JSON 注释，记录与镜像实际一致的 version、schema、image 摘要。草稿和预发行版永不参与自动更新。
 5. 复制 `dyfire-updater.service` 到 systemd 服务目录并启用。没有完成上述配置，网页保持“更新服务暂未连接”。
 
-更新过程：从固定私有仓库读取版本 → 校验版本与数据结构 → 检查扫码/发送及空间 → 从运行中的 Web 容器解析 `/data` 主机绑定目录 → 下载固定镜像 → 停止写入服务 → 生成部署前快照 → 启动新版本 → 校验健康与实际版本。镜像拉取最多等待 1 小时，停止/启动服务等本机操作最多等待 10 分钟。失败恢复旧镜像。不会自动恢复旧数据库，避免回滚执行记录后重复发送。完整更新和回滚都会在下载前、停止服务前检查活跃发送与扫码会话；发现任一操作进行中就拒绝切换，不中断现有抖音登录态或消息任务。
+更新过程：从固定仓库读取版本 → 校验版本与数据结构 → 检查扫码/发送及空间 → 从运行中的 Web 容器解析 `/data` 主机绑定目录 → 下载固定镜像 → 停止写入服务 → 生成部署前快照 → 启动新版本 → 校验健康与实际版本。镜像拉取最多等待 1 小时，停止/启动服务等本机操作最多等待 10 分钟。失败恢复旧镜像。不会自动恢复旧数据库，避免回滚执行记录后重复发送。完整更新和回滚都会在下载前、停止服务前检查活跃发送与扫码会话；发现任一操作进行中就拒绝切换，不中断现有抖音登录态或消息任务。
 
 管理员也可以选择 Web-only 更新：只拉取并重建 `spark-web`，保留 `spark-auth`、`spark-worker` 和 `spark-monitor` 的进程与镜像不变。此模式只适用于前端/API 展示改动；涉及调度、发送、登录流程或数据结构的版本必须使用完整更新。Web-only 版本记录在 `web-installed.json`，不覆盖完整服务的 `installed.json`。
 
@@ -18,23 +18,23 @@
 
 更新请求目录由应用写入，其余更新状态及部署目录由主机拥有。网页仅允许管理员提交 check/install，检查 CSRF，已有请求不会重复排队。默认不会自动安装或启用周期性宿主机备份；正式更新仍会在切换前保存可回退快照。
 
-如需在确认磁盘空间和恢复目标后启用本机周期备份，可人工安装模板（不会影响
-`www.chichiapi.cn`）：
+## 邮件与数据维护
 
-```bash
-sudo install -m 0644 deploy/dyfire-backup.service deploy/dyfire-backup.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now dyfire-backup.timer
-systemctl list-timers dyfire-backup.timer
-```
+`sudo python3 deploy/install-maintenance.py` 默认只列出安装动作；带 `--apply`
+安装一分钟一次的邮件消费者和每日有界记录清理。使用运行中的 Web 镜像，不新增
+第五个容器，不创建周期备份。SMTP 未配置时不会发送任何邮件。
 
-模板每天 03:17（最多延迟 15 分钟）调用一次性 `spark-web` Compose 容器，保留最近
-14 个备份。启用前应确认 `.env.console` 指向正式镜像且 `data/backups` 有足够空间。
-关闭 timer：
+管理员邮件页显示消费者心跳、队列数量和最久等待时间。未连接消费者时不接受
+验证/密码找回邮件请求。SMTP 接受与收件箱送达不是同一事实；结果不确定不重发。
 
-```bash
-sudo systemctl disable --now dyfire-backup.timer
-```
+快照只在正式更新前创建，跳过数据目录中的 backups/snapshots，避免复制套娃。
+`python3 deploy/snapshot_inventory.py` 只读盘点并给出超预算的旧副本候选；
+默认保留至少最近 5 份、14 天内的副本，2 GiB 是预算而非强制删除上限。
+只有单独带 `--apply` 才会清理，不由 timer 自动调用，不会删除当前已有恢复点。
+
+更新器 systemd 收紧文件写入范围、资源和凭据权限，但访问 Docker 仍接近 root
+权限；这些防护不能替代宿主机隔离。Web 仅有请求目录写权限；monitor 不挂载
+密钥或更新请求，auth/worker 只挂载抖音资料密钥。
 
 ## 备份清单和校验
 

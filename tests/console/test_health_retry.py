@@ -78,7 +78,7 @@ def test_unbound_account_health_retry_is_cancelled_without_sending(case, shards)
         db.commit()
         run = db.get(TaskRun, first.id)
         assert run.status == "failed"
-        assert run.error_code == "health_retry_cancelled"
+        assert run.error_code == "health_retry_task_changed"
         assert run.submitted_at is None
 
 def test_chat_list_flake_retries_inside_window(case, monkeypatch):
@@ -147,7 +147,10 @@ def test_ineligible_recovery_never_executes(case,reason):
         task=db.get(SparkTask,tid)
         if reason=="edited": task.message_template="changed"
         if reason=="paused": task.enabled=False
-        if reason=="membership": db.get(UserSubscription,task.owner_user_id).valid_until=now+timedelta(seconds=5)
+        if reason=="membership":
+            subscription = db.get(UserSubscription,task.owner_user_id)
+            subscription.valid_from = now + timedelta(days=1)
+            subscription.valid_until = now + timedelta(days=2)
         if reason in ("verification","invalid"): db.get(DouyinAccount,aid).validation_state=reason
         db.commit()
     executor=Executor(fail=False)
@@ -156,6 +159,26 @@ def test_ineligible_recovery_never_executes(case,reason):
     with Session(engine) as db:
         run=db.get(TaskRun,first.id)
         assert run.status=="failed" and run.error_code.startswith("health_retry_")
+
+
+@pytest.mark.parametrize("subscription", ["absent", "expired"])
+def test_free_tier_first_task_can_recover_from_temporary_failure(case, subscription):
+    now, _, engine, _, task_id = case
+    with Session(engine) as db:
+        task = db.get(SparkTask, task_id)
+        row = db.get(UserSubscription, task.owner_user_id)
+        if subscription == "absent":
+            db.delete(row)
+        else:
+            row.valid_until = now - timedelta(seconds=1)
+        db.commit()
+    first = attempt(case, Executor())
+    assert first.status == "retrying"
+    recover(case)
+    executor = Executor(fail=False)
+    result = attempt(case, executor, 190)
+    assert result.id == first.id and result.status == "success"
+    assert executor.calls == 1
 
 @pytest.mark.parametrize("health",["temporary","verification","logged_out"])
 def test_submission_boundary_wins_over_health_error(case,health):
@@ -316,7 +339,7 @@ def test_relogin_cancels_waiting_siblings(case):
         recovered(db, db.get(DouyinAccount, case[3]))
         db.commit()
         rows = db.scalars(select(TaskRun)).all()
-        pending = [r for r in rows if r.error_code == "health_retry_cancelled"]
+        pending = [r for r in rows if r.error_code == "health_retry_reauth"]
         assert len(pending) == 5
         assert all(r.status in ("failed", "skipped") for r in pending)
 

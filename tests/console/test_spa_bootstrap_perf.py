@@ -16,6 +16,27 @@ from spark_console.security import PasswordService, SessionService
 from spark_console.web.app import create_app
 
 
+def test_first_success_onboarding_uses_history_not_task_creation_or_todays_page():
+    from tests.console.test_web_fixture import UserFixture
+    fixture = UserFixture(); fixture.setUp()
+    try:
+        with session_scope(fixture.engine) as db:
+            db.get(User, fixture.uid).must_change_password = False
+            task = SparkTask(owner_user_id=fixture.uid, target_name="fixture", send_time="09:30", message_template="test", enabled=False)
+            db.add(task);db.flush();task_id = task.id
+            db.add(TaskRun(task_id=task_id, scheduled_for=datetime.now(timezone.utc)-timedelta(days=20), status="failed"))
+        fixture.login()
+        first = fixture.client.get('/api/app/bootstrap').json()
+        assert first['onboarding']['has_successful_run'] is False
+        with session_scope(fixture.engine) as db:
+            db.add(TaskRun(task_id=task_id, scheduled_for=datetime.now(timezone.utc)-timedelta(days=19), status="success"))
+        after = fixture.client.get('/api/app/bootstrap').json()
+        assert after['onboarding']['has_successful_run'] is True
+        assert after['runs'] == []
+    finally:
+        fixture.tearDown()
+
+
 def test_app_onboarding_is_persisted_per_user_and_requires_csrf(tmp_path):
     cookie_key = tmp_path / "cookie.key"
     cookie_key.write_bytes(b"c" * 32)

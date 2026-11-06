@@ -29,6 +29,7 @@ def test_postgres_schema_and_scheduler_claim_are_real_database_operations():
     assert "ix_task_runs_status_finished" in indexes
     assert "ix_mail_deliveries_status_updated" in indexes
     assert "ix_audit_events_request_id" in indexes
+    assert "uq_douyin_account_user_id" in indexes
     audit_columns = {column["name"] for column in inspector.get_columns("audit_events")}
     assert {"request_id", "client_ip", "outcome", "error_code"} <= audit_columns
 

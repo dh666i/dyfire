@@ -119,7 +119,7 @@ def main() -> int:
         healthy = bool(process_ids)
         if healthy:
             try:
-                settings = Settings.from_env(os.environ)
+                settings = Settings.from_env(os.environ, service='worker')
                 healthy = _worker_lease_running(
                     settings.database_url,
                     settings.worker_shard,

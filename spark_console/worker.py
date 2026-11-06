@@ -88,6 +88,9 @@ class Worker:
         self.account_task_gap_seconds = max(0, int(os.environ.get("SPARK_ACCOUNT_TASK_GAP_SECONDS", "8")))
 
     async def run_once(self, now: datetime | None = None):
+        close_idle = getattr(self.executor, 'close_idle_session', None)
+        if close_idle is not None:
+            await close_idle()
         current_time = now or self._clock()
         if not self._acquire_worker_lock(current_time):
             return None
@@ -353,6 +356,11 @@ class Worker:
                     run_id,
                     self._event_time(current_time, now is not None),
                 )
+            if isinstance(self.executor, DouyinExecutor):
+                kwargs["on_authenticated"] = lambda uid: self._record_authenticated_identity(
+                    run_id, account_id, credential_snapshot, uid,
+                    self._event_time(current_time, now is not None),
+                )
             execution = asyncio.create_task(
                 self.executor.execute(
                     cookies, target_name, message_template, **kwargs
@@ -543,6 +551,15 @@ class Worker:
             or parameter.kind is inspect.Parameter.VAR_KEYWORD
             for parameter in parameters
         )
+
+    def _record_authenticated_identity(self, run_id, account_id, expected, uid, now):
+        with session_scope(self.engine) as db:
+            run = db.get(TaskRun, run_id)
+            if run is None or run.status != "running" or run.worker_id != self.worker_id:
+                raise _LeaseOwnershipLost()
+            if run.lease_until is None or run.lease_until.replace(tzinfo=now.tzinfo) <= now:
+                raise _LeaseOwnershipLost()
+            AccountService(db, self.cipher, AuditService(db)).record_identity_if_current(account_id, expected, uid)
 
     def _mark_submitted(
         self, run_id: str, submitted_at: datetime | None = None
@@ -801,7 +818,7 @@ class Worker:
 
 
 async def run_loop() -> None:
-    settings = Settings.from_env(os.environ)
+    settings = Settings.from_env(os.environ, service='worker')
     engine = create_engine_for(settings)
     create_schema(engine)
     worker = Worker(settings, engine, clock_offset_seconds=float(os.environ.get("SPARK_CLOCK_OFFSET_SECONDS", "0")))

@@ -176,7 +176,7 @@ def _source(tmp_path: Path, *, populated: bool = True):
             }],
             "web_sessions": [{
                 "id": "web-session", "user_id": "owner", "token_hash": "t" * 64, "csrf_token": "s" * 64,
-                "expires_at": STAMP + timedelta(days=60), "elevated_until": None,
+                "expires_at": STAMP + timedelta(days=60),
             }],
             "spark_tasks": [
                 {
@@ -212,11 +212,6 @@ def _source(tmp_path: Path, *, populated: bool = True):
                 "id": "audit", "actor_user_id": "owner", "action": "account.bound",
                 "resource_type": "account", "resource_id": ACCOUNT_IDS[0], "detail": "历史记录",
             }],
-            # Optional administrator MFA enrollment has its own table. The
-            # migration fixture keeps it empty while still requiring the
-            # destination schema to include it.
-            "admin_totp_credentials": [],
-            "admin_totp_recovery_codes": [],
         }
         assert set(records) | {"worker_lock"} == set(Base.metadata.tables)
         with engine.begin() as connection:

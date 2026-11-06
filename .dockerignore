@@ -23,3 +23,9 @@ package.json
 **/node_modules
 **/dist
 .artifacts
+.claude
+.mcp.json
+*.pem
+*.token
+*.log
+browser_screenshot.png

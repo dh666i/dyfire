@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 19
+SQLITE_SCHEMA_VERSION = 21
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -128,6 +128,20 @@ def create_schema(engine: Engine) -> None:
             "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
             "ON audit_events (request_id)"
         ))
+        connection.execute(text(
+            "ALTER TABLE douyin_account_identities ADD COLUMN IF NOT EXISTS douyin_user_id VARCHAR(64)"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_douyin_account_user_id "
+            "ON douyin_account_identities (douyin_user_id)"
+        ))
+        for table, column, definition in (
+            ('mail_preferences','code_version','INTEGER NOT NULL DEFAULT 1'),
+            ('password_resets','digest_version','INTEGER NOT NULL DEFAULT 1'),
+            ('mail_deliveries','body_ciphertext','BYTEA'),('mail_deliveries','body_nonce','BYTEA'),
+            ('redemption_codes','code_ciphertext','BYTEA'),('redemption_codes','code_nonce','BYTEA'),
+        ):
+            connection.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}'))
     _assert_postgres_schema_complete(engine)
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
@@ -163,6 +177,7 @@ def _assert_postgres_schema_complete(engine: Engine) -> None:
         "ix_douyin_accounts_dispatch_key",
         "ix_task_runs_status_finished",
         "ix_mail_deliveries_status_updated",
+        "uq_douyin_account_user_id",
     }
     actual_indexes = {
         index["name"]
@@ -210,12 +225,14 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (11, "account_dispatch_shards", _upgrade_sqlite_account_dispatch_shards),
         (12, "retention_query_indexes", _upgrade_sqlite_retention_query_indexes),
         (13, "account_queue_query_indexes", _upgrade_sqlite_account_queue_query_indexes),
-        (14, "admin_totp_credentials", _upgrade_sqlite_admin_totp_credentials),
+        (14, "retired_authenticator_schema_compatibility", _preserve_legacy_table),
         (15, "audit_request_context", _upgrade_sqlite_audit_request_context),
-        (16, "admin_totp_recovery_codes", _upgrade_sqlite_admin_totp_recovery_codes),
+        (16, "retired_authenticator_recovery_schema_compatibility", _preserve_legacy_table),
         (17, "user_onboarding_state", _upgrade_sqlite_user_onboarding_state),
         (18, "subscription_deferred_limits", _upgrade_sqlite_subscription_deferred_limits),
         (19, "subscription_grant_supersession", _upgrade_sqlite_subscription_grant_supersession),
+        (20, "verified_platform_account_identity", _upgrade_sqlite_account_identity),
+        (21, "security_lifecycle", _upgrade_sqlite_security_lifecycle),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -238,6 +255,34 @@ def _run_sqlite_migrations(connection: Connection) -> None:
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (version, name),
         )
+
+
+def _upgrade_sqlite_security_lifecycle(connection: Connection) -> None:
+    for table, column, definition in (
+        ('mail_preferences','code_version','INTEGER NOT NULL DEFAULT 1'),
+        ('password_resets','digest_version','INTEGER NOT NULL DEFAULT 1'),
+        ('mail_deliveries','body_ciphertext','BLOB'),('mail_deliveries','body_nonce','BLOB'),
+        ('redemption_codes','code_ciphertext','BLOB'),('redemption_codes','code_nonce','BLOB'),
+    ):
+        columns={r[1] for r in connection.exec_driver_sql(f'PRAGMA table_info({table})')}
+        if column not in columns:
+            connection.exec_driver_sql(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+
+
+def _upgrade_sqlite_account_identity(connection: Connection) -> None:
+    columns = {row[1] for row in connection.exec_driver_sql(
+        "PRAGMA table_info(douyin_account_identities)"
+    ).fetchall()}
+    if "douyin_user_id" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE douyin_account_identities ADD COLUMN douyin_user_id VARCHAR(64)"
+        )
+    # Null legacy identities stay unclaimed; migrations never guess an identity
+    # or replace credentials, accounts, relationships or schedules.
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_douyin_account_user_id "
+        "ON douyin_account_identities (douyin_user_id)"
+    )
 
 
 def _upgrade_sqlite_login_session_mode(connection: Connection) -> None:
@@ -367,28 +412,8 @@ def _upgrade_sqlite_account_queue_query_indexes(connection: Connection) -> None:
         )
 
 
-def _upgrade_sqlite_admin_totp_credentials(connection: Connection) -> None:
-    """Record additive TOTP credential-table creation for SQLite upgrades."""
-    columns = {
-        row[1]
-        for row in connection.exec_driver_sql(
-            "PRAGMA table_info(admin_totp_credentials)"
-        ).fetchall()
-    }
-    required = {
-        "user_id",
-        "ciphertext",
-        "nonce",
-        "enabled",
-        "confirmed_at",
-        "last_used_counter",
-        "created_at",
-        "updated_at",
-    }
-    if not required <= columns:
-        raise RuntimeError(
-            "admin_totp_credentials schema is incomplete; refusing to start"
-        )
+def _preserve_legacy_table(_connection: Connection) -> None:
+    """Do not create, read, modify or drop retired administrator-auth tables."""
 
 
 def _upgrade_sqlite_audit_request_context(connection: Connection) -> None:
@@ -410,32 +435,6 @@ def _upgrade_sqlite_audit_request_context(connection: Connection) -> None:
     connection.exec_driver_sql(
         "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
         "ON audit_events (request_id)"
-    )
-
-
-def _upgrade_sqlite_admin_totp_recovery_codes(connection: Connection) -> None:
-    """Verify the additive one-time recovery-code table exists."""
-    columns = {
-        row[1]
-        for row in connection.exec_driver_sql(
-            "PRAGMA table_info(admin_totp_recovery_codes)"
-        ).fetchall()
-    }
-    required = {
-        "id",
-        "user_id",
-        "code_digest",
-        "salt",
-        "used_at",
-        "created_at",
-    }
-    if not required <= columns:
-        raise RuntimeError(
-            "admin_totp_recovery_codes schema is incomplete; refusing to start"
-        )
-    connection.exec_driver_sql(
-        "CREATE INDEX IF NOT EXISTS ix_admin_totp_recovery_codes_user_used "
-        "ON admin_totp_recovery_codes (user_id, used_at)"
     )
 
 

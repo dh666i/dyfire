@@ -454,6 +454,7 @@ class _Context:
 
 
 class _ContextResponse:
+    status = 200
     def __init__(self, authenticated):
         self.authenticated = authenticated
 

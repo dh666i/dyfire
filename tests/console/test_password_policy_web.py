@@ -18,6 +18,7 @@ from starlette.requests import Request
 from spark_console.web.app import create_app
 from spark_console.crypto import CookieCipher
 from spark_console.services import mail
+from spark_console.mail_outbox import open_body
 
 
 class PasswordPolicyWebTests(unittest.TestCase):
@@ -115,7 +116,7 @@ class PasswordPolicyWebTests(unittest.TestCase):
                 self.passwords.verify(user.password_hash, "Strong-Password-123")
             )
 
-    def test_login_lockout_is_persistent_and_expires(self):
+    def test_target_lockout_does_not_let_another_source_block_a_correct_password(self):
         for _ in range(5):
             response = self.client.post(
                 "/login",
@@ -136,7 +137,7 @@ class PasswordPolicyWebTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(303, blocked.status_code)
-        self.assertNotIn("spark_session", self.client.cookies)
+        self.assertIn("spark_session", self.client.cookies)
 
         with session_scope(self.engine) as db:
             user = db.get(User, self.user_id)
@@ -230,6 +231,7 @@ class PasswordPolicyWebTests(unittest.TestCase):
                 PasswordReset(
                     user_id=user.id,
                     digest=hashlib.sha256((user.id + code).encode()).hexdigest(),
+                    digest_version=1,
                     created_at=now,
                     expires_at=now + timedelta(minutes=10),
                     attempts=0,
@@ -272,6 +274,8 @@ class PasswordPolicyWebTests(unittest.TestCase):
             self.assertTrue(self.passwords.verify(user.password_hash, "Recovered-123"))
 
     def test_new_recovery_code_has_12_hex_characters(self):
+        import time
+        (self.settings.data_dir/'mail-worker-health.json').write_text(json.dumps({'at':time.time(),'state':'ready'}))
         cipher = CookieCipher(self.settings.cookie_key_file.read_bytes())
         config = dict(mail.DEFAULTS)
         config["enabled"] = True
@@ -297,7 +301,7 @@ class PasswordPolicyWebTests(unittest.TestCase):
         with session_scope(self.engine) as db:
             delivery = db.scalar(select(MailDelivery).where(MailDelivery.event == "reset"))
             self.assertIsNotNone(delivery)
-            code = delivery.body.split("重置代码：", 1)[1].splitlines()[0]
+            code = open_body(delivery,cipher).split("重置代码：", 1)[1].splitlines()[0]
             self.assertRegex(code, r"^[0-9A-F]{12}$")
 
 

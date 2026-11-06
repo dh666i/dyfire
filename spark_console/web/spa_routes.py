@@ -9,7 +9,7 @@ import math
 from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy import case, func, or_, select
@@ -48,6 +48,9 @@ from spark_console.web.auth import WebAuth
 from spark_console.web.admin_queries import admin_stats, list_audit_events, list_runs, list_subscriptions, list_users
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.ops_monitor import operations_snapshot
+from spark_console.mail_worker import read_health as mail_worker_health
+from spark_console.services.mail import load_config as load_mail_config, queue_health
+from spark_console.run_diagnostics import support_id, bundle as diagnostic_bundle
 from spark_console.today_sends import board as today_send_board
 from spark_console.run_attempts import for_runs as attempts_for_runs
 from spark_console.run_events import for_runs as events_for_runs
@@ -117,6 +120,7 @@ def _onboarding_payload(
     account_total: int,
     task_total: int,
     has_any_run: bool,
+    has_successful_run: bool = False,
 ):
     """Merge server progress with observable product state.
 
@@ -147,6 +151,7 @@ def _onboarding_payload(
             for key in ONBOARDING_STEP_KEYS
         ],
         "updated_at": _date_value(user.onboarding_updated_at),
+        "has_successful_run": has_successful_run,
     }
 
 
@@ -280,12 +285,19 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 for offset in range(364, -1, -1)
             ]
             membership = membership_summary(db, user)
+            has_successful_run = db.scalar(
+                select(TaskRun.id).join(SparkTask).where(
+                    SparkTask.owner_user_id == user.id,
+                    TaskRun.status == "success",
+                ).limit(1)
+            ) is not None
             onboarding = _onboarding_payload(
                 user,
                 membership=membership,
                 account_total=int(account_total),
                 task_total=int(task_total),
                 has_any_run=has_any_run,
+                has_successful_run=has_successful_run,
             )
             account_rows = []
             for account in accounts:
@@ -341,6 +353,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     {
                         "id": r.id,
                         "taskId": r.task_id,
+                        "support_id": support_id(r),
                         "status": r.status,
                         "label": run_view_status(r)["label"],
                         "stage": RUN_STAGE_LABELS.get(r.stage, r.stage),
@@ -355,6 +368,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     {
                         "id": r.id,
                         "name": task.target_name,
+                        "support_id": support_id(r),
                         "status": r.status,
                         "label": run_view_status(r)["label"],
                         "stage": RUN_STAGE_LABELS.get(r.stage, r.stage),
@@ -591,6 +605,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             config = mail_service.load_config(db, cipher)
             return {
                 "enabled": bool(config.get("enabled")),
+                "worker": mail_worker_health(settings.data_dir if settings else None),
+                "queue": queue_health(db),
                 "host": config.get("host", ""),
                 "port": config.get("port"),
                 "mode": config.get("mode", "ssl"),
@@ -605,7 +621,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "id": item.id,
                         "event": item.event,
                         "recipient": item.recipient,
-                        "status": item.status,
+                        "status": 'queued' if item.status=='queued_secure' else item.status,
                         "error": item.error,
                         "created_at": _date_value(item.created_at),
                     }
@@ -635,7 +651,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 criteria.append(
                     or_(
                         RedemptionCode.id.ilike(pattern),
-                        RedemptionCode.code.ilike(pattern),
+                        RedemptionCode.code_hash == __import__("hashlib").sha256(query.encode()).hexdigest(),
                         User.username.ilike(pattern),
                     )
                 )
@@ -687,7 +703,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "items": [
                     {
                         "id": item.id,
-                        "code": item.code,
+                        "code": None,
+                        "can_copy": bool(item.code or item.code_ciphertext),
                         "status": status_label(item),
                         "username": username,
                         "duration_days": item.duration_days,
@@ -772,7 +789,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 view = run_view_status(run)
                 guidance = run_guidance(run)
                 account = accounts.get(row.task.douyin_account_id)
-                items.append({"id": run.id, "task_id": row.task.id, "owner_id": row.user.id, "target": row.target_name,
+                items.append({"id": run.id, "support_id": support_id(run), "task_id": row.task.id, "owner_id": row.user.id, "target": row.target_name,
                     "owner": row.username, "account": account.display_name if account else "账号不可用",
                     "scheduled_for": shanghai_time(run.scheduled_for), "status": run.status,
                     "label": view["label"], "tone": view["tone"], "stage": RUN_STAGE_LABELS.get(run.stage, run.stage),
@@ -815,6 +832,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             counts = Counter()
             totals = Counter()
             failures = Counter()
+            skipped = Counter()
             # Aggregate in SQL instead of materialising up to 20,000 runs in
             # the web process.  The result is bounded by days * statuses and
             # remains small even when the run table grows into the millions.
@@ -837,10 +855,13 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     counts[day] += int(total or 0)
                 elif run_status in {"failed", "submitted_unconfirmed"}:
                     failures[day] += int(total or 0)
+                elif run_status == "skipped":
+                    skipped[day] += int(total or 0)
             trend = [{"date": (local_today - timedelta(days=offset)).isoformat(),
                 "total": totals[(local_today - timedelta(days=offset)).isoformat()],
                 "success": counts[(local_today - timedelta(days=offset)).isoformat()],
-                "failed": failures[(local_today - timedelta(days=offset)).isoformat()]} for offset in range(days - 1, -1, -1)]
+                "failed": failures[(local_today - timedelta(days=offset)).isoformat()],
+                "skipped": skipped[(local_today - timedelta(days=offset)).isoformat()]} for offset in range(days - 1, -1, -1)]
             account_rows = db.execute(
                 select(DouyinAccount, User.username)
                 .join(User, User.id == DouyinAccount.owner_user_id)
@@ -1098,7 +1119,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             auth.csrf(record, str(values.get("csrf_token", "")))
             try:
                 quantity = max(1, min(20, int(values.get("quantity", 1))))
-                service = SubscriptionService(db, AuditService(db))
+                service = SubscriptionService(db, AuditService(db), cipher=cipher)
                 codes = [service.create_redemption_code(
                     admin.id,
                     duration_days=int(values.get("duration_days", 30)),
@@ -1109,6 +1130,18 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             except (ValidationError, ValueError) as error:
                 return JSONResponse({"detail": str(error)}, status_code=400)
             return {"ok": True, "codes": codes}
+
+    @router.post("/api/admin/redemption-codes/{code_id}/reveal")
+    async def admin_reveal_redemption_code(request: Request, code_id: str):
+        values = await request.json()
+        with session_scope(engine) as db:
+            admin, record, _ = auth.admin_context(request, db)
+            auth.csrf(record, str(values.get('csrf_token', '')))
+            try:
+                code = SubscriptionService(db, AuditService(db), cipher=cipher).reveal_redemption_code(admin.id, code_id)
+            except NotFound as error:
+                return JSONResponse({'detail': str(error)}, status_code=404)
+            return JSONResponse({'code': code}, headers={'Cache-Control': 'no-store'})
 
     @router.post("/api/admin/runs/{run_id}/retry")
     async def admin_retry_run(request: Request, run_id: str):
@@ -1157,6 +1190,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 temporary = UserService(db, PasswordService(), AuditService(db)).reset_password(admin.id, user_id)
             except NotFound as error:
                 return JSONResponse({"detail": str(error)}, status_code=404)
+            except ValidationError as error:
+                return JSONResponse({"detail": str(error)}, status_code=400)
             return {"ok": True, "temporary_password": temporary}
 
     @router.patch("/api/admin/tasks/{task_id}")
@@ -1257,6 +1292,16 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
 
             return JSONResponse({"items": items}, headers={"Cache-Control": "no-store"})
 
+    @router.get('/api/runs/{run_id}/diagnostics')
+    def run_diagnostic_bundle(request: Request, run_id: str):
+        with session_scope(engine) as db:
+            user, _ = auth.current(request, db)
+            run = db.get(TaskRun, run_id.removeprefix('DF-'))
+            task = db.get(SparkTask, run.task_id) if run else None
+            if task is None or (user.role != 'admin' and task.owner_user_id != user.id):
+                raise HTTPException(404, '执行记录不存在')
+            return JSONResponse(diagnostic_bundle(db, run), headers={'Cache-Control': 'no-store'})
+
     @router.get("/api/admin/tasks/groups/{owner_id}/{account_id}")
     def admin_group_tasks(request: Request, owner_id: str, account_id: str, q: str = Query("", max_length=100), status: str = Query("", max_length=24), page: int = Query(1, ge=1)):
         with session_scope(engine) as db:
@@ -1296,7 +1341,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             policy = db.get(NotificationPolicy, user.id)
             return {
                 "csrf": record.csrf_token,
-                "mail_ready": bool(cipher and __import__("spark_console.services.mail", fromlist=["load_config"]).load_config(db, cipher).get("enabled")),
+                "mail_ready": bool(cipher and mail_worker_health(settings.data_dir)['online'] and load_mail_config(db, cipher).get("enabled")),
                 "preference": {
                     "email": pref.email if pref else "",
                     "enabled": bool(pref and pref.enabled),

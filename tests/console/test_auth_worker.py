@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 import unittest
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -87,6 +88,7 @@ class _LifecycleScanner:
         cancel_before_return=False,
         expire_before_return=False,
         before_return=None,
+        platform_user_id="self",
     ):
         self.engine = engine
         self.scan_id = scan_id
@@ -95,6 +97,7 @@ class _LifecycleScanner:
         self.expire_before_return = expire_before_return
         self.before_return = before_return
         self.observed_statuses = []
+        self.platform_user_id = platform_user_id
 
     async def run(self, on_qr, on_confirming, cancelled, *, expires_at=None, **_kwargs):
         on_qr(PNG_SIGNATURE + b"worker-qr-fixture")
@@ -130,6 +133,7 @@ class _LifecycleScanner:
                     remark_name="我的备注",
                 ),
             ),
+            platform_user_id=self.platform_user_id,
         )
 
 
@@ -264,6 +268,7 @@ class _InteractionReceiptScanner:
             "回执测试账号",
             f"receipt-{self.scan_id}",
             self.state,
+            platform_user_id="self",
         )
 
 
@@ -319,6 +324,10 @@ class _StopAwareScanner:
 class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         asyncio.get_running_loop().slow_callback_duration = 1.0
+        self.original_identity_reader = AsyncMock(return_value={"platform_user_id": "self"})
+        self.identity_patch = patch("spark_console.auth_worker.probe_saved_profile", self.original_identity_reader)
+        self.identity_patch.start()
+        self.addCleanup(self.identity_patch.stop)
         self.temporary = tempfile.TemporaryDirectory()
         data_dir = Path(self.temporary.name)
         cookie_key_file = data_dir / "cookie.key"
@@ -500,7 +509,7 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
             original_ciphertext = bytes(account.encrypted_cookies)
 
         scan_id = self._start_scan(account_id=account_id)
-        scanner = _LifecycleScanner(self.engine, scan_id)
+        scanner = _LifecycleScanner(self.engine, scan_id, platform_user_id="another-account")
 
         self.assertTrue(
             await AuthWorker(
@@ -515,7 +524,31 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
             account = session.get(DouyinAccount, account_id)
             self.assertEqual(original_ciphertext, account.encrypted_cookies)
 
-    async def test_recovery_real_scanner_completes_from_chat_without_account_api(self):
+    async def test_new_binding_without_verified_platform_identity_never_saves_credentials(self):
+        scan_id = self._start_scan()
+        scanner = _LifecycleScanner(self.engine, scan_id, platform_user_id=None)
+        await AuthWorker(self.settings, self.engine, scanner=scanner).run_once()
+        self.assertEqual("account_identity_unavailable", self._persisted(scan_id)["error_code"])
+        with Session(self.engine) as db:
+            self.assertEqual([], db.scalars(select(DouyinAccount)).all())
+
+    async def test_unverifiable_original_identity_does_not_open_or_replace_old_session(self):
+        with session_scope(self.engine) as db:
+            account = AccountService(db, CookieCipher(b"k" * 32), AuditService(db)).create_from_storage_state(
+                self.owner_id, "原备注", _storage_state(),
+            )
+            account_id, expected = account.id, account.encrypted_cookies
+        self.original_identity_reader.return_value = {}
+        scan_id = self._start_scan(account_id=account_id)
+        scanner = _LifecycleScanner(self.engine, scan_id)
+        await AuthWorker(self.settings, self.engine, scanner=scanner).run_once()
+        self.assertEqual("account_identity_unavailable", self._persisted(scan_id)["error_code"])
+        self.assertEqual([], scanner.observed_statuses)
+        with Session(self.engine) as db:
+            self.assertEqual(expected, db.get(DouyinAccount, account_id).encrypted_cookies)
+            self.assertEqual("原备注", db.get(DouyinAccount, account_id).display_name)
+
+    async def test_recovery_real_scanner_preserves_account_with_verified_platform_identity(self):
         from tests.console.test_auth_recovery import make_recovery_scanner
         from spark_console.models import AccountHealth, AccountOperation
         from spark_console.services.account_health import record, snapshot
@@ -535,7 +568,7 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
             task_id = task.id
             scan_id = ScanSessionService(session).start_recovery(self.owner_id, account_id).id
 
-        scanner, _, context, _ = make_recovery_scanner(timeout=2)
+        scanner, _, context, _ = make_recovery_scanner(timeout=2, api="valid")
         self.assertTrue(await AuthWorker(self.settings, self.engine, scanner=scanner).run_once())
         persisted = self._persisted(scan_id)
         self.assertEqual(ScanStatus.SUCCEEDED, persisted["status"])
