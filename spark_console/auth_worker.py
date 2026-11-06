@@ -19,12 +19,14 @@ from spark_console.auth_scanner import (
 from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
 from spark_console.credentials import CredentialPayload
+from core.account_profile import normalize_platform_user_id, probe_saved_profile
 from spark_console.db import create_engine_for, create_schema, session_scope
 from spark_console.models import DouyinAccount, DouyinAccountIdentity, DouyinLoginSession, ScanStatus, User
 from spark_console.services import Conflict, NotFound, ValidationError
 from spark_console.services.accounts import (
     AccountIdentityAlreadyBound,
     AccountIdentityMismatch,
+    AccountIdentityUnavailable,
     AccountService,
 )
 from spark_console.services.audits import AuditService
@@ -54,10 +56,11 @@ class _EntitlementFailure(Exception):
 
 
 class AuthWorker:
-    def __init__(self, settings: Settings, engine, scanner=None):
+    def __init__(self, settings: Settings, engine, scanner=None, identity_reader=None):
         self.settings = settings
         self.engine = engine
         self.scanner = scanner or DouyinQrScanner()
+        self.identity_reader = identity_reader or probe_saved_profile
         key = bytearray(settings.cookie_key_file.read_bytes())
         try:
             self.cipher = CookieCipher(bytes(key))
@@ -164,18 +167,33 @@ class AuthWorker:
         storage_state = None
         recovery_storage_state = None
         try:
-            if recovery_mode and target_account_id:
+            if target_account_id:
                 with session_scope(self.engine) as db:
                     account = db.get(DouyinAccount, target_account_id)
+                    identity = db.get(DouyinAccountIdentity, target_account_id)
+                    needs_identity = not (identity and identity.douyin_user_id)
+                    expected = (bytes(account.encrypted_cookies), bytes(account.cookie_nonce), account.cookie_version)
                     raw = AccountService(db, self.cipher, AuditService(db)).decrypt_for_worker(target_account_id)
-                    payload = CredentialPayload.parse(bytes(raw), account.cookie_version)
-                    recovery_storage_state = payload.context_options().get("storage_state")
-                    if recovery_storage_state is None and payload.cookies_to_add():
-                        recovery_storage_state = {"cookies": payload.cookies_to_add(), "origins": []}
-                    raw[:] = b"\0" * len(raw)
-                    raw.clear()
-                if not isinstance(recovery_storage_state, dict):
+                    try:
+                        payload = CredentialPayload.parse(bytes(raw), account.cookie_version)
+                        original_state = payload.context_options().get("storage_state")
+                        if original_state is None and payload.cookies_to_add():
+                            original_state = {"cookies": payload.cookies_to_add(), "origins": []}
+                    finally:
+                        raw[:] = b"\0" * len(raw)
+                        raw.clear()
+                if not isinstance(original_state, dict):
                     raise _CredentialInvalid()
+                recovery_storage_state = original_state
+                if needs_identity:
+                    # This request uses original credentials before opening an
+                    # interactive page. The newly scanned account cannot become
+                    # its own evidence for a legacy account's original identity.
+                    profile = await self.identity_reader(original_state)
+                    with session_scope(self.engine) as db:
+                        AccountService(db, self.cipher, AuditService(db)).record_identity_if_current(
+                            target_account_id, expected, profile.get("platform_user_id")
+                        )
             scanned = await self.scanner.run(
                 on_qr,
                 on_confirming,
@@ -185,11 +203,14 @@ class AuthWorker:
                 next_interaction=next_interaction,
                 on_needs_verification=on_needs_verification,
                 on_interaction_result=on_interaction_result,
-                recovery_storage_state=recovery_storage_state,
+                recovery_storage_state=recovery_storage_state if recovery_mode else None,
             )
             if stopping is not None and stopping.is_set():
                 raise ScanCancelled()
             storage_state = scanned.storage_state
+            platform_uid = normalize_platform_user_id(getattr(scanned, "platform_user_id", None))
+            if platform_uid is None:
+                raise AccountIdentityUnavailable()
             if (
                 not isinstance(storage_state, dict)
                 or not isinstance(storage_state.get("cookies"), list)
@@ -211,13 +232,15 @@ class AuthWorker:
                         owner_id,
                         target_account_id,
                         storage_state,
-                        scanned.unique_id or (db.get(DouyinAccountIdentity, target_account_id).douyin_unique_id if db.get(DouyinAccountIdentity, target_account_id) else None),
+                        scanned.unique_id,
+                        platform_user_id=platform_uid,
                     )
                     account_service.sync_contact_avatars(account.id, {
                         identity.sec_uid: getattr(identity, "avatar_url", None)
                         for identity in scanned.contact_identities
                     })
                 else:
+                    account_service.require_legacy_identities_ready()
                     account = account_service.create_from_storage_state(
                         owner_id,
                         scanned.display_name,
@@ -225,6 +248,7 @@ class AuthWorker:
                         scanned.unique_id,
                         scanned.conversation_names,
                         scanned.contact_identities,
+                        platform_user_id=platform_uid,
                     )
                 from spark_console.services.directory import save_profile
                 try:
@@ -249,6 +273,8 @@ class AuthWorker:
             code = error.code
         except AccountIdentityMismatch:
             code = "account_identity_mismatch"
+        except AccountIdentityUnavailable:
+            code = "account_identity_unavailable"
         except AccountIdentityAlreadyBound:
             code = "account_already_bound"
         except (_CredentialInvalid, ValidationError):

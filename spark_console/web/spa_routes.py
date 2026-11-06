@@ -117,6 +117,7 @@ def _onboarding_payload(
     account_total: int,
     task_total: int,
     has_any_run: bool,
+    has_successful_run: bool = False,
 ):
     """Merge server progress with observable product state.
 
@@ -147,6 +148,7 @@ def _onboarding_payload(
             for key in ONBOARDING_STEP_KEYS
         ],
         "updated_at": _date_value(user.onboarding_updated_at),
+        "has_successful_run": has_successful_run,
     }
 
 
@@ -280,12 +282,19 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 for offset in range(364, -1, -1)
             ]
             membership = membership_summary(db, user)
+            has_successful_run = db.scalar(
+                select(TaskRun.id).join(SparkTask).where(
+                    SparkTask.owner_user_id == user.id,
+                    TaskRun.status == "success",
+                ).limit(1)
+            ) is not None
             onboarding = _onboarding_payload(
                 user,
                 membership=membership,
                 account_total=int(account_total),
                 task_total=int(task_total),
                 has_any_run=has_any_run,
+                has_successful_run=has_successful_run,
             )
             account_rows = []
             for account in accounts:

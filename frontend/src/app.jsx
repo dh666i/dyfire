@@ -36,6 +36,8 @@ import './react.css';
 import './react-polish.css';
 import './react-fire.css';
 import RubberSegment from './components/RubberSegment';
+import {installSelectOverlay} from './select-overlay.js';
+import {hasConfirmedExecution} from './onboarding-state.js';
 import {cloudFrameOverlay, createCloudFrameState, frameLoadError, frameLoaded, retryCloudFrame} from './cloud-frame-state.js';
 
 const drawerStack = [];
@@ -443,27 +445,6 @@ function Select({value, onChange, children, className='', ...props}) {
 // Keep native selects as the form source of truth, but render their popup in
 // the workspace visual language. This avoids browser-specific grey option
 // sheets while preserving React's normal value/change contract.
-function installSelectOverlay() {
-  if (window.__dyfireSelectOverlay) return window.__dyfireSelectOverlay;
-  let active = null; let menu = null; let activeIndex = -1;
-  const close = () => { if (menu) menu.remove(); menu=null; if (active) { active.removeAttribute('aria-expanded'); active=null; } activeIndex=-1; };
-  const choose = index => { if (!active) return; const option=active.options[index]; if (!option || option.disabled) return; active.selectedIndex=index; active.dispatchEvent(new Event('input',{bubbles:true})); active.dispatchEvent(new Event('change',{bubbles:true})); close(); active.focus(); };
-  const open = select => {
-    if (select.disabled) return; close(); active=select; select.focus(); const rect=select.getBoundingClientRect();
-    menu=document.createElement('div'); menu.className='fire-select-menu'; menu.setAttribute('role','listbox'); menu.setAttribute('aria-label',select.getAttribute('aria-label')||select.labels?.[0]?.textContent?.trim()||'选择');
-    const options=[...select.options]; activeIndex=select.selectedIndex;
-    options.forEach((option,index)=>{const row=document.createElement('button'); row.type='button'; row.className='fire-select-option'; row.setAttribute('role','option'); row.setAttribute('aria-selected',String(option.selected)); row.disabled=option.disabled; const label=document.createElement('span'); label.textContent=option.textContent; row.append(label); if(option.selected){const check=document.createElement('b'); check.setAttribute('aria-hidden','true'); check.textContent='✓'; row.append(check);} row.addEventListener('pointerenter',()=>{activeIndex=index; menu.querySelectorAll('.fire-select-option').forEach((item,i)=>item.classList.toggle('is-active',i===index));}); row.addEventListener('click',()=>choose(index)); menu.append(row);});
-    const availableBelow=innerHeight-rect.bottom-12, availableAbove=rect.top-12, goUp=availableBelow<220&&availableAbove>availableBelow; menu.dataset.direction=goUp?'up':'down'; menu.style.width=`${rect.width}px`; menu.style.left=`${Math.max(8,Math.min(rect.left,innerWidth-rect.width-8))}px`; menu.style.maxHeight=`${Math.max(120,Math.min(300,goUp?availableAbove:availableBelow))}px`; menu.style.top=goUp?`${Math.max(8,rect.top-menu.offsetHeight-7)}px`:`${Math.min(innerHeight-12,rect.bottom+7)}px`;
-    document.body.append(menu); // recalculate after insertion for upward sheets
-    if(goUp) menu.style.top=`${Math.max(8,rect.top-Math.min(menu.scrollHeight,Math.max(120,Math.min(300,availableAbove)))-7)}px`;
-    select.setAttribute('aria-expanded','true'); menu.querySelector(`[aria-selected="true"]`)?.classList.add('is-active');
-  };
-  const onPointer = event => { const select=event.target.closest?.('select'); if(select) { event.preventDefault(); open(select); return; } if(!event.target.closest?.('.fire-select-menu')) close(); };
-  const onKey = event => { const select=event.target.closest?.('select'); if(!select) return; if(event.key==='Escape'){close();return;} if(['Enter',' ','ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault(); if(!menu||active!==select){open(select);return;} const direction=event.key==='ArrowUp'?-1:1; const next=Math.max(0,Math.min(select.options.length-1,activeIndex+direction)); activeIndex=next; menu.querySelectorAll('.fire-select-option').forEach((item,i)=>item.classList.toggle('is-active',i===next)); if(event.key==='Enter'||event.key===' ')choose(next); } else if(event.key==='Home'||event.key==='End'){event.preventDefault(); if(!menu)open(select); activeIndex=event.key==='Home'?0:select.options.length-1; menu.querySelectorAll('.fire-select-option').forEach((item,i)=>item.classList.toggle('is-active',i===activeIndex));} };
-  document.addEventListener('pointerdown',onPointer,true); document.addEventListener('keydown',onKey,true); window.addEventListener('resize',close); window.addEventListener('scroll',close,true);
-  window.__dyfireSelectOverlay={destroy:()=>{close();document.removeEventListener('pointerdown',onPointer,true);document.removeEventListener('keydown',onKey,true);window.removeEventListener('resize',close);window.removeEventListener('scroll',close,true);delete window.__dyfireSelectOverlay;}};
-  return window.__dyfireSelectOverlay;
-}
 function Card({children, className='', interactive=false}) {
   const ref = useRef(null);
   const trackPointer = event => {
@@ -505,7 +486,7 @@ function OnboardingGuide({data, membership, accounts, tasks, onNavigate}) {
   const steps=[
     {key:'account',title:'绑定抖音账号',text:'扫码登录并完成抖音安全验证，免费版也可以直接开始。',done:accounts.length>0,href:'/accounts',action:accounts.length?'查看账号':'绑定账号'},
     {key:'friends',title:'创建续火任务',text:'免费版可先创建 1 个好友任务，更多好友再开通订阅。',done:tasks.length>0,href:'/studio',action:tasks.length?'管理任务':'创建任务'},
-    {key:'runs',title:'核对第一次执行',text:'查看发送结果，确认任务按预期运行。',done:tasks.length>0,href:'/runs',action:'查看记录'},
+    {key:'runs',title:'核对第一次执行',text:'查看发送结果，确认任务按预期运行。',done:hasConfirmedExecution(data),href:'/runs',action:'查看记录'},
   ];
   if(dismissed||steps.every(step=>step.done)) return null;
   const completed=steps.filter(step=>step.done).length;

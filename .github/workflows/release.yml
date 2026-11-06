@@ -38,8 +38,11 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
+      - run: npm ci
+        working-directory: frontend
+      - run: node --test frontend/src/select-overlay.test.js
       - name: Verify original-account recovery and browser login lifecycle
-        run: python -m pytest tests/console/test_auth_recovery.py tests/console/test_auth_scanner.py tests/console/test_auth_worker.py tests/console/test_scan_sessions.py tests/console/test_account_health.py tests/console/test_credentials.py::CredentialPayloadTests tests/console/test_session_recovery.py -q
+        run: python -m pytest tests/console/test_account_identity.py tests/console/test_auth_recovery.py tests/console/test_auth_scanner.py tests/console/test_auth_worker.py tests/console/test_scan_sessions.py tests/console/test_account_health.py tests/console/test_credentials.py::CredentialPayloadTests tests/console/test_session_recovery.py -q
       - run: node --test frontend/src/navigation.test.js frontend/src/contact-picker-state.test.js
       - run: node tests/console/admin_mobile_layout_harness.cjs
       - run: node tests/console/cloud_frame_state_harness.cjs transient-errors-stay-loading

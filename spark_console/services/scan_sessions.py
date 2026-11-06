@@ -109,6 +109,7 @@ FAILURE_CODES = frozenset(
         "account_limit_reached",
         "credential_invalid",
         "account_identity_mismatch",
+        "account_identity_unavailable",
         "account_already_bound",
         "automation_failed",
     }
@@ -133,6 +134,7 @@ ERROR_MESSAGES = {
     "account_limit_reached": "抖音账号额度已用完，请升级套餐或删除旧账号",
     "credential_invalid": "登录凭证无效，请重试",
     "account_identity_mismatch": "扫码登录的抖音账号与所选账号不一致，请使用正确账号重试",
+    "account_identity_unavailable": "暂时无法确认抖音账号身份，原账号和任务已保留，请稍后重试或联系客服",
     "account_already_bound": "该抖音账号已经绑定，无需重复添加",
     "automation_failed": "自动化登录失败，请重试",
     NEEDS_VERIFICATION: "请在云端抖音页面完成短信验证",

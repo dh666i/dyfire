@@ -664,12 +664,15 @@ class _ReauthThenCookieInvalidExecutor:
     async def execute(self, *_args, **_kwargs):
         with Session(self.engine) as session:
             account = session.get(DouyinAccount, self.account_id)
-            AccountService(
+            accounts = AccountService(
                 session, CookieCipher(b"w" * 32), AuditService(session)
-            ).reauthenticate_owned(
+            )
+            accounts.record_identity_if_current(account.id, (account.encrypted_cookies, account.cookie_nonce, account.cookie_version), account.id)
+            accounts.reauthenticate_owned(
                 account.owner_user_id,
                 account.id,
                 _worker_storage_state("fresh-worker-marker"),
+                platform_user_id=account.id,
             )
             session.commit()
         return ExecutionResult(
@@ -801,8 +804,10 @@ class WorkerCredentialTests(unittest.IsolatedAsyncioTestCase):
                             if case == "relogin":
                                 with Session(engine) as session:
                                     account = session.get(DouyinAccount, account_id)
-                                    AccountService(session, CookieCipher(b"w" * 32), AuditService(session)).reauthenticate_owned(
-                                        account.owner_user_id, account_id, _worker_storage_state("new-login")
+                                    accounts = AccountService(session, CookieCipher(b"w" * 32), AuditService(session))
+                                    accounts.record_identity_if_current(account.id, (account.encrypted_cookies, account.cookie_nonce, account.cookie_version), account.id)
+                                    accounts.reauthenticate_owned(
+                                        account.owner_user_id, account_id, _worker_storage_state("new-login"), platform_user_id=account.id
                                     )
                                     session.commit()
                             return ExecutionResult(case != "failed", "submitted" if case == "submitted" else "complete",

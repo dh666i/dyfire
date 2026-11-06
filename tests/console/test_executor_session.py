@@ -52,6 +52,45 @@ class _TrackingPage(_FakePage):
 
 
 class ExecutorSessionTests(IsolatedAsyncioTestCase):
+    async def test_platform_identity_must_be_confirmed_before_target_selection(self):
+        from unittest.mock import AsyncMock, Mock
+        from spark_console.services.accounts import AccountIdentityMismatch
+        from core.web_chat import TargetNotFoundError
+        for scenario in ("unavailable", "mismatch", "valid"):
+            with self.subTest(scenario=scenario):
+                browser = _FakeBrowser()
+                manager = _StartablePlaywrightManager(browser)
+                async_api = ModuleType("playwright.async_api")
+                async_api.async_playwright = lambda: manager
+                modules = {
+                    "playwright": ModuleType("playwright"),
+                    "playwright.async_api": async_api,
+                    "core.tasks": _fake_core_tasks(),
+                }
+                callback = Mock(side_effect=AccountIdentityMismatch() if scenario == "mismatch" else None)
+                select_target = AsyncMock(side_effect=TargetNotFoundError("fixture"))
+                profile = {} if scenario == "unavailable" else {"platform_user_id": "self"}
+                with patch.dict("sys.modules", modules), patch(
+                    "spark_console.executor.require_session", AsyncMock()
+                ), patch("core.account_profile.read_self_profile", AsyncMock(return_value=profile)), patch(
+                    "spark_console.executor.select_web_chat_target", select_target
+                ):
+                    result = await DouyinExecutor().execute(
+                        b'[{"name":"sid","value":"fixture","domain":".douyin.com","path":"/"}]',
+                        "fixture-target", "fixture-message", on_authenticated=callback,
+                    )
+                if scenario == "unavailable":
+                    self.assertEqual("account_identity_unavailable", result.error_code)
+                    callback.assert_not_called()
+                    select_target.assert_not_awaited()
+                elif scenario == "mismatch":
+                    self.assertEqual("account_identity_mismatch", result.error_code)
+                    self.assertEqual("verification", result.health_state)
+                    select_target.assert_not_awaited()
+                else:
+                    callback.assert_called_once_with("self")
+                    select_target.assert_awaited()
+
     def test_credential_fingerprint_invalidates_reused_session(self):
         executor = DouyinExecutor()
         executor._live = {

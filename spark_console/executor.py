@@ -200,6 +200,7 @@ class DouyinExecutor:
         on_submitted: Callable[[], object] | None = None,
         message_kind: str = "text",
         session_key: str | None = None,
+        on_authenticated: Callable[[str], object] | None = None,
     ) -> ExecutionResult:
         from playwright.async_api import async_playwright
         from core.tasks import (
@@ -291,6 +292,23 @@ class DouyinExecutor:
                         reused = False
                 if not reused:
                     await require_session(page, context, navigate=True)
+                if on_authenticated is not None:
+                    from core.account_profile import read_self_profile
+                    from spark_console.services.accounts import AccountIdentityAlreadyBound, AccountIdentityMismatch
+                    profile = await read_self_profile(context)
+                    uid = profile.get("platform_user_id")
+                    if not uid:
+                        return ExecutionResult(False, stage, "account_identity_unavailable",
+                            "暂时无法确认抖音账号身份，尚未发送消息", health_state="temporary",
+                            health_reason="账号身份接口暂时不可用，原登录资料已保留")
+                    try:
+                        verified = on_authenticated(uid)
+                        if isawaitable(verified):
+                            await verified
+                    except (AccountIdentityAlreadyBound, AccountIdentityMismatch):
+                        return ExecutionResult(False, stage, "account_identity_mismatch",
+                            "当前抖音身份与绑定记录冲突，尚未发送消息", health_state="verification",
+                            health_reason="抖音账号身份需要人工核对，已停止发送以保护原任务")
                 stage = ExecutionStage.SELECTING_TARGET
                 try:
                     identity = (

@@ -3,7 +3,7 @@ from datetime import timedelta, timezone
 import os
 from sqlalchemy import or_, select, update
 from spark_console.models import (
-    TaskHealthRetry, TaskRun, SparkTask, DouyinAccount, User, UserSubscription,
+    TaskHealthRetry, TaskRun, SparkTask, DouyinAccount, User,
     AccountOperation, DouyinLoginSession,
 )
 from spark_console.worker_sharding import validate_shard
@@ -43,10 +43,10 @@ def invalid_reason(db, run, pending, now, *, require_valid=False):
     if not task or not task.enabled or aware(task.updated_at) != aware(pending.task_revision):
         return "health_retry_cancelled", "任务已暂停或修改，取消本次恢复重试"
     user = db.get(User, task.owner_user_id)
-    sub = db.get(UserSubscription, task.owner_user_id)
-    if not user or user.status != "active" or (user.role != "admin" and (
-        not sub or not aware(sub.valid_from) <= aware(now) < aware(sub.valid_until)
-    )):
+    from spark_console.services.subscriptions import SubscriptionService
+    from spark_console.services.audits import AuditService
+    subscriptions = SubscriptionService(db, AuditService(db), now=lambda: now)
+    if not user or not subscriptions.can_execute_task(task.owner_user_id, task.id):
         return "health_retry_cancelled", "账号或会员当前不可用，取消本次恢复重试"
     account = db.get(DouyinAccount, task.douyin_account_id) if task.douyin_account_id else None
     if not account or account.owner_user_id != task.owner_user_id or account.validation_state in ("verification", "invalid"):

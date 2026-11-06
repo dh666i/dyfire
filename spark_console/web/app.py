@@ -175,6 +175,8 @@ def run_guidance(run) -> dict[str, str] | None:
     from spark_console.health_retry import WINDOW
     window_minutes = int(WINDOW.total_seconds() // 60)
     submitted = getattr(run, "submitted_at", None) is not None or str(getattr(run, "status", "")) == "submitted_unconfirmed"
+    if code in {"account_identity_unavailable", "account_identity_mismatch"}:
+        return {'text':'本次尚未发送消息。账号身份暂时无法确认，请在抖音账号页完成核对；原任务与登录资料已保留。', 'action':'account'}
     if code == 'health_retry_waiting':
         return {'text':f'这次还没发出去，多半是聊天页暂时没加载完，不必重新扫码。系统会在原计划后 {window_minutes} 分钟内继续重试。', 'action':'none'}
     if code in {'health_retry_expired', 'health_retry_exhausted', 'health_retry_cancelled'} and not submitted:

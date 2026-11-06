@@ -526,11 +526,14 @@ class DouyinLoginInput(Base):
 
 class DouyinAccountIdentity(Base):
     __tablename__ = "douyin_account_identities"
+    __table_args__ = (Index("uq_douyin_account_user_id", "douyin_user_id", unique=True),)
 
     account_id: Mapped[str] = mapped_column(
         ForeignKey("douyin_accounts.id", ondelete="CASCADE"), primary_key=True
     )
     douyin_unique_id: Mapped[str | None] = mapped_column(String(64))
+    # Passport user_id is stable. The editable public Douyin ID is display only.
+    douyin_user_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 

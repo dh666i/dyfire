@@ -29,6 +29,7 @@ from spark_console.services.accounts import AccountService
 from spark_console.services.accounts import (
     AccountIdentityAlreadyBound,
     AccountIdentityMismatch,
+    AccountIdentityUnavailable,
 )
 from spark_console.services.audits import AuditService
 from spark_console.services.scan_sessions import ScanSessionService
@@ -598,7 +599,7 @@ class ServiceTests(unittest.TestCase):
 
     def test_refreshed_storage_state_uses_cas_and_cannot_overwrite_relogin(self):
         account = self.accounts.create_from_storage_state(
-            self.owner.id, "健康账号", _storage_state("initial-marker")
+            self.owner.id, "健康账号", _storage_state("initial-marker"), platform_user_id="original-platform"
         )
         self.session.flush()
         initial = (
@@ -634,6 +635,7 @@ class ServiceTests(unittest.TestCase):
             self.owner.id,
             account.id,
             _storage_state("newer-relogin-marker"),
+            platform_user_id="original-platform",
         )
         self.session.flush()
         self.assertFalse(
@@ -659,18 +661,20 @@ class ServiceTests(unittest.TestCase):
             "固定身份账号",
             _storage_state("original-identity-marker"),
             "douyin-account-a",
+            platform_user_id="original-platform",
         )
         self.session.flush()
         original_ciphertext = bytes(account.encrypted_cookies)
 
         for scanned_identity in ("douyin-account-b", None):
             with self.subTest(scanned_identity=scanned_identity):
-                with self.assertRaises(AccountIdentityMismatch):
+                with self.assertRaises(AccountIdentityMismatch if scanned_identity else AccountIdentityUnavailable):
                     self.accounts.reauthenticate_owned(
                         self.owner.id,
                         account.id,
                         _storage_state("wrong-account-marker"),
                         scanned_identity,
+                        platform_user_id="other-platform" if scanned_identity else None,
                     )
                 self.session.expire(account)
                 self.assertEqual(original_ciphertext, account.encrypted_cookies)

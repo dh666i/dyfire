@@ -353,6 +353,11 @@ class Worker:
                     run_id,
                     self._event_time(current_time, now is not None),
                 )
+            if isinstance(self.executor, DouyinExecutor):
+                kwargs["on_authenticated"] = lambda uid: self._record_authenticated_identity(
+                    run_id, account_id, credential_snapshot, uid,
+                    self._event_time(current_time, now is not None),
+                )
             execution = asyncio.create_task(
                 self.executor.execute(
                     cookies, target_name, message_template, **kwargs
@@ -543,6 +548,15 @@ class Worker:
             or parameter.kind is inspect.Parameter.VAR_KEYWORD
             for parameter in parameters
         )
+
+    def _record_authenticated_identity(self, run_id, account_id, expected, uid, now):
+        with session_scope(self.engine) as db:
+            run = db.get(TaskRun, run_id)
+            if run is None or run.status != "running" or run.worker_id != self.worker_id:
+                raise _LeaseOwnershipLost()
+            if run.lease_until is None or run.lease_until.replace(tzinfo=now.tzinfo) <= now:
+                raise _LeaseOwnershipLost()
+            AccountService(db, self.cipher, AuditService(db)).record_identity_if_current(account_id, expected, uid)
 
     def _mark_submitted(
         self, run_id: str, submitted_at: datetime | None = None

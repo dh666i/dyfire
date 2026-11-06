@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 19
+SQLITE_SCHEMA_VERSION = 20
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -128,6 +128,13 @@ def create_schema(engine: Engine) -> None:
             "CREATE INDEX IF NOT EXISTS ix_audit_events_request_id "
             "ON audit_events (request_id)"
         ))
+        connection.execute(text(
+            "ALTER TABLE douyin_account_identities ADD COLUMN IF NOT EXISTS douyin_user_id VARCHAR(64)"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_douyin_account_user_id "
+            "ON douyin_account_identities (douyin_user_id)"
+        ))
     _assert_postgres_schema_complete(engine)
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
@@ -163,6 +170,7 @@ def _assert_postgres_schema_complete(engine: Engine) -> None:
         "ix_douyin_accounts_dispatch_key",
         "ix_task_runs_status_finished",
         "ix_mail_deliveries_status_updated",
+        "uq_douyin_account_user_id",
     }
     actual_indexes = {
         index["name"]
@@ -216,6 +224,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (17, "user_onboarding_state", _upgrade_sqlite_user_onboarding_state),
         (18, "subscription_deferred_limits", _upgrade_sqlite_subscription_deferred_limits),
         (19, "subscription_grant_supersession", _upgrade_sqlite_subscription_grant_supersession),
+        (20, "verified_platform_account_identity", _upgrade_sqlite_account_identity),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -238,6 +247,22 @@ def _run_sqlite_migrations(connection: Connection) -> None:
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (version, name),
         )
+
+
+def _upgrade_sqlite_account_identity(connection: Connection) -> None:
+    columns = {row[1] for row in connection.exec_driver_sql(
+        "PRAGMA table_info(douyin_account_identities)"
+    ).fetchall()}
+    if "douyin_user_id" not in columns:
+        connection.exec_driver_sql(
+            "ALTER TABLE douyin_account_identities ADD COLUMN douyin_user_id VARCHAR(64)"
+        )
+    # Null legacy identities stay unclaimed; migrations never guess an identity
+    # or replace credentials, accounts, relationships or schedules.
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_douyin_account_user_id "
+        "ON douyin_account_identities (douyin_user_id)"
+    )
 
 
 def _upgrade_sqlite_login_session_mode(connection: Connection) -> None:

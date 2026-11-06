@@ -251,9 +251,29 @@ def command_queue_preflight(args) -> int:
     return 0 if report.passed else 1
 
 
+def command_account_identities(args) -> int:
+    import asyncio
+    from spark_console.services.account_identity import enroll_legacy_identities
+    settings, engine = runtime()
+    try:
+        report = asyncio.run(enroll_legacy_identities(
+            engine, CookieCipher(settings.cookie_key_file.read_bytes()),
+            apply=args.apply, limit=args.limit, active_only=args.active_only,
+        ))
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+        return 0 if all(r["result"] in ("verified", "enrolled") for r in report["accounts"]) else 1
+    finally:
+        engine.dispose()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="spark-console")
     commands = parser.add_subparsers(required=True)
+    identities = commands.add_parser("account-identities", help="用原登录态核实存量账号身份，默认不保存")
+    identities.add_argument("--apply", action="store_true", help="仅保存已验证的稳定身份，不改变凭据或任务")
+    identities.add_argument("--active-only", action="store_true", help="仅检查有启用任务的账号")
+    identities.add_argument("--limit", type=int, choices=range(1, 101), default=100, metavar="1..100")
+    identities.set_defaults(handler=command_account_identities)
     admin = commands.add_parser("create-admin"); admin.add_argument("username"); admin.set_defaults(handler=command_create_admin)
     user = commands.add_parser("create-user"); user.add_argument("username"); user.set_defaults(handler=command_create_user)
     legacy = commands.add_parser("import-legacy"); legacy.add_argument("path"); legacy.add_argument("--owner", required=True); legacy.add_argument("--time", default="09:00"); legacy.add_argument("--message", default="今日火花"); legacy.set_defaults(handler=command_import_legacy)

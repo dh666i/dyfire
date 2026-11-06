@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field, replace
 from urllib.parse import urlsplit
 from core.web_chat import _has_visible_exact_text, _locator_has_visible_match, CONVERSATION_ITEM_SELECTOR, LOGIN_REQUIRED_TEXTS
+from core.account_profile import authenticated_user_id
 
 ACCOUNT_INFO_URL = 'https://www.douyin.com/passport/account/info/v2/?aid=6383'
 VERIFY_TEXTS = ('请完成安全验证', '短信验证', '请输入验证码', '请输入登录密码', '验证登录密码', '人脸验证', '请在抖音App完成验证', '操作频繁，请稍后再试')
@@ -44,8 +45,8 @@ async def read_login_api(context):
         data = body['data']
         code = data.get('error_code')
         code_detail = f'，业务码 {code}' if type(code) is int and abs(code) < 10**12 else '，业务码缺失或格式异常'
-        if body.get('message') == 'success' and code == 0 and data.get('user_id'):
-            return 'valid', prefix + code_detail
+        if authenticated_user_id(body) is not None:
+            return 'valid', prefix + (code_detail if 'error_code' in data else '，账号身份资料已确认')
         message = str(data.get('description') or data.get('error_description') or body.get('description') or body.get('message') or '').lower()
         if any(s in message for s in ('未登录', 'not login', 'not logged in', 'login required')):
             return 'logged_out', prefix + code_detail + '，明确未登录'
