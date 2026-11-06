@@ -1,0 +1,12 @@
+[Unit]
+Description=Dyfire mail queue tick
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Persistent=false
+Unit=dyfire-mail.service
+
+[Install]
+WantedBy=timers.target

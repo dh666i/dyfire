@@ -213,7 +213,11 @@ def command_retention(args) -> int:
             dry_run=not args.apply,
             now=as_of,
         )
-    print(json.dumps(report.as_dict(), ensure_ascii=False, sort_keys=True))
+    from spark_console.security_maintenance import maintain
+    from spark_console.crypto import CookieCipher
+    with session_scope(engine) as db:
+        sensitive = maintain(db, CookieCipher(_settings.cookie_key_file.read_bytes()), apply=args.apply, limit=policy.batch_size, now=as_of)
+    print(json.dumps({**report.as_dict(), 'security_material': sensitive}, ensure_ascii=False, sort_keys=True))
     return 0
 
 

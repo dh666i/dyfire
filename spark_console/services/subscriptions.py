@@ -277,10 +277,11 @@ def _supersede_future_grants(
 
 
 class SubscriptionService:
-    def __init__(self, session: Session, audit: AuditService, now=utc_now):
+    def __init__(self, session: Session, audit: AuditService, now=utc_now, *, cipher=None):
         self.session = session
         self.audit = audit
         self.now = now
+        self.cipher = cipher
 
     def create_redemption_code(
         self,
@@ -293,6 +294,8 @@ class SubscriptionService:
         lifetime: timedelta | None = None,
     ) -> tuple[RedemptionCode, str]:
         self._require_admin(actor_id)
+        if self.cipher is None:
+            raise ValidationError("兑换码加密服务未配置")
         duration_days, max_accounts, max_tasks, resolved_plan = resolve_plan_limits(
             plan_id,
             duration_days=duration_days,
@@ -325,7 +328,7 @@ class SubscriptionService:
             # stable far-future sentinel for both old and new schemas.
             expires_at = NEVER_EXPIRES_AT
         code = RedemptionCode(
-            code=plaintext,
+            code=None,
             code_hash=_digest(plaintext),
             duration_days=duration_days,
             max_accounts=max_accounts,
@@ -338,6 +341,8 @@ class SubscriptionService:
         )
         self.session.add(code)
         self.session.flush()
+        sealed = self.cipher.encrypt_for(plaintext.encode(), 'redemption-code', (code.id + ':' + code.code_hash).encode())
+        code.code_ciphertext, code.code_nonce = sealed.ciphertext, sealed.nonce
         self.audit.write(
             actor_id,
             "redemption_code.created",
@@ -348,6 +353,25 @@ class SubscriptionService:
         )
         self.session.flush()
         return code, plaintext
+
+    def reveal_redemption_code(self, actor_id: str, code_id: str) -> str:
+        self._require_admin(actor_id)
+        code = self.session.get(RedemptionCode, code_id)
+        if code is None:
+            raise NotFound("兑换码不存在")
+        if self.cipher is None:
+            raise ValidationError("兑换码加密服务未配置")
+        if code.code_ciphertext is not None:
+            plaintext = self.cipher.decrypt_for(code.code_ciphertext, code.code_nonce, 'redemption-code', (code.id + ':' + code.code_hash).encode()).decode()
+        else:
+            # Old records are sealed on their first authorized copy action.
+            plaintext = code.code or ''
+            if plaintext:
+                sealed = self.cipher.encrypt_for(plaintext.encode(), 'redemption-code', (code.id + ':' + code.code_hash).encode())
+                code.code_ciphertext, code.code_nonce = sealed.ciphertext, sealed.nonce
+                code.code = None
+        self.audit.write(actor_id, 'redemption_code.revealed', 'redemption_code', code.id)
+        return plaintext
 
     def redeem(self, user_id: str, plaintext: str) -> UserSubscription:
         user = self._require_user(user_id)

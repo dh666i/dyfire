@@ -569,12 +569,13 @@ def list_runs(
         filters.append(TaskRun.scheduled_for < (datetime.strptime(end, '%Y-%m-%d').replace(tzinfo=ZoneInfo('Asia/Shanghai')) + timedelta(days=1)).astimezone(timezone.utc))
     if start and end and start > end:
         raise ValueError('Invalid date range')
-    query = q.strip()
+    query = q.strip().removeprefix('DF-')
     if query:
         pattern = f"%{query}%"
         filters.append(
             or_(
                 User.username.ilike(pattern),
+                TaskRun.id.ilike(pattern),
                 SparkTask.target_name.ilike(pattern),
                 TaskRun.stage.ilike(pattern),
                 TaskRun.error_code.ilike(pattern),

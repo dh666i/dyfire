@@ -17,8 +17,6 @@
 - 转发头由应用层按 `SPARK_TRUSTED_PROXY_CIDRS` 严格限制：未配置时忽略 `X-Forwarded-For/Proto`；只有直接对端属于配置的 IP/CIDR 时才解析最近的客户端地址和 HTTPS scheme。HSTS 可通过 `SPARK_HSTS_MAX_AGE_SECONDS` 与 `SPARK_HSTS_INCLUDE_SUBDOMAINS` 配置。
 - HTTP 响应统一带 `X-Request-ID`；JSON API 错误追加 `request_id` 和稳定的 `error_code`，便于用户反馈、日志检索和告警关联。
 - 会话令牌校验已改为绑定 `session.key` 的 HMAC；轮换该密钥会使现有浏览器会话失效，数据库泄露也不能单独离线验证令牌。
-- 管理员仍提供当前浏览器会话范围的 15 分钟密码 step-up 兼容接口 `/api/auth/elevate`，失败尝试审计并限流；普通后台写操作只要求已登录管理员会话和 CSRF，不再弹出二次密码验证。该接口保留给旧客户端和明确的安全设置流程。
-- 管理员 TOTP 已提供可选 enrollment 准备层：`/api/auth/mfa/totp`、`setup`、`confirm` 和 `disable`。密钥以 AES-GCM 密文保存（使用部署的 `session.key`，轮换该密钥会同时使网页会话和 TOTP 密文失效，需重新 enrollment），setup 只返回一次 `otpauth://` URI，确认记录 RFC 6238 时间步并拒绝重放；确认后生成 10 个一次性恢复码，只保存带独立盐的 PBKDF2-SHA256 校验值，支持查看剩余数量、双重验证后轮换；管理员在已验证会话中可用密码加恢复码停用丢失的 TOTP 设备，恢复码明文只在生成/轮换响应中返回。默认不会改变登录、现有 WebSession、普通后台写操作、抖音 Cookie 或任务执行。启用 MFA 强制策略前，仍需把恢复码接入未登录挑战、完善丢失设备流程、跨进程限流和独立回归演练，并单独审阅发布开关。
 - `queue-preflight` CLI 会只读检查数据库领取表、字段和 worker 分片配置；在显式传入 `--probe-stream` 时，才对 Redis 使用随机临时 Stream 做发布、消费、确认和清理。它不接管生产任务，也不改变默认数据库领取路径，可作为 PostgreSQL/Redis 分阶段切换前的运维门禁。
 - Compose 提供默认关闭的 `postgres` 隔离 profile，带 PostgreSQL 16 健康检查和持久卷；它只用于迁移回放、schema/claim 预检，默认 SQLite 服务不会自动连接或切换。
 - 已提供默认 dry-run 的 retention CLI，可分批清理终态执行、登录会话、邮件和审计记录，并保护活跃/待核实数据。
@@ -34,7 +32,7 @@
 目标架构：
 
 1. PostgreSQL 承担事务数据；使用行级锁和 `FOR UPDATE SKIP LOCKED` 领取任务。
-2. Redis 适配层已提供分布式限流、短期状态、幂等和有界队列所需的原子原语，并在隔离 CI 服务中验证。显式启用 Redis 后，登录、注册、管理员验证、MFA、扫码和密码找回使用跨进程固定窗口限流；默认关闭时仍使用原有进程内限流且不会连接 Redis。新增 Redis Streams 消费组原语保留未确认消息、支持跨消费者回收 idle pending 消息，并明确采用至少一次投递；发送任务仍未接入生产 Redis 队列。正式切换发送链路前必须完成 AOF/RDB 持久化策略、故障降级、业务幂等键、重复投递和恢复演练。
+2. Redis 适配层已提供分布式限流、短期状态、幂等和有界队列所需的原子原语，并在隔离 CI 服务中验证。显式启用 Redis 后，登录、注册、扫码和密码找回使用跨进程固定窗口限流；默认关闭时仍使用原有进程内限流且不会连接 Redis。新增 Redis Streams 消费组原语保留未确认消息、支持跨消费者回收 idle pending 消息，并明确采用至少一次投递；发送任务仍未接入生产 Redis 队列。正式切换发送链路前必须完成 AOF/RDB 持久化策略、故障降级、业务幂等键、重复投递和恢复演练。
 3. 使用持久化任务队列，将扫描、登录复核和发送任务从 Web 请求中移出。
 4. 按抖音账号分片执行，并为每个账号设置并发信号量，移除全局 WorkerLock 串行瓶颈。当前版本已提供可渐进启用的 `SPARK_WORKER_SHARD` / `SPARK_WORKER_SHARDS`：账号按稳定 SHA-256 key 分配到分片，任务新领、过期回收和健康恢复均带分片条件；仍需在 PostgreSQL/Redis 队列环境完成压测后再提高分片数量。
 5. 截图、二维码帧和大对象放入对象存储，数据库只保存元数据和生命周期信息。
@@ -43,8 +41,9 @@
 
 ### 管理员安全
 
+管理员保持单一正常登录流程；不实现验证器、登录二次验证或额外密码弹窗。
+
 - 将二元 `admin/user` 升级为 `super_admin`、`ops_admin`、`support_admin`、`sales_admin` 和 `user`，按资源和客户归属检查权限。
-- 所有管理员启用 MFA 或 Passkey；角色变更、密码重置、兑换码生成与查看、SMTP、部署更新要求 step-up 认证。
 - 兑换码使用检索 hash 加密密文存储；后台默认只显示脱敏标识，明确点击单条查看时才解密，并记录查看审计。
 - 配置可信反向代理 IP 链。只有来自可信代理的 `X-Forwarded-For/Proto` 才能影响客户端 IP 和 HTTPS 判断。
 - 反向代理和应用同时设置请求大小、连接超时、上游读取超时、严格 HSTS、CSP、COOP、CORP、Secure/HttpOnly/SameSite Cookie。
@@ -108,3 +107,5 @@ GitHub Actions 的 PostgreSQL 16 service 会创建随机隔离 schema，装载�
 - 数据库故障、Redis 故障、对象存储暂时不可用、反向代理重启和发布回滚。
 
 只有压测、恢复演练和安全评审均通过后，才适合扩大公开推广和 reseller 网络。
+
+管理员使用正常登录、权限校验、CSRF 和审计，不提供验证器、登录二次验证或额外密码弹窗。最新实施状态以 implementation-plan.json 为准；本文件历史容量记录不是当前容量承诺。

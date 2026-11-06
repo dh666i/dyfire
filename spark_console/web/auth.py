@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import secrets
-import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, Request
@@ -11,12 +10,6 @@ from sqlalchemy.orm import Session
 from spark_console.models import User, WebSession
 from spark_console.security import SessionService
 from spark_console.web.membership import membership_summary
-
-
-STEP_UP_LIFETIME = timedelta(minutes=15)
-REQUIRE_ADMIN_STEP_UP = os.environ.get("SPARK_REQUIRE_ADMIN_STEP_UP", "false").strip().lower() in {
-    "1", "true", "yes", "on"
-}
 
 
 def _aware(value: datetime) -> datetime:
@@ -31,7 +24,7 @@ class WebAuth:
         self, request: Request, db: Session, allow_change: bool = False
     ) -> tuple[User, WebSession]:
         raw = request.cookies.get("spark_session")
-        if not raw:
+        if not raw or len(raw) > 256 or not raw.isascii():
             raise HTTPException(401)
         record = db.scalar(
             select(WebSession).where(WebSession.token_hash == self.sessions.token_hash(raw))
@@ -51,41 +44,6 @@ class WebAuth:
         # and turning an invalid request into a 500 response.
         if not isinstance(supplied, str) or not supplied or not secrets.compare_digest(record.csrf_token, supplied):
             raise HTTPException(403, "CSRF validation failed")
-
-    @staticmethod
-    def is_elevated(record: WebSession, now: datetime | None = None) -> bool:
-        """Return whether this browser session recently passed step-up auth.
-
-        The marker is deliberately attached to one session.  Elevating one
-        browser must never grant privilege to a user's other sessions.
-        """
-        elevated_until = record.elevated_until
-        if elevated_until is None:
-            return False
-        current = now or datetime.now(timezone.utc)
-        return _aware(elevated_until) > current
-
-    @classmethod
-    def require_elevated(
-        cls, record: WebSession, now: datetime | None = None
-    ) -> None:
-        """Require a recent step-up for legacy callers.
-
-        Normal administrator routes are authorized by the authenticated admin
-        session and CSRF token.  Keep this helper for explicit security
-        settings and older integrations; it is deliberately not part of the
-        normal admin write path.
-        """
-        if not cls.is_elevated(record, now=now):
-            raise HTTPException(428, "需要重新验证管理员密码")
-
-    @classmethod
-    def require_elevated_if_configured(
-        cls, record: WebSession, now: datetime | None = None
-    ) -> None:
-        """Compatibility guard for legacy integrations during migration."""
-        if REQUIRE_ADMIN_STEP_UP:
-            cls.require_elevated(record, now=now)
 
     def user_context(
         self, request: Request, db: Session

@@ -11,11 +11,12 @@ from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from spark_console.db import session_scope
 from spark_console.models import (MailSettings, MailPreference, MailDelivery, MailAccountState,
                                   DouyinAccount, User, UserSubscription, SparkTask, TaskRun,
                                   uuid_string, NotificationPolicy, PasswordReset)
+from spark_console.mail_outbox import QUEUED_STATUSES, seal_body, open_body, erase_body
 
 EVENTS = {'account_alert':'账号需要验证', 'account_recovered':'账号已恢复', 'task_failed':'任务执行异常', 'expiry':'会员即将到期'}
 DEFAULTS = {
@@ -46,7 +47,7 @@ def load_config(db, cipher):
 
 def email_address(value):
     value = str(value).strip()
-    if len(value)>254 or not re.fullmatch(r'[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+', value):
+    if len(value)>254 or any(ord(c)<32 or ord(c)==127 for c in value) or not re.fullmatch(r'[^\s<>@,;]+@[^\s<>@,;]+\.[^\s<>@,;]+', value):
         raise ValueError('请输入有效的邮箱地址')
     return value
 
@@ -121,15 +122,15 @@ def connect(config):
         raise
 
 
-def enqueue(db,config,event,key,user,recipient,summary):
+def enqueue(db,config,event,key,user,recipient,summary,cipher):
     if db.scalar(select(MailDelivery.id).where(MailDelivery.event_key==key)): return
     template=config['templates'][event]
-    db.add(MailDelivery(event_key=key,user_id=user.id,recipient=recipient,event=event,
+    db.add(seal_body(MailDelivery(event_key=key,user_id=user.id,recipient=recipient,event=event,
                        subject=render(template['subject'],user.username,summary)[:200],
-                       body=render(template['body'],user.username,summary)))
+                       body=render(template['body'],user.username,summary)),cipher))
 
 
-def collect(db,config,now):
+def collect(db,config,now,cipher):
     if not config['enabled']: return
     for user,pref in db.execute(select(User,MailPreference).join(MailPreference).where(User.status=='active',MailPreference.enabled.is_(True),MailPreference.verified.is_(True))):
         changes={key:[] for key in ('account_alert','account_recovered')}
@@ -149,7 +150,7 @@ def collect(db,config,now):
             if names and event in config['events']:
                 digest=hashlib.sha256('|'.join(sorted(keys[event])).encode()).hexdigest()
                 summary=('以下账号已恢复，已启用的任务将执行后续计划；错过的消息不补发：' if event=='account_recovered' else '以下账号需要你完成安全验证，相关任务暂缓发送：')+'、'.join(names)
-                enqueue(db,config,event,f'{event}:{user.id}:{digest}',user,pref.email,summary)
+                enqueue(db,config,event,f'{event}:{user.id}:{digest}',user,pref.email,summary,cipher)
         if 'task_failed' in config['events']:
             failure_since = now - timedelta(hours=24)
             failed = db.execute(
@@ -158,23 +159,25 @@ def collect(db,config,now):
                 .where(
                     SparkTask.owner_user_id == user.id,
                     TaskRun.scheduled_for >= failure_since,
-                    TaskRun.status.in_(('failed', 'submitted_unconfirmed')),
+                    (TaskRun.status == 'submitted_unconfirmed') |
+                    ((TaskRun.status.in_(('failed', 'skipped'))) &
+                     (TaskRun.finished_at <= now-timedelta(minutes=10)) &
+                     (TaskRun.error_code.is_(None) | TaskRun.error_code.not_in(('task_inactive','user_inactive','subscription_inactive','account_health_blocked','account_verification_required')))),
                 )
                 .order_by(TaskRun.scheduled_for.desc(), TaskRun.id.desc())
                 .limit(20)
             ).all()
             if failed:
-                bucket = now.astimezone(timezone.utc).strftime('%Y%m%d%H')
                 digest = hashlib.sha256('|'.join(sorted(run.id for run, _task in failed)).encode()).hexdigest()[:16]
                 names = '、'.join(dict.fromkeys(task.target_name for _run, task in failed))
                 summary = f'近 24 小时有 {len(failed)} 条任务需要关注：{names[:180]}。请打开执行记录查看诊断信息。'
-                enqueue(db, config, 'task_failed', f'task_failed:{user.id}:{bucket}:{digest}', user, pref.email, summary)
+                enqueue(db, config, 'task_failed', f'task_failed:{user.id}:{digest}', user, pref.email, summary,cipher)
         subscription=db.get(UserSubscription,user.id)
         if subscription and 'expiry' in config['events']:
             days=(aware(subscription.valid_until)-now).total_seconds()/86400
             threshold=1 if 0<days<=1 else 3 if 1<days<=3 else 7 if 3<days<=7 else None
             if threshold:
-                enqueue(db,config,'expiry',f'expiry:{user.id}:{subscription.valid_until.isoformat()}:{threshold}',user,pref.email,f'会员将在 {threshold} 天内到期，请前往会员页面查看有效期。续费后仅执行后续计划。')
+                enqueue(db,config,'expiry',f'expiry:{user.id}:{subscription.valid_until.isoformat()}:{threshold}',user,pref.email,f'会员将在 {threshold} 天内到期，请前往会员页面查看有效期。续费后仅执行后续计划。',cipher)
 
 
 def deliver_one(engine,cipher):
@@ -183,9 +186,9 @@ def deliver_one(engine,cipher):
         config=load_config(db,cipher)
         if not config['enabled']: return
         # Interrupted or uncertain DATA is never automatically resent.
-        db.execute(update(MailDelivery).where(MailDelivery.status=='sending',MailDelivery.updated_at<now-timedelta(minutes=10)).values(status='uncertain',error='发送进程中断，投递结果待核对'))
+        db.execute(update(MailDelivery).where(MailDelivery.status=='sending',MailDelivery.updated_at<now-timedelta(minutes=10)).values(status='uncertain',error='发送进程中断，投递结果待核对',body='',body_ciphertext=None,body_nonce=None))
         # Stream the queue so quiet hours cannot starve later users or reset codes.
-        candidates=db.scalars(select(MailDelivery).where(MailDelivery.status=='queued').order_by(MailDelivery.created_at,MailDelivery.id).execution_options(yield_per=100))
+        candidates=db.scalars(select(MailDelivery).where(MailDelivery.status.in_(QUEUED_STATUSES)).order_by(MailDelivery.created_at,MailDelivery.id).execution_options(yield_per=100))
         row=None
         from zoneinfo import ZoneInfo
         hour=now.astimezone(ZoneInfo('Asia/Shanghai')).hour
@@ -193,7 +196,7 @@ def deliver_one(engine,cipher):
             policy=db.get(NotificationPolicy,candidate.user_id) if candidate.user_id else None
             if candidate.event in EVENTS and policy:
                 if candidate.event not in policy.events.split(','):
-                    candidate.status='cancelled';continue
+                    candidate.status='cancelled';erase_body(candidate);continue
                 if policy.quiet_enabled:
                     quiet=policy.quiet_start<=hour<policy.quiet_end if policy.quiet_start<policy.quiet_end else hour>=policy.quiet_start or hour<policy.quiet_end
                     if quiet:continue
@@ -203,20 +206,25 @@ def deliver_one(engine,cipher):
         if not row: return
         pref=db.get(MailPreference,row.user_id) if row.user_id else None
         user=db.get(User,row.user_id) if row.user_id else None
-        if user and user.status!='active': row.status='cancelled';return
+        if user and user.status!='active': row.status='cancelled';erase_body(row);return
         if row.event=='reset':
             reset=db.get(PasswordReset,row.user_id)
             if not reset or mail_expired(reset.expires_at,now) or not pref or pref.email!=row.recipient or not pref.verified:
-                row.status='cancelled';return
+                row.status='cancelled';erase_body(row);return
         if row.event=='verify' and (not pref or pref.email!=row.recipient or pref.verified or (now-aware(row.created_at)).total_seconds()>600):
-            row.status='cancelled'; return
+            row.status='cancelled';erase_body(row); return
         if row.event in EVENTS and (not pref or not pref.enabled or not pref.verified or pref.email!=row.recipient or row.event not in config['events']):
-            row.status='cancelled'; return
+            row.status='cancelled';erase_body(row); return
         if (now-aware(row.created_at)).total_seconds()>86400:
-            row.status='cancelled'; row.error='通知已超过 24 小时，不再发送'; return
-        claimed=db.execute(update(MailDelivery).where(MailDelivery.id==row.id,MailDelivery.status=='queued').values(status='sending',updated_at=now)).rowcount
+            row.status='cancelled';erase_body(row); row.error='通知已超过 24 小时，不再发送'; return
+        claimed=db.execute(update(MailDelivery).where(MailDelivery.id==row.id,MailDelivery.status==row.status).values(status='sending',updated_at=now)).rowcount
         if not claimed: return
-        identifier,recipient,subject,body=row.id,row.recipient,row.subject,row.body
+        try:
+            seal_body(row,cipher,queued=False)
+            body=open_body(row,cipher)
+        except Exception:
+            row.status='failed';erase_body(row);row.error='邮件内容无法读取，请检查服务密钥';return
+        identifier,recipient,subject=row.id,row.recipient,row.subject
     client=None; submitted=False
     try:
         client=connect(config)
@@ -235,14 +243,26 @@ def deliver_one(engine,cipher):
     finally:
         if client: client.close()
     with session_scope(engine) as db:
-        row=db.get(MailDelivery,identifier); row.status=status; row.error=error
+        row=db.get(MailDelivery,identifier); row.status=status; row.error=error;erase_body(row)
+    return True
 
 
 def run_once(engine,cipher):
     with session_scope(engine) as db:
-        collect(db,load_config(db,cipher),datetime.now(timezone.utc))
-    for _ in range(5): deliver_one(engine,cipher)
+        config=load_config(db,cipher)
+        if not config['enabled']:return {'enabled':False,'processed':0}
+        collect(db,config,datetime.now(timezone.utc),cipher)
+    processed=0
+    for _ in range(5):processed+=bool(deliver_one(engine,cipher))
+    return {'enabled':True,'processed':processed}
 
 
 def mail_expired(value,now):
     return aware(value)<=now
+
+
+def queue_health(db, now=None):
+    now = now or datetime.now(timezone.utc)
+    pending, oldest = db.execute(select(func.count(MailDelivery.id), func.min(MailDelivery.created_at)).where(MailDelivery.status.in_(QUEUED_STATUSES))).one()
+    return {'pending': pending, 'oldest_age_seconds': max(0, int((now-aware(oldest)).total_seconds())) if oldest else 0,
+            'uncertain': db.scalar(select(func.count(MailDelivery.id)).where(MailDelivery.status=='uncertain')) or 0}

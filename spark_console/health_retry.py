@@ -41,25 +41,27 @@ def invalid_reason(db, run, pending, now, *, require_valid=False):
             return "health_retry_exhausted", "已达到最多 2 次重试，本次停止"
     task = db.get(SparkTask, run.task_id)
     if not task or not task.enabled or aware(task.updated_at) != aware(pending.task_revision):
-        return "health_retry_cancelled", "任务已暂停或修改，取消本次恢复重试"
+        return "health_retry_task_changed", "任务已暂停或修改，取消本次恢复重试"
     user = db.get(User, task.owner_user_id)
     from spark_console.services.subscriptions import SubscriptionService
     from spark_console.services.audits import AuditService
     subscriptions = SubscriptionService(db, AuditService(db), now=lambda: now)
     if not user or not subscriptions.can_execute_task(task.owner_user_id, task.id):
-        return "health_retry_cancelled", "账号或会员当前不可用，取消本次恢复重试"
+        return "health_retry_entitlement", "账号或会员当前不可用，取消本次恢复重试"
     account = db.get(DouyinAccount, task.douyin_account_id) if task.douyin_account_id else None
-    if not account or account.owner_user_id != task.owner_user_id or account.validation_state in ("verification", "invalid"):
-        return "health_retry_cancelled", "账号需要人工验证或已失效，本次不再自动补发"
+    if not account or account.owner_user_id != task.owner_user_id:
+        return "health_retry_account_unavailable", "原发送账号已解除绑定，本次不再发送"
+    if account.validation_state in ("verification", "invalid"):
+        return "health_retry_account_verification", "账号需要人工验证或已失效，本次不再自动补发"
     if db.scalar(select(DouyinLoginSession.id).where(
         DouyinLoginSession.account_id == account.id,
         DouyinLoginSession.slot.is_not(None),
         DouyinLoginSession.status.in_(("queued","loading_qr","awaiting_scan","confirming")),
         DouyinLoginSession.expires_at > now,
     ).limit(1)):
-        return "health_retry_cancelled", "账号正在重新登录，取消本次自动补发"
+        return "health_retry_reauth", "账号正在重新登录，取消本次自动补发"
     if require_valid and account.validation_state != "valid":
-        return "health_retry_cancelled", "账号尚未复核正常，本次暂不发送"
+        return "health_retry_health_pending", "账号尚未复核正常，本次暂不发送"
     return None
 
 

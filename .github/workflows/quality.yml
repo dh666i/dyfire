@@ -1,0 +1,80 @@
+name: Shared quality gate
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dyfire
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres -d dyfire"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7.4
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      NODE_PATH: ${{ github.workspace }}/frontend/node_modules
+      DYFIRE_REQUIRE_BROWSER: '1'
+      TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/dyfire
+      TEST_REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements.txt -r requirements-console.txt pytest pip-audit
+      - run: python -m playwright install --with-deps chromium
+      - run: npm ci
+        working-directory: frontend
+      - run: python scripts/check_version.py
+      - run: npm run build
+        working-directory: frontend
+      - name: All isolated console and shared-core tests
+        # Root platform probes are intentionally excluded: they need private
+        # Douyin account data and can perform real network/send operations.
+        # See docs/test-boundaries.md. New console tests are collected by default.
+        run: python -m pytest tests/console tests/test_deployment_paths.py tests/test_postgres_profile.py -q --junitxml=test-results.xml
+      - run: node --test frontend/src/*.test.js
+      - run: pip-audit --strict
+      - run: npm audit --audit-level=high
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: quality-evidence
+          path: test-results.xml
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.console
+          push: false
+          load: true
+          tags: dyfire:validation
+          pull: true
+          build-args: RUNTIME_REFRESH=${{ github.run_id }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" dyfire:validation /app/smoke.py
+      - uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
+        with:
+          image-ref: dyfire:validation
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'

@@ -342,7 +342,7 @@ class AuthWorker:
 
 
 async def run_loop() -> None:
-    settings = Settings.from_env(os.environ)
+    settings = Settings.from_env(os.environ, service='auth')
     engine = create_engine_for(settings)
     create_schema(engine)
     worker = AuthWorker(settings, engine)

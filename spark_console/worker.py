@@ -88,6 +88,9 @@ class Worker:
         self.account_task_gap_seconds = max(0, int(os.environ.get("SPARK_ACCOUNT_TASK_GAP_SECONDS", "8")))
 
     async def run_once(self, now: datetime | None = None):
+        close_idle = getattr(self.executor, 'close_idle_session', None)
+        if close_idle is not None:
+            await close_idle()
         current_time = now or self._clock()
         if not self._acquire_worker_lock(current_time):
             return None
@@ -815,7 +818,7 @@ class Worker:
 
 
 async def run_loop() -> None:
-    settings = Settings.from_env(os.environ)
+    settings = Settings.from_env(os.environ, service='worker')
     engine = create_engine_for(settings)
     create_schema(engine)
     worker = Worker(settings, engine, clock_offset_seconds=float(os.environ.get("SPARK_CLOCK_OFFSET_SECONDS", "0")))

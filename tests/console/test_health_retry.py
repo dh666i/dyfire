@@ -78,7 +78,7 @@ def test_unbound_account_health_retry_is_cancelled_without_sending(case, shards)
         db.commit()
         run = db.get(TaskRun, first.id)
         assert run.status == "failed"
-        assert run.error_code == "health_retry_cancelled"
+        assert run.error_code == "health_retry_task_changed"
         assert run.submitted_at is None
 
 def test_chat_list_flake_retries_inside_window(case, monkeypatch):
@@ -339,7 +339,7 @@ def test_relogin_cancels_waiting_siblings(case):
         recovered(db, db.get(DouyinAccount, case[3]))
         db.commit()
         rows = db.scalars(select(TaskRun)).all()
-        pending = [r for r in rows if r.error_code == "health_retry_cancelled"]
+        pending = [r for r in rows if r.error_code == "health_retry_reauth"]
         assert len(pending) == 5
         assert all(r.status in ("failed", "skipped") for r in pending)
 

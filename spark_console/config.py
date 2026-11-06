@@ -58,7 +58,6 @@ class Settings:
     hsts_include_subdomains: bool = False
     # Retained for configuration compatibility; normal admin writes no longer
     # require a second password step.
-    require_admin_step_up: bool = False
     # PostgreSQL pool settings. SQLite keeps its existing file/WAL behavior.
     database_pool_size: int = 10
     database_max_overflow: int = 20
@@ -105,7 +104,9 @@ class Settings:
         validate_shard(self.worker_shard, self.worker_shards)
 
     @classmethod
-    def from_env(cls, environ: Mapping[str, str]) -> "Settings":
+    def from_env(cls, environ: Mapping[str, str], *, service: str = 'web') -> "Settings":
+        if service not in ('web', 'auth', 'worker', 'monitor'):
+            raise ValueError('unknown service')
         try:
             data_dir = Path(environ["SPARK_DATA_DIR"]).resolve()
             cookie_key_file = Path(environ["SPARK_COOKIE_KEY_FILE"]).resolve()
@@ -114,9 +115,9 @@ class Settings:
             raise ValueError(f"missing required setting: {error.args[0]}") from error
 
         data_dir.mkdir(parents=True, exist_ok=True)
-        if len(cookie_key_file.read_bytes()) != 32:
+        if service != 'monitor' and len(cookie_key_file.read_bytes()) != 32:
             raise ValueError("cookie key must be exactly 32 bytes")
-        if len(session_key_file.read_bytes()) < 32:
+        if service == 'web' and len(session_key_file.read_bytes()) < 32:
             raise ValueError("session key must contain at least 32 bytes")
 
         hsts_max_age_seconds = int(environ.get("SPARK_HSTS_MAX_AGE_SECONDS", "31536000"))
@@ -152,10 +153,6 @@ class Settings:
             hsts_include_subdomains=_env_bool(
                 environ.get("SPARK_HSTS_INCLUDE_SUBDOMAINS", "false"),
                 name="SPARK_HSTS_INCLUDE_SUBDOMAINS",
-            ),
-            require_admin_step_up=_env_bool(
-                environ.get("SPARK_REQUIRE_ADMIN_STEP_UP", "false"),
-                name="SPARK_REQUIRE_ADMIN_STEP_UP",
             ),
             database_pool_size=int(environ.get("SPARK_DATABASE_POOL_SIZE", "10")),
             database_max_overflow=int(environ.get("SPARK_DATABASE_MAX_OVERFLOW", "20")),

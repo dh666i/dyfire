@@ -141,7 +141,7 @@ def main() -> None:
         path = Path(os.environ.get("SPARK_DATA_DIR", "/data")) / HISTORY_FILE
         raise SystemExit(0 if read_history(path)["state"] == "fresh" else 1)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    settings = Settings.from_env(os.environ)
+    settings = Settings.from_env(os.environ, service='monitor')
     root = Path(os.environ["SPARK_HOST_METRICS_DIR"])
     engine = create_engine_for(settings)
     previous_ticks = None

@@ -4,6 +4,7 @@ Only immutable images from this repository can be installed. Releases with a
 different data schema require a separately reviewed migration, not auto-update.
 """
 import base64
+from contextlib import closing
 try:
     import fcntl
 except ImportError:  # pragma: no cover - host service runs on Linux
@@ -380,9 +381,9 @@ def assert_no_active_operations(data_dir):
     # observe a stable snapshot before refusing an otherwise safe update.
     for attempt in range(20):
         try:
-            with sqlite3.connect(
+            with closing(sqlite3.connect(
                 f'{database.as_uri()}?mode=ro', uri=True, timeout=5
-            ) as db:
+            )) as db:
                 db.execute('PRAGMA busy_timeout=5000')
                 active = db.execute(
                     "SELECT count(*) FROM task_runs WHERE status='running'"
@@ -430,7 +431,7 @@ def install(target, operation_id=''):
     if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', current['image']):
         raise ValueError('当前安装记录不是本仓库的固定镜像')
     data_dir = resolve_data_dir()
-    required = sum(p.stat().st_size for p in data_dir.rglob('*') if p.is_file())
+    required = sum(p.stat().st_size for p in data_dir.rglob('*') if p.is_file() and not any(part in ('backups', 'snapshots') for part in p.relative_to(data_dir).parts))
     if shutil.disk_usage(ROOT).free < required + 2 * 1024**3:
         raise ValueError('备份空间不足，请清理磁盘后重试')
     assert_no_active_operations(data_dir)
@@ -446,7 +447,7 @@ def install(target, operation_id=''):
     assert_no_active_operations(data_dir)
     try:
         compose(current['image'], 'stop', '-t', '180', *SERVICES)
-        shutil.copytree(data_dir, backup / 'data')
+        shutil.copytree(data_dir, backup / 'data', ignore=shutil.ignore_patterns('backups', 'snapshots'))
         shutil.copy2(current_file, backup / 'installed.json')
         web_file = ROOT / 'web-installed.json'
         if web_file.is_file():

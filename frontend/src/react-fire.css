@@ -632,12 +632,9 @@ html[data-theme="light"] .fire-heat-tooltip { background:rgba(255,252,248,.97); 
    geometry consistent across themes and routes. */
 .setting-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
 .setting-actions .button { min-width:96px; }
-.update-version-grid > div { border-radius:10px; }
-.update-progress, .update-rollback, .admin-bulk-bar, .mfa-recovery-status, .mfa-recovery-issued { border-radius:10px; }
+.update-version-grid > div { border-radius:10px; }.update-progress, .update-rollback, .admin-bulk-bar { border-radius:10px; }
 .quick-links a { border-radius:8px; padding:12px 10px; }
 .quick-links a:hover { background:rgba(255,107,37,.07); }
-.admin-totp-panel > .form-grid { align-items:end; }
-.admin-totp-panel > .form-grid > .button { width:100%; min-height:42px; }
 .admin-form-section { border-top:1px solid rgba(255,219,198,.1); border-bottom:1px solid rgba(255,219,198,.1); }
 .admin-editor-form .setting-actions { margin-top:2px; }
 .workspace-section-card { border-radius:10px; }
@@ -648,8 +645,6 @@ html[data-theme="light"] .quick-links a:hover { background:rgba(217,71,22,.07); 
 @media(max-width:700px){
   .setting-actions { align-items:stretch; }
   .setting-actions .button { flex:1 1 130px; min-width:0; }
-  .admin-totp-panel > .form-grid { gap:12px; }
-  .admin-totp-panel > .form-grid > .button { width:100%; }
   .composer-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
   .composer-actions .button { min-width:0; width:100%; }
   .composer-actions .button:only-child { grid-column:1/-1; }
@@ -725,25 +720,9 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
   .drawer-foot { padding:12px 18px calc(12px + env(safe-area-inset-bottom)); }
   html[data-theme="light"] .drawer, html[data-theme="light"] .drawer.drawer-wide, html[data-theme="light"] .drawer.drawer-centered { border-top-color:rgba(48,39,35,.14); }
   html[data-theme="light"] .drawer-head::before { background:rgba(48,39,35,.24); }
-}
-
-/* Final visual consistency pass. Keep legacy workspace primitives inside the
+}/* Final visual consistency pass. Keep legacy workspace primitives inside the
    same rounded, compact language as the fire console. */
-.button,
-.card,
-.status-banner,
-.input,
-.friend-trigger,
-.task-table,
-.admin-table,
-.update-version-grid > div,
-.update-progress,
-.update-rollback,
-.admin-bulk-bar,
-.mfa-recovery-status,
-.mfa-recovery-issued,
-.onboarding-step,
-.today-board-account {
+.button, .card, .status-banner, .input, .friend-trigger, .task-table, .admin-table, .update-version-grid > div, .update-progress, .update-rollback, .admin-bulk-bar, .onboarding-step, .today-board-account {
   border-radius: 12px;
 }
 .task-table,
@@ -879,28 +858,9 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
     border: 1px solid var(--hairline);
     border-radius: 18px;
   }
-}
-
-/* One consistent shape language for controls that still come from the base
+}/* One consistent shape language for controls that still come from the base
    workspace stylesheet. */
-.button,
-.input,
-.textarea,
-.friend-trigger,
-.card,
-.task-table,
-.admin-table,
-.status-banner,
-.segmented,
-.admin-subview-tabs,
-.update-version-grid > div,
-.update-progress,
-.update-rollback,
-.admin-bulk-bar,
-.mfa-recovery-status,
-.mfa-recovery-issued,
-.onboarding-step,
-.today-board-account { border-radius: 12px; }
+.button, .input, .textarea, .friend-trigger, .card, .task-table, .admin-table, .status-banner, .segmented, .admin-subview-tabs, .update-version-grid > div, .update-progress, .update-rollback, .admin-bulk-bar, .onboarding-step, .today-board-account { border-radius: 12px; }
 .button:focus-visible,
 .input:focus-visible,
 .textarea:focus-visible,

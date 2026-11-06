@@ -99,7 +99,15 @@ services:
     command: [python, -m, spark_console.ops_history]
     environment:
       SPARK_HOST_METRICS_DIR: /run/host-metrics
-    volumes: *host-metrics-volumes
+    # The collector needs metrics and its history database, no account keys or
+    # writable update channel.
+    volumes:
+      - ./data:/data
+      - /proc/stat:/run/host-metrics/stat:ro
+      - /proc/meminfo:/run/host-metrics/meminfo:ro
+      - /proc/loadavg:/run/host-metrics/loadavg:ro
+      - /proc/uptime:/run/host-metrics/uptime:ro
+      - /etc/hostname:/run/host-metrics/rootfs:ro
     mem_limit: 128m
     cpus: 0.20
     tmpfs: ["/tmp:rw,noexec,nosuid,size=16m"]
@@ -114,6 +122,9 @@ services:
     command: [python, -m, spark_console.auth_worker]
     environment:
       SPARK_AUTH_POLL_SECONDS: "1"
+    volumes:
+      - ./data:/data
+      - ./secrets/cookie.key:/run/secrets/cookie.key:ro
     mem_limit: 768m
     cpus: 1.0
     tmpfs: ["/tmp:rw,noexec,nosuid,size=256m"]
@@ -129,6 +140,9 @@ services:
     environment:
       SPARK_WORKER_CONCURRENCY: "1"
       SPARK_HEALTH_RETRY_WINDOW_MINUTES: "20"
+    volumes:
+      - ./data:/data
+      - ./secrets/cookie.key:/run/secrets/cookie.key:ro
     mem_limit: 768m
     cpus: 1.0
     tmpfs: ["/tmp:rw,noexec,nosuid,size=256m"]

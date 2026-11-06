@@ -60,6 +60,18 @@ class DouyinExecutor:
 
     def __init__(self):
         self._live: dict[str, object] | None = None
+        self._executing = False
+
+    async def close_idle_session(self, now=None) -> bool:
+        """Release Chromium after inactivity; durable encrypted state is retained."""
+        live = self._live
+        if self._executing or not live:
+            return False
+        now = time.monotonic() if now is None else now
+        if now - live.get('used_at', now) < self.SESSION_IDLE_SECONDS:
+            return False
+        await self.close_session()
+        return True
 
     @staticmethod
     def _classify_automation_error(error: Exception, stage: str) -> tuple[str, str, bool]:
@@ -202,6 +214,16 @@ class DouyinExecutor:
         session_key: str | None = None,
         on_authenticated: Callable[[str], object] | None = None,
     ) -> ExecutionResult:
+        self._executing = True
+        try:
+            return await self._execute(cookie_payload, target, message, credential_version,
+                target_sec_uid, on_submitted, message_kind, session_key, on_authenticated)
+        finally:
+            self._executing = False
+
+    async def _execute(self, cookie_payload, target, message, credential_version=1,
+                       target_sec_uid=None, on_submitted=None, message_kind='text',
+                       session_key=None, on_authenticated=None):
         from playwright.async_api import async_playwright
         from core.tasks import (
             MessageNetworkAckMonitor,

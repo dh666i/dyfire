@@ -1,4 +1,6 @@
 import unittest
+import json,time
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import select
@@ -6,6 +8,7 @@ from spark_console.db import session_scope
 from spark_console.models import User, MailSettings, MailPreference, MailDelivery, DouyinAccount
 from spark_console.crypto import CookieCipher
 from spark_console.services import mail
+from spark_console.mail_outbox import open_body
 from tests.console.test_web_fixture import UserFixture
 from spark_console.models import SparkTask
 
@@ -13,6 +16,7 @@ from spark_console.models import SparkTask
 class MailReleaseTests(unittest.TestCase):
     def setUp(self):
         self.fixture=UserFixture();self.fixture.setUp();self.client=self.fixture.client
+        (self.fixture.settings.data_dir/'mail-worker-health.json').write_text(json.dumps({'at':time.time(),'state':'ready'}))
         with session_scope(self.fixture.engine) as db:
             user=db.scalar(select(User).where(User.username=='friend'));user.must_change_password=False;user.role='admin';self.uid=user.id
         self.fixture.login()
@@ -56,7 +60,7 @@ class MailReleaseTests(unittest.TestCase):
             db.add(MailPreference(user_id=self.uid,email='receiver@example.com',enabled=True,verified=True))
             db.add(DouyinAccount(owner_user_id=self.uid,display_name='测试',encrypted_cookies=b'x',cookie_nonce=b'x',validation_state='verification'))
         for _ in range(2):
-            with session_scope(self.fixture.engine) as db:mail.collect(db,mail.load_config(db,self.cipher),datetime.now(timezone.utc))
+            with session_scope(self.fixture.engine) as db:mail.collect(db,mail.load_config(db,self.cipher),datetime.now(timezone.utc),self.cipher)
         with session_scope(self.fixture.engine) as db:self.assertEqual(1,len(db.scalars(select(MailDelivery)).all()))
         smtp=MagicMock();smtp.send_message.side_effect=TimeoutError()
         with patch.object(mail,'connect',return_value=smtp):
@@ -65,7 +69,7 @@ class MailReleaseTests(unittest.TestCase):
         with session_scope(self.fixture.engine) as db:
             self.assertEqual('uncertain',db.scalar(select(MailDelivery)).status)
             db.scalar(select(DouyinAccount)).validation_state='valid'
-        with session_scope(self.fixture.engine) as db:mail.collect(db,mail.load_config(db,self.cipher),datetime.now(timezone.utc))
+        with session_scope(self.fixture.engine) as db:mail.collect(db,mail.load_config(db,self.cipher),datetime.now(timezone.utc),self.cipher)
         smtp=MagicMock()
         with patch.object(mail,'connect',return_value=smtp):mail.deliver_one(self.fixture.engine,self.cipher)
         with session_scope(self.fixture.engine) as db:self.assertEqual('accepted',db.scalar(select(MailDelivery).where(MailDelivery.event=='account_recovered')).status)

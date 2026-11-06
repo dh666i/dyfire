@@ -11,6 +11,7 @@ operations record without exposing credentials or cookie contents.
 from __future__ import annotations
 
 import argparse
+from contextlib import closing
 import hashlib
 import json
 import os
@@ -163,7 +164,7 @@ def _copy_backup(source: Path, destination: Path) -> None:
         raise RecoveryDrillError(f"恢复目标已存在: {destination}")
     temporary = destination.with_name(destination.name + ".tmp")
     try:
-        with _connect_readonly(source) as source_db, sqlite3.connect(temporary) as target_db:
+        with closing(_connect_readonly(source)) as source_db, closing(sqlite3.connect(temporary)) as target_db:
             source_db.backup(target_db)
             target_db.execute("PRAGMA journal_mode=DELETE")
             target_db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -191,7 +192,7 @@ def run(source: str | Path, *, output: str | Path | None = None, cookie_key: str
             retained = True
         _copy_backup(source_path, destination)
         created_destination = True
-        with _connect_readonly(source_path) as source_db, _connect_readonly(destination) as restored_db:
+        with closing(_connect_readonly(source_path)) as source_db, closing(_connect_readonly(destination)) as restored_db:
             source_tables = _tables(source_db)
             restored_tables = _tables(restored_db)
             if source_tables != restored_tables:
