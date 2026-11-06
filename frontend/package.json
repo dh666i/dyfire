@@ -10,7 +10,7 @@
   "dependencies": {
     "@fontsource/inter": "5.2.8",
     "@fontsource/noto-sans-sc": "5.2.9",
-    "motion": "^12.43.0",
+    "motion": "^14.9.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.4"
