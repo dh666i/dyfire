@@ -8,7 +8,7 @@ cryptography==50.0.0
 httpx==0.28.1
 tzdata==2025.2
 psycopg[binary]==3.2.10
-redis==6.4.0
+redis==8.1.0
 
 # Keep the ASGI security baseline explicit; FastAPI accepts this range.
 starlette==1.3.1
