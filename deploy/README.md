@@ -89,3 +89,7 @@ python3 deploy/recovery_drill.py \
 更新器的 Docker 客户端凭据独立保存在 `secrets/docker/config.json`（root、0600），
 配合 `ProtectHome=true` 无需读取整个 root 主目录。维护安装器仅迁移 ghcr.io 的现有认证条目；
 如需要重新登录，使用 `sudo env DOCKER_CONFIG=/opt/dyfire/secrets/docker docker login ghcr.io`。
+
+基础系统每周刷新缓存并执行 apt 更新；Python 或 Playwright 依赖变更也会重新构建运行层。
+普通应用页面改动复用同周、同依赖的运行层，避免每次发布都让服务器重下 Chromium。
+所有发行镜像仍由同提交门禁和扫描验证，不复用旧应用镜像作为基础。

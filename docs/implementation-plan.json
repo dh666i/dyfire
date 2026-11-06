@@ -22,13 +22,13 @@
     {
       "id": "A",
       "name": "账号与任务正确性",
-      "status": "verified_not_deployed",
+      "status": "deployed",
       "pr": 1
     },
     {
       "id": "B",
       "name": "依赖、页面和登录安全",
-      "status": "verified_not_deployed"
+      "status": "deployed"
     },
     {
       "id": "C",
@@ -57,16 +57,16 @@
       "area": "发送正确性 / P0",
       "task": "修复免费资格与重试分支不一致",
       "acceptance": "免费任务遇到暂时异常仍可按既定额度恢复；超额、停用任务不被恢复",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 2,
       "area": "账号身份 / P0",
       "task": "同一抖音账号以平台稳定身份去重，并在重认证后核对身份",
       "acceptance": "采集并验证平台稳定 UID/可验证身份，数据库唯一约束；可改抖音号仅展示。存量 4 个缺身份账号先补齐验证，不直接猜测归并或强制退出",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 3,
@@ -175,16 +175,16 @@
       "area": "今日首页 / P1",
       "task": "在已有账号优先布局中增加明确行动",
       "acceptance": "优先展示需处理账号、今日未发、下一次计划；正常时保持简洁",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 18,
       "area": "任务状态 / P1",
       "task": "将计划启用与今日执行结果分开",
       "acceptance": "暂停、启用、今日成功、今日跳过、待核实不互相覆盖",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 19,
@@ -220,16 +220,16 @@
       "area": "轻量交互 / P1",
       "task": "统一等待、成功、冲突、网络未知反馈",
       "acceptance": "有确认回执才显示保存完成；网络超时不误称写入失败并让用户重复创建",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 24,
       "area": "移动工作区 / P1",
       "task": "保留底部 Dock，设置一致安全边距",
       "acceptance": "360/390/430 宽度，无横向溢出；最后一行不被 Dock 遮挡",
-      "status": "verified_not_deployed",
-      "evidence": "Chromium 覆盖 360/390/430/1440、普通/管理员、两种主题，无根页面横向溢出；待生产验收"
+      "status": "deployed",
+      "evidence": "Chromium 覆盖 360/390/430/1440、普通/管理员、两种主题，无根页面横向溢出；待生产验收；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 25,
@@ -260,8 +260,8 @@
       "area": "动效 / P1",
       "task": "保留已认可设计，统一动效节奏",
       "acceptance": "局部状态过渡，不拖慢关键动作；减少动态效果偏好生效；无逐卡永久循环",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 29,
@@ -276,8 +276,8 @@
       "area": "客户管理 / P1",
       "task": "增强已有客户工作台的异常处理闭环",
       "acceptance": "同页展示账号、任务、订阅、今日结果与处理记录；继续沿用现有合并方式",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 31,
@@ -292,8 +292,8 @@
       "area": "支持工具 / P1",
       "task": "一键复制脱敏排障编号",
       "acceptance": "用户只需报编号；管理员直接跳到相关运行、账号事件和版本",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 33,
@@ -314,8 +314,8 @@
       "area": "订阅一致性 / P1",
       "task": "免费、续费、过期、降级使用同一规则",
       "acceptance": "页面、创建、启用、执行、恢复全部一致；超额计划明确标注可执行资格",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 36,
@@ -406,7 +406,7 @@
       "task": "真正实施空闲 Chromium 回收",
       "acceptance": "回收后无浏览器子进程；下次能从加密状态恢复；内存确实下降",
       "status": "implemented_pending_runtime_measurement",
-      "evidence": "实现 180 秒空闲 Chromium 关闭并测试执行中保护；尚需生产内存下降观测"
+      "evidence": "已部署 180 秒空闲关闭和执行中保护；实际内存变化仍需正常任务后的观测"
     },
     {
       "id": 48,
@@ -473,8 +473,8 @@
       "area": "更新门禁 / P1",
       "task": "用同一发布提交的测试结果与镜像证据验收",
       "acceptance": "固定 digest 已有；进一步扫描镜像、清理敏感构建上下文并验证构建来源，按仓库套餐可用能力选工具",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 57,
@@ -540,16 +540,16 @@
       "area": "下拉控件 / P0",
       "task": "修复空引用、回车额外移位、内部滚动误关",
       "acceptance": "点选不抛异常；方向键只移动高亮，回车提交当前高亮；菜单内滚动不关闭；补原生语义与 aria-activedescendant",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 66,
       "area": "首次引导 / P1",
       "task": "首次执行完成条件读取真实运行结果",
       "acceptance": "绑定、建任务和第一次成功为独立进度，尚未执行时不会提前全部完成",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 67,
@@ -557,39 +557,39 @@
       "task": "入库一套明确的消费者部署与健康检查",
       "acceptance": "可选 oneshot+timer 或受控常驻服务；配置、入队、消费、SMTP 接受、收件箱确认全链路可验收，不堆两套消费者",
       "status": "implemented_pending_activation",
-      "evidence": "单一 host timer 消费者、健康检测已实现；生产 SMTP 未配置，不把离线测试视为真实送达"
+      "evidence": "host timer 已安装且心跳在线；SMTP 未配置，未发送真实邮件，外部送达待配置后验收"
     },
     {
       "id": 68,
       "area": "密码恢复 / P1",
       "task": "重置成功清理锁定并统一用户名规范化",
       "acceptance": "已写入新密码后可正常登录；大小写规则与登录一致，已发代码只能使用一次",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 69,
       "area": "登录防滥用 / P1",
       "task": "对未知用户进行等效哈希处理并改进锁定策略",
       "acceptance": "不让一个来源持续阻塞受害者账号；统一响应，限制源头与目标，保留合理账户保护和恢复路径",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 70,
       "area": "敏感邮件 / P1",
       "task": "outbox 敏感正文加密、投递后清理及验证码 HMAC",
       "acceptance": "队列持久性保留；数据库不长期留验证码/重置码明文；期限、尝试次数、原子一次性消费继续生效",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 71,
       "area": "兑换码 / P1",
       "task": "可复制明文改为受控解密展示",
       "acceptance": "保留管理员一键复制需求；hash 查找、密文存储，解密查看有权限与审计，不改成无法找回的单一 hash",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 72,
@@ -604,32 +604,32 @@
       "area": "测试覆盖 / P1",
       "task": "用可审计的完整收集替代易漏的手写清单",
       "acceptance": "单元/API、浏览器、Postgres/Redis 集成分层；任何排除有理由，不能用盲目 glob 跑生产平台或历史网络探针",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 74,
       "area": "构建产物 / P1",
       "task": "清除 Git 中半套陈旧 dist，统一构建契约",
       "acceptance": "从源码部署先构建；Docker/发布包始终含完整一致产物。清理跟踪不误删品牌图片或必要发布文件",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 75,
       "area": "镜像维护 / P1",
       "task": "将 .NET runtime-deps 底座换为匹配业务的受维护基础链",
       "acceptance": ".NET 8 标签接近 EOL，但不能推断 Ubuntu 系统四天后停补丁；定期 rebase，Playwright 包与浏览器二进制匹配",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "deployed",
+      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 76,
       "area": "发布门禁 / P1",
       "task": "发行提交统一完成必需验证再发布",
       "acceptance": "reusable workflow/同提交状态校验等明确门禁；main 保护与依赖更新配置分开设置，不写跨 workflow 的无效 needs",
-      "status": "verified_not_deployed",
-      "evidence": "PR run 42264026846 与 Release run 42266297501 的统一门禁全部通过"
+      "status": "deployed",
+      "evidence": "PR run 42264026846 与 Release run 42266297501 的统一门禁全部通过；2026-11-07 生产 0.3.42 已验收"
     },
     {
       "id": 77,
@@ -659,10 +659,19 @@
       "area": "单一套餐源 / P1",
       "task": "删除有效入口中的价格硬编码",
       "acceptance": "客服卡片、管理员默认套餐、兑换预览都读取服务端套餐；旧计划兼容记录与当前可售目录分离",
-      "status": "verified_not_deployed",
-      "evidence": "生产入口客服卡片、管理员套餐读取服务端 plans；预览 fixture 保留固定样本价格"
+      "status": "deployed",
+      "evidence": "生产入口客服卡片、管理员套餐读取服务端 plans；预览 fixture 保留固定样本价格；2026-11-07 生产 0.3.42 已验收"
     }
   ],
   "last_reviewed": "2026-11-07",
-  "verification_note": "本地 690 passed/18 skipped；PR CI 42264026846、Release CI 42266297501 的 Linux、PG、Redis、Chromium、镜像构建与扫描全部通过。只对明确覆盖项标记验证；未完成项继续保留，不将局部改进算整项完成。"
+  "verification_note": "本地 690 passed/18 skipped；PR CI 42264026846、Release CI 42266297501 的 Linux、PG、Redis、Chromium、镜像构建与扫描全部通过。只对明确覆盖项标记验证；未完成项继续保留，不将局部改进算整项完成。",
+  "production": {
+    "version": "0.3.42",
+    "schema": 21,
+    "image": "ghcr.io/dh666i/dyfire@sha256:7708fcca768b16568639f1cdb4554b15315f033bce3bec8650f12c07e18582d1",
+    "public_health": "ready",
+    "services": 4,
+    "active_identities_enrolled": 2,
+    "dormant_accounts_preserved": 2
+  }
 }
