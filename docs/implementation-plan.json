@@ -33,7 +33,7 @@
     {
       "id": "C",
       "name": "邮件与异常闭环",
-      "status": "verified_not_deployed"
+      "status": "in_progress"
     },
     {
       "id": "D",
@@ -73,16 +73,16 @@
       "area": "发送策略 / P1",
       "task": "将状态分类、资格、重试与恢复策略集中",
       "acceptance": "同一异常在用户端、后台、调度器显示相同事实与处理动作",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "统一了展示策略与取消原因；执行资格/恢复分支仍需逐项收敛"
     },
     {
       "id": 4,
       "area": "结果证据 / P1",
       "task": "增强待核实的只读对账能力",
       "acceptance": "利用可验证消息身份、时间范围、回执核对；证据不足保留待核实，不自动重发",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "planned",
+      "evidence": "待核实仍维持不自动重发；尚未增加新的平台只读对账证据"
     },
     {
       "id": 5,
@@ -96,16 +96,16 @@
       "area": "故障诊断 / P1",
       "task": "失败自动生成最小诊断包",
       "acceptance": "版本、阶段耗时、原因码、选择器命中、脱敏页面信息可关联；默认不含 Cookie、验证码、聊天正文",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "已提供不含正文和凭据的排障包；选择器命中与浏览器阶段自动采集待补"
     },
     {
       "id": 7,
       "area": "故障影响 / P1",
       "task": "按账号合并一次持续异常事件",
       "acceptance": "同一验证事件下的跳过可归并，展示首次发现、影响任务数、提醒、用户操作与恢复时间",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "planned",
+      "evidence": "尚未实现持久化账号异常事件归并，不能用告警列表替代"
     },
     {
       "id": 8,
@@ -212,8 +212,8 @@
       "area": "数据更新 / P1",
       "task": "前台恢复刷新、后台轮询降频",
       "acceptance": "当前页面及时更新，后台标签页降低轮询；取消过期请求，避免恢复窗口时集中请求",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "已实现 bootstrap 与管理员筛选取消、读取合并和可见性刷新；其余页面逐步迁移"
     },
     {
       "id": 23,
@@ -229,31 +229,31 @@
       "task": "保留底部 Dock，设置一致安全边距",
       "acceptance": "360/390/430 宽度，无横向溢出；最后一行不被 Dock 遮挡",
       "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "evidence": "Chromium 覆盖 360/390/430/1440、普通/管理员、两种主题，无根页面横向溢出；待生产验收"
     },
     {
       "id": 25,
       "area": "手机抽屉 / P1",
       "task": "动态视口、键盘、安全区统一",
       "acceptance": "iOS Safari、Android Chrome 下展开/收起、滚动锁、返回与焦点恢复正常",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "requires_device_validation",
+      "evidence": "Chromium 已覆盖移动宽度；真实 iOS/Android 键盘、安全区和返回仍需设备验证"
     },
     {
       "id": 26,
       "area": "可触达性 / P1",
       "task": "所有触屏主要按钮有足够点击面积",
       "acceptance": "常用目标以约 44 CSS px 为设计目标，删除等危险动作不与主按钮挤在一起",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "保留现有触摸样式，尚未逐控件完成 44px 点击区域验收"
     },
     {
       "id": 27,
       "area": "深浅主题 / P1",
       "task": "将颜色和表面属性整理为语义 token",
       "acceptance": "姓名、禁用文字、菜单、弹窗、表格、表单错误在两种主题都有独立检查",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "保留语义主题变量，完成两种主题页面渲染检查；尚未逐控件测量对比度"
     },
     {
       "id": 28,
@@ -268,8 +268,8 @@
       "area": "无障碍 / P1",
       "task": "键盘、对比度、状态文本并行表达",
       "acceptance": "焦点可见，菜单/弹窗可关闭，状态不只靠颜色；错误被读屏识别",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "下拉键盘焦点、模态焦点和错误状态有测试；尚未完成读屏及全站对比度验收"
     },
     {
       "id": 30,
@@ -284,8 +284,8 @@
       "area": "管理详情 / P1",
       "task": "编辑展示修改前后差异",
       "acceptance": "用户、任务、额度修改准确说明影响范围，提交后可查审计",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "planned",
+      "evidence": "已有修改审计；尚未实现统一的提交前差异预览"
     },
     {
       "id": 32,
@@ -322,8 +322,8 @@
       "area": "兑换体验 / P1",
       "task": "兑换前说明权益生效与叠加结果",
       "acceptance": "展示期限、账号/任务额度、旧订阅如何衔接，不让用户猜测",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "后端兑换预览存在；React 兑换表单尚未接预览确认"
     },
     {
       "id": 37,
@@ -358,40 +358,40 @@
       "area": "前端结构 / P1",
       "task": "拆分页面、业务 hooks、API 客户端、组件",
       "acceptance": "维持同一视觉和接口；任务编辑不会连带改坏管理员页面",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "已拆出登录页、API 客户端与运行策略；主体业务页面仍需继续拆分"
     },
     {
       "id": 42,
       "area": "接口契约 / P1",
       "task": "Pydantic schema 与前端类型/状态映射联动",
       "acceptance": "字段新增、枚举更改、分页空态均有契约检查；减少 normalize 中静默兜底",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "planned",
+      "evidence": "尚未建立联动的 Pydantic/前端契约类型与自动生成检查"
     },
     {
       "id": 43,
       "area": "样式结构 / P1",
       "task": "收敛重复 CSS，建立 tokens 与组件样式",
       "acceptance": "减少覆盖链和 !important；按实际页面引用图清理，避免将旧模板样式体积算到全部生产页面上",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "移除已废弃验证器样式；尚未完成 CSS 引用图清理与覆盖链收敛"
     },
     {
       "id": 44,
       "area": "资源加载 / P1",
       "task": "路由分包、字体按需与明确缓存策略",
       "acceptance": "哈希资源长缓存，HTML/私人数据使用合适缓存；保留中文覆盖，测实际网络瀑布，不把字体仓库总量当每次下载量",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "登录路由分包、WOFF2、哈希长缓存已完成；仍需全路由分包与网络瀑布验证"
     },
     {
       "id": 45,
       "area": "页面请求 / P1",
       "task": "路由取消、请求代次、缓存与刷新统一",
       "acceptance": "快速切换不会用旧响应覆盖新页面；多处组件不重复拉同一大 bootstrap",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "共享读取合并与部分路由取消已完成；其余业务请求尚未全部迁移"
     },
     {
       "id": 46,
@@ -405,16 +405,16 @@
       "area": "浏览器容量 / P1",
       "task": "真正实施空闲 Chromium 回收",
       "acceptance": "回收后无浏览器子进程；下次能从加密状态恢复；内存确实下降",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "implemented_pending_runtime_measurement",
+      "evidence": "实现 180 秒空闲 Chromium 关闭并测试执行中保护；尚需生产内存下降观测"
     },
     {
       "id": 48,
       "area": "队列容量 / P1",
       "task": "显示未来高峰、预计排队与安全余量",
       "acceptance": "不只数每天任务总量，按 5/15 分钟窗口、执行 P95 和恢复窗口评估",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "5/15 分钟高峰和 P95 保守估算已实现；恢复/登录混合工作量尚未纳入"
     },
     {
       "id": 49,
@@ -442,16 +442,16 @@
       "area": "状态流量 / P2",
       "task": "降低扫码截图写库与重复下载成本",
       "acceptance": "按画面变化和前台可见性采样；保留现有 frame_revision 优化，不先增加对象存储服务",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "保留 frame_revision；尚未完成前后台截图采样和数据库写入实测"
     },
     {
       "id": 53,
       "area": "业务监控 / P1",
       "task": "计划兑现率、阻塞时长、排队延迟、恢复耗时",
       "acceptance": "告警关联用户受影响程度；主机 CPU 图不替代业务监控",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "新增跳过、已记录计划成功率、排队 P95；持续异常阻塞/恢复时长待补"
     },
     {
       "id": 54,
@@ -465,8 +465,8 @@
       "area": "更新诊断 / P1",
       "task": "明确拉取进度、数据库读取与失败阶段",
       "acceptance": "对旧长进程读库异常复现、显式关闭连接；保持更新前活跃操作检查、固定摘要和可验证回滚",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "关闭 SQLite 连接及阶段状态已修复；逐层拉取进度尚未实现"
     },
     {
       "id": 56,
@@ -481,16 +481,16 @@
       "area": "恢复能力 / P1",
       "task": "保留可验证的发布快照与人工导出/恢复流程",
       "acceptance": "不启用用户已拒绝的周期自动备份；快照保留与清理另行设计，优先删除经过确认的过期副本，不擅自删线上恢复点",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "手动恢复演练修复并移除周期备份模板；快照清理仅提供默认只读工具，未删除线上副本"
     },
     {
       "id": 58,
       "area": "密钥生命周期 / P1-P2",
       "task": "最小挂载、用途 AAD、key id 与安全轮换",
-      "acceptance": "TOTP 当前已有独立 AAD；CookieCipher 仍复用在若干用途。密钥长度与版本校验清晰，迁移不能令旧账号解密失败",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "acceptance": "最小挂载、用途 AAD、key id 与安全轮换须兼容旧账号解密；管理员验证器已排除",
+      "status": "partially_implemented",
+      "evidence": "最小密钥挂载、邮件/兑换码用途 AAD 已实现；key id 和完整轮换工具尚未实现"
     },
     {
       "id": 59,
@@ -504,8 +504,8 @@
       "area": "依赖安全 / P0-P1",
       "task": "联动升级 Python 依赖、开发工具和基础镜像",
       "acceptance": "FastAPI/Starlette 联动解析兼容范围；对加密主版本升级做旧数据回归；OS、浏览器、构建工具独立扫描和维护",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "Python/前端依赖已审计无已知漏洞，基础镜像更新；Chromium 版本升级与环境回归仍独立维护"
     },
     {
       "id": 61,
@@ -556,8 +556,8 @@
       "area": "邮件接线 / P1；启用前门禁",
       "task": "入库一套明确的消费者部署与健康检查",
       "acceptance": "可选 oneshot+timer 或受控常驻服务；配置、入队、消费、SMTP 接受、收件箱确认全链路可验收，不堆两套消费者",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "implemented_pending_activation",
+      "evidence": "单一 host timer 消费者、健康检测已实现；生产 SMTP 未配置，不把离线测试视为真实送达"
     },
     {
       "id": 68,
@@ -596,8 +596,8 @@
       "area": "快照体积 / P1",
       "task": "发布快照预算、排除副本目录与可验证保留策略",
       "acceptance": "当前 38 份约 1.13 GB；防止复制 data/backups 扩大冗余，保留必要回滚点，清理独立授权",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "部署前快照不嵌套复制，预算工具默认只读；原有恢复点未清理，尚需运行时盘点"
     },
     {
       "id": 73,
@@ -629,15 +629,15 @@
       "task": "发行提交统一完成必需验证再发布",
       "acceptance": "reusable workflow/同提交状态校验等明确门禁；main 保护与依赖更新配置分开设置，不写跨 workflow 的无效 needs",
       "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "evidence": "PR run 42264026846 与 Release run 42266297501 的统一门禁全部通过"
     },
     {
       "id": 77,
       "area": "宿主更新器 / P1",
       "task": "缩小 root 更新程序边界并增强 systemd 防护",
       "acceptance": "Docker 权限本就接近 root，不能只改成 docker 组用户就宣称降权；目录白名单、有限写入、凭据权限与审计可验证",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "partially_implemented",
+      "evidence": "systemd 与挂载限制已实现；宿主部署未同步时不可视为线上生效，Docker 仍接近 root 权限"
     },
     {
       "id": 78,
@@ -651,8 +651,8 @@
       "area": "用户数据 / P1",
       "task": "最小化好友资料及实现可追踪的删除申请",
       "acceptance": "不收聊天正文；列出账号、好友、头像、验证码、日志、快照留存与删除范围；已有管理员删除路径须逐表验收",
-      "status": "verified_not_deployed",
-      "evidence": "本分支已实现并由隔离测试覆盖，未部署生产"
+      "status": "technical_retention_only",
+      "evidence": "仅完成技术保留与敏感正文清理；用户已排除政策告知，不冒充完成整套删除申请"
     },
     {
       "id": 80,
@@ -660,9 +660,9 @@
       "task": "删除有效入口中的价格硬编码",
       "acceptance": "客服卡片、管理员默认套餐、兑换预览都读取服务端套餐；旧计划兼容记录与当前可售目录分离",
       "status": "verified_not_deployed",
-      "evidence": "客服套餐卡片与兑换预览读取服务端 plans；未部署生产"
+      "evidence": "生产入口客服卡片、管理员套餐读取服务端 plans；预览 fixture 保留固定样本价格"
     }
   ],
   "last_reviewed": "2026-11-07",
-  "verification_note": "本地 Python 关键组、前端测试与 Vite 构建已通过；全量 Linux/PG/Redis/Chromium 门禁由 GitHub Actions 执行。Windows 恢复演练的符号链接场景需 Linux CI。未部署生产。"
+  "verification_note": "本地 690 passed/18 skipped；PR CI 42264026846、Release CI 42266297501 的 Linux、PG、Redis、Chromium、镜像构建与扫描全部通过。只对明确覆盖项标记验证；未完成项继续保留，不将局部改进算整项完成。"
 }
