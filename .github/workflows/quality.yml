@@ -58,6 +58,14 @@ jobs:
         with:
           name: quality-evidence
           path: test-results.xml
+      - name: Weekly maintained runtime cache
+        id: runtime
+        shell: python
+        run: |
+          import os
+          from datetime import datetime, timezone
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('refresh=' + datetime.now(timezone.utc).strftime('%G-W%V') + '\n')
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -67,7 +75,7 @@ jobs:
           load: true
           tags: dyfire:validation
           pull: true
-          build-args: RUNTIME_REFRESH=${{ github.run_id }}
+          build-args: RUNTIME_REFRESH=${{ steps.runtime.outputs.refresh }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" dyfire:validation /app/smoke.py
