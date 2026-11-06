@@ -85,3 +85,7 @@ python3 deploy/recovery_drill.py \
 ```
 
 演练不会停止服务、写入源备份、覆盖 `/opt/dyfire/data/spark.db` 或自动回放任务。生产更新失败时更新器只恢复镜像并保留新的执行记录，这是为了避免恢复旧数据库造成重复发送；数据库恢复必须先在隔离目录完成本演练，再按人工审批和 RPO/RTO 流程执行。
+
+更新器的 Docker 客户端凭据独立保存在 `secrets/docker/config.json`（root、0600），
+配合 `ProtectHome=true` 无需读取整个 root 主目录。维护安装器仅迁移 ghcr.io 的现有认证条目；
+如需要重新登录，使用 `sudo env DOCKER_CONFIG=/opt/dyfire/secrets/docker docker login ghcr.io`。

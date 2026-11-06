@@ -10,6 +10,7 @@ Environment=DYFIRE_DEPLOY_DIR=/opt/dyfire
 Environment=DYFIRE_DATA_DIR=/opt/dyfire/data
 Environment=DYFIRE_GITHUB_TOKEN_FILE=/opt/dyfire/secrets/github.read.token
 Environment=DYFIRE_COMPOSE_PROJECT=douyin-spark-console
+Environment=DOCKER_CONFIG=/opt/dyfire/secrets/docker
 ExecStart=/usr/bin/python3 /opt/dyfire/deploy/updater.py
 Restart=on-failure
 RestartSec=10

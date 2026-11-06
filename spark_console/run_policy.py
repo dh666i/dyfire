@@ -134,5 +134,3 @@ def run_guidance(run) -> dict[str, str] | None:
     if code == "delivery_confirmation_timeout":
         return {"text": "消息已经进入发送步骤，但页面确认超时。请先核对聊天记录，系统不会自动重发。", "action": "none"}
     return None
-
-
