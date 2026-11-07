@@ -1320,3 +1320,12 @@ html[data-theme="light"] .badge { color:var(--ink-muted); }
 html[data-theme="light"] .badge.good { color:var(--green-bright); }
 html[data-theme="light"] .badge.warn,html[data-theme="light"] .badge.running { color:#84591c; }
 html[data-theme="light"] .badge.danger { color:#b43327; }
+
+html[data-theme="light"] { --yellow:#80551c; --red:#b43327; --green:#20723e; }
+html[data-theme="light"] .brand-copy small,
+html[data-theme="light"] .table-head,
+html[data-theme="light"] .task-row time small { color:var(--ink-muted); }
+
+html[data-theme="light"] { --ink-muted:#6c5e56; }
+html[data-theme="light"] .mobile-dock a { color:#6f655c; }
+html[data-theme="light"] .mobile-dock a.active { color:#af3811; }

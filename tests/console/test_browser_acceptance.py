@@ -260,3 +260,27 @@ def test_status_labels_keep_readable_contrast_in_both_themes(browser_site,theme)
     finally:context.close()
 
 
+@pytest.mark.parametrize('width',[390,1440])
+@pytest.mark.parametrize('theme',['light','dark'])
+@pytest.mark.parametrize('role',['user','admin'])
+def test_accessibility_rules_for_text_forms_and_scroll_regions(browser_site,width,theme,role):
+    source=Path('frontend/node_modules/axe-core/axe.min.js')
+    assert source.is_file(),'npm ci must install the pinned accessibility checker'
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':width,'height':900},reduced_motion='reduce',bypass_csp=True)
+    context.add_init_script(f"localStorage.setItem('dyfire-theme','{theme}')")
+    context.add_cookies([{'name':'spark_session','value':tokens[role],'url':base}])
+    routes=['/dashboard','/studio','/accounts','/runs','/subscription','/account-center','/notifications','/help'] if role=='user' else ['/admin/overview','/admin/users','/admin/codes','/admin/runs','/admin/operations','/admin/operations?view=business','/admin/settings','/admin/settings/mail']
+    try:
+        page=context.new_page()
+        for route in routes:
+            page.goto(base+route,wait_until='networkidle');page.locator('.fire-main').wait_for()
+            page.evaluate(source.read_text(encoding='utf-8'))
+            failures=page.evaluate("""async()=>{
+              const result=await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}});
+              return result.violations.map(v=>({id:v.id,targets:v.nodes.map(n=>n.target)}));
+            }""")
+            assert failures==[],(width,theme,role,route,failures)
+    finally:context.close()
+
+
