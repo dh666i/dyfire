@@ -19,7 +19,7 @@ WORKDIR /source
 COPY spark_console/ ./spark_console/
 RUN rm -rf spark_console/static
 
-FROM ubuntu:24.04 AS runtime
+FROM ubuntu:26.04 AS runtime
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PATH=/opt/venv/bin:$PATH
