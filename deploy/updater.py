@@ -441,7 +441,9 @@ def assert_no_active_operations(data_dir):
                     "WHERE status NOT IN ('succeeded','failed','expired','cancelled')"
                 ).fetchone()[0]
                 if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='account_operations'").fetchone()[0]:
-                    active += db.execute("SELECT count(*) FROM account_operations WHERE expires_at > datetime('now')").fetchone()[0]
+                    active += db.execute("SELECT count(*) FROM account_operations WHERE kind IN ('send','login','health','directory','probe') AND expires_at > datetime('now')").fetchone()[0]
+                if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='task_probes'").fetchone()[0]:
+                    active += db.execute("SELECT count(*) FROM task_probes WHERE status='running'").fetchone()[0]
             break
         except sqlite3.DatabaseError as error:
             last_error = error
