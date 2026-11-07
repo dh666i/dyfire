@@ -85,10 +85,15 @@ jobs:
           RELEASE_DIGEST: ${{ steps.image.outputs.digest }}
         shell: python
         run: |
-          import json, os, subprocess
+          import json, os, subprocess, sys
           from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
+          from scripts.release_runtime_image import resolve
           version = os.environ['RELEASE_VERSION']
-          manifest = {'version': version, 'schema': 1, 'image': 'ghcr.io/dh666i/dyfire@' + os.environ['RELEASE_DIGEST']}
+          index_image = 'ghcr.io/dh666i/dyfire@' + os.environ['RELEASE_DIGEST']
+          # The runnable child is a member of the index tested above. The tag
+          # retains SBOM/provenance; production does not pull those attachments.
+          manifest = {'version': version, 'schema': 1, 'image': resolve(index_image), 'index_image': index_image}
           body = 'Dyfire ' + version + '\n\n镜像已由 GitHub Actions 构建并通过容器健康检查。服务器更新器只会安装此 Release 中记录的固定镜像摘要。\n\n<!-- dyfire-manifest ' + json.dumps(manifest) + ' -->\n'
           Path('release-notes.tmp').write_text(body, encoding='utf-8')
           tag = 'v' + version
