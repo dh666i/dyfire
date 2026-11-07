@@ -364,7 +364,7 @@ class SubscriptionService:
         if code.code_ciphertext is not None:
             plaintext = self.cipher.decrypt_for(code.code_ciphertext, code.code_nonce, 'redemption-code', (code.id + ':' + code.code_hash).encode()).decode()
         else:
-            # Old records are sealed on their first authorized copy action.
+            # Old records are sealed on their first authorized administrator view.
             plaintext = code.code or ''
             if plaintext:
                 sealed = self.cipher.encrypt_for(plaintext.encode(), 'redemption-code', (code.id + ':' + code.code_hash).encode())

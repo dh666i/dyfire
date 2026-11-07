@@ -44,12 +44,13 @@ def test_diagnostics_excludes_message_and_event_details_and_protects_owner(confi
         db.add(account);db.flush()
         task=SparkTask(owner_user_id=other.id,douyin_account_id=account.id,target_name='private-friend',message_template='private-message',send_time='09:30',message_kind='text')
         db.add(task);db.flush()
-        run=TaskRun(task_id=task.id,scheduled_for=datetime.now(timezone.utc),status='failed',stage='selecting_target',error_code='target_not_found')
+        run=TaskRun(task_id=task.id,scheduled_for=datetime.now(timezone.utc),status='failed',stage='selecting_target',error_code='target_not_found',execution_version='0.3.41')
         db.add(run);db.flush();identifier=run.id
         db.add(TaskRunEvent(run_id=identifier,sequence=1,event='error',stage='selecting_target',detail='private-event-content'))
     response=f.client.get(f'/api/runs/DF-{identifier}/diagnostics')
     assert response.status_code==200
     assert response.json()['reason_code']=='target_not_found'
+    assert response.json()['version']=='0.3.41'
     assert not any(secret in response.text for secret in ('private-cookie','private-friend','private-message','private-event-content'))
     assert f.client.get('/api/runs/nonexistent/diagnostics').status_code==404
     with session_scope(f.fixture.engine) as db:db.get(User,other.id).role='admin'

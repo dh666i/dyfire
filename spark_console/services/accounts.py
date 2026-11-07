@@ -194,13 +194,19 @@ class AccountService:
             )
             .execution_options(synchronize_session=False)
         )
-        return result.rowcount == 1
+        if result.rowcount == 1:
+            from spark_console.services.incidents import observe
+            observe(self.session, account_id, 'valid', now=verified_at)
+            return True
+        return False
 
     def mark_invalid(self, account_id: str, actor_id: str | None = None) -> int:
         account = self.session.get(DouyinAccount, account_id)
         if account is None:
             raise NotFound("account not found")
         account.validation_state = "invalid"
+        from spark_console.services.incidents import observe
+        observe(self.session, account_id, 'invalid')
         self.audit.write(
             actor_id or account.owner_user_id,
             "account.credentials_invalid",
@@ -232,6 +238,8 @@ class AccountService:
         )
         if invalidated.rowcount != 1:
             return False
+        from spark_console.services.incidents import observe
+        observe(self.session, account_id, 'invalid')
         self.audit.write(
             actor_id,
             "account.credentials_invalid",

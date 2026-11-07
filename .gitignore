@@ -25,6 +25,8 @@ backups/
 node_modules/
 dist/
 .artifacts/
+image-layer-reuse.json
+test-results.xml
 *.log
 *.sqlite*
 *.zip

@@ -89,7 +89,7 @@ def test_redemption_copy_uses_role_csrf_audit_and_keeps_redemption_working(confi
     assert result.status_code==200
     plaintext=result.json()['codes'][0]
     rows=f.client.get('/api/admin/redemption-codes',params={'q':plaintext}).json()['items']
-    assert len(rows)==1 and rows[0]['code'] is None and rows[0]['can_copy']
+    assert len(rows)==1 and rows[0]['code']==plaintext and rows[0]['can_copy']
     identifier=rows[0]['id'];url=f'/api/admin/redemption-codes/{identifier}/reveal'
     assert f.client.post(url,json={}).status_code==403
     assert f.client.post(url,json={'csrf_token':f.csrf}).json()['code']==plaintext
@@ -102,6 +102,9 @@ def test_redemption_copy_uses_role_csrf_audit_and_keeps_redemption_working(confi
         service.redeem(f.uid,plaintext)
         with pytest.raises(Exception):
             service.reveal_redemption_code('unknown-user',identifier)
+    from spark_console.models import User
+    with session_scope(f.fixture.engine) as db:db.get(User,f.uid).role='user'
+    assert f.client.get('/api/admin/redemption-codes').status_code==404
 
 
 def test_idle_close_releases_runtime_but_never_active_session():

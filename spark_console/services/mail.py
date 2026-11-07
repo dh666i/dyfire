@@ -15,7 +15,7 @@ from sqlalchemy import func, select, update
 from spark_console.db import session_scope
 from spark_console.models import (MailSettings, MailPreference, MailDelivery, MailAccountState,
                                   DouyinAccount, User, UserSubscription, SparkTask, TaskRun,
-                                  uuid_string, NotificationPolicy, PasswordReset)
+                                  uuid_string, NotificationPolicy, PasswordReset, AccountIncident)
 from spark_console.mail_outbox import QUEUED_STATUSES, seal_body, open_body, erase_body
 
 EVENTS = {'account_alert':'账号需要验证', 'account_recovered':'账号已恢复', 'task_failed':'任务执行异常', 'expiry':'会员即将到期'}
@@ -123,11 +123,14 @@ def connect(config):
 
 
 def enqueue(db,config,event,key,user,recipient,summary,cipher):
-    if db.scalar(select(MailDelivery.id).where(MailDelivery.event_key==key)): return
+    existing=db.scalar(select(MailDelivery).where(MailDelivery.event_key==key))
+    if existing is not None:return existing
     template=config['templates'][event]
-    db.add(seal_body(MailDelivery(event_key=key,user_id=user.id,recipient=recipient,event=event,
+    delivery=seal_body(MailDelivery(event_key=key,user_id=user.id,recipient=recipient,event=event,
                        subject=render(template['subject'],user.username,summary)[:200],
-                       body=render(template['body'],user.username,summary)),cipher))
+                       body=render(template['body'],user.username,summary)),cipher)
+    db.add(delivery)
+    return delivery
 
 
 def collect(db,config,now,cipher):
@@ -135,6 +138,7 @@ def collect(db,config,now,cipher):
     for user,pref in db.execute(select(User,MailPreference).join(MailPreference).where(User.status=='active',MailPreference.enabled.is_(True),MailPreference.verified.is_(True))):
         changes={key:[] for key in ('account_alert','account_recovered')}
         keys={key:[] for key in changes}
+        incidents={key:[] for key in changes}
         for account in db.scalars(select(DouyinAccount).where(DouyinAccount.owner_user_id==user.id)):
             state=account.validation_state
             if state not in ('valid','invalid','verification'): continue
@@ -142,15 +146,27 @@ def collect(db,config,now,cipher):
             if previous and previous.state==state: continue
             revision=previous.revision+1 if previous else 1
             event='account_recovered' if state=='valid' else 'account_alert'
-            if state!='valid' or previous:
+            incident=db.scalar(select(AccountIncident).where(AccountIncident.account_id==account.id)
+                .order_by(AccountIncident.started_at.desc()).limit(1))
+            already_alerted=bool(event=='account_alert' and incident and incident.alert_queued_at)
+            if (state!='valid' or previous) and not already_alerted:
                 changes[event].append(account.display_name)
-                keys[event].append(f'{account.id}:{revision}')
+                keys[event].append(f'{account.id}:incident:{incident.id}' if incident else f'{account.id}:{revision}')
+                if incident:incidents[event].append(incident)
             db.merge(MailAccountState(account_id=account.id,state=state,revision=revision))
         for event,names in changes.items():
             if names and event in config['events']:
                 digest=hashlib.sha256('|'.join(sorted(keys[event])).encode()).hexdigest()
                 summary=('以下账号已恢复，已启用的任务将执行后续计划；错过的消息不补发：' if event=='account_recovered' else '以下账号需要你完成安全验证，相关任务暂缓发送：')+'、'.join(names)
-                enqueue(db,config,event,f'{event}:{user.id}:{digest}',user,pref.email,summary,cipher)
+                delivery=enqueue(db,config,event,f'{event}:{user.id}:{digest}',user,pref.email,summary,cipher)
+                if event=='account_alert':
+                    # Persist the outbox parent before linking an existing
+                    # incident. Without an ORM relationship, FK-enforcing
+                    # databases can otherwise flush the UPDATE first.
+                    db.flush()
+                    for incident in incidents[event]:
+                        if incident.alert_delivery_id is None:
+                            incident.alert_delivery_id=delivery.id;incident.alert_queued_at=now
         if 'task_failed' in config['events']:
             failure_since = now - timedelta(hours=24)
             failed = db.execute(

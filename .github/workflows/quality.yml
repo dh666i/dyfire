@@ -3,6 +3,7 @@ on:
   workflow_call:
 permissions:
   contents: read
+  packages: read
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -67,6 +68,12 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('refresh=' + datetime.now(timezone.utc).strftime('%G-W%V') + '\n')
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -76,9 +83,18 @@ jobs:
           tags: dyfire:validation
           pull: true
           build-args: RUNTIME_REFRESH=${{ steps.runtime.outputs.refresh }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=registry,ref=ghcr.io/dh666i/dyfire:buildcache
+            type=gha,scope=dyfire-console
+            type=gha
+          cache-to: type=gha,scope=dyfire-console,mode=max
       - run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" dyfire:validation /app/smoke.py
+      - name: Prove code-only updates reuse browser and font layers
+        run: python scripts/check_image_reuse.py --runtime-refresh '${{ steps.runtime.outputs.refresh }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-layer-evidence
+          path: image-layer-reuse.json
       - uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
         with:
           image-ref: dyfire:validation

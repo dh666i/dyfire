@@ -307,3 +307,38 @@ def test_install_runtime_drift_restores_old_record_and_image(host, monkeypatch):
         (previous['image'], 'up', '-d', '--no-build', *module.SERVICES),
     ]
     assert json.loads((module.ROOT / 'installed.json').read_text()) == previous
+
+
+def test_download_plan_reuses_shared_layers_and_counts_new_compressed_bytes(host,monkeypatch):
+    module,previous,target,_calls=host
+    shared='sha256:'+'c'*64;new='sha256:'+'d'*64
+    def registry(path,accept=None):
+        if path.endswith(target['image'].split('@')[1]):return {'layers':[{'digest':shared,'size':300000000},{'digest':new,'size':2000000}]},{}
+        if path.endswith(previous['image'].split('@')[1]):return {'layers':[{'digest':shared,'size':300000000}]},{}
+        raise AssertionError('Unexpected registry path')
+    monkeypatch.setattr(module,'registry',registry)
+    plan=module.download_plan(target['image'],previous['image'])
+    assert plan['known'] and plan['compressed_image_bytes']==302000000
+    assert plan['download_upper_bound_bytes']==2000000 and plan['reused_layers']==1
+    assert plan['shared_by_services']==4
+    assert module.download_plan(target['image'],target['image'])['download_upper_bound_bytes']==0
+
+
+def test_download_estimate_failure_does_not_block_installation(host,monkeypatch):
+    module,_previous,target,_calls=host
+    monkeypatch.setattr(module,'registry',lambda *a,**k:(_ for _ in ()).throw(TimeoutError()))
+    assert module.download_plan(target['image'],_previous['image'])=={'known':False}
+
+
+def test_multiplatform_estimate_selects_server_architecture_and_caches_layers(host,monkeypatch):
+    import platform
+    module,_previous,target,_calls=host
+    monkeypatch.setattr(platform,'machine',lambda:'x86_64')
+    calls=[];manifest='sha256:'+'e'*64
+    def registry(path,accept=None):
+        calls.append(path)
+        if path.endswith(manifest):return {'layers':[{'digest':'sha256:'+'f'*64,'size':10}]},{}
+        return {'manifests':[{'digest':manifest,'platform':{'os':'linux','architecture':'amd64'}}, {'digest':'sha256:'+'0'*64,'platform':{'os':'unknown','architecture':'unknown'}}]},{}
+    monkeypatch.setattr(module,'registry',registry)
+    assert module.image_layers(target['image'])=={'sha256:'+'f'*64:10}
+    module.image_layers(target['image']);assert len(calls)==2

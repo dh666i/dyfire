@@ -4,6 +4,7 @@ import ipaddress
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Mapping
 
 from spark_console.worker_sharding import validate_shard
@@ -54,10 +55,9 @@ class Settings:
     secure_cookies: bool = True
     max_request_bytes: int = 2 * 1024 * 1024
     trusted_proxy_cidrs: tuple[str, ...] = ()
+    public_origin: str | None = None
     hsts_max_age_seconds: int = 31536000
     hsts_include_subdomains: bool = False
-    # Retained for configuration compatibility; normal admin writes no longer
-    # require a second password step.
     # PostgreSQL pool settings. SQLite keeps its existing file/WAL behavior.
     database_pool_size: int = 10
     database_max_overflow: int = 20
@@ -74,6 +74,18 @@ class Settings:
     redis_max_connections: int = 20
 
     def __post_init__(self) -> None:
+        if self.public_origin is not None:
+            try:
+                origin = urlsplit(self.public_origin)
+                port = origin.port
+                valid = (origin.scheme in ('http', 'https') and bool(origin.hostname)
+                         and origin.username is None and origin.password is None
+                         and origin.path in ('', '/') and not origin.query and not origin.fragment
+                         and not any(ord(c) <= 32 for c in self.public_origin))
+            except (TypeError, ValueError):
+                valid = False
+            if not valid:
+                raise ValueError('public origin must be a complete http(s) origin without path or credentials')
         for cidr in self.trusted_proxy_cidrs:
             try:
                 ipaddress.ip_network(cidr, strict=False)
@@ -149,6 +161,7 @@ class Settings:
             trusted_proxy_cidrs=_trusted_proxy_cidrs(
                 environ.get("SPARK_TRUSTED_PROXY_CIDRS", "")
             ),
+            public_origin=environ.get('SPARK_PUBLIC_ORIGIN', '').strip() or None,
             hsts_max_age_seconds=hsts_max_age_seconds,
             hsts_include_subdomains=_env_bool(
                 environ.get("SPARK_HSTS_INCLUDE_SUBDOMAINS", "false"),

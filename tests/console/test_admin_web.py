@@ -799,7 +799,7 @@ class AdminWebTests(unittest.TestCase):
         )
         self.assertEqual(200, codes.status_code, codes.text)
         row = codes.json()["items"][0]
-        self.assertIsNone(row['code'])
+        self.assertEqual(plaintext,row['code'])
         copied = self.real_client.post(f"/api/admin/redemption-codes/{row['id']}/reveal", json={'csrf_token': self.admin_csrf})
         self.assertEqual(200, copied.status_code)
         self.assertEqual(plaintext, copied.json()['code'])
