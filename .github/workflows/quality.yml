@@ -3,6 +3,7 @@ on:
   workflow_call:
 permissions:
   contents: read
+  packages: read
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -67,6 +68,12 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('refresh=' + datetime.now(timezone.utc).strftime('%G-W%V') + '\n')
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -77,6 +84,7 @@ jobs:
           pull: true
           build-args: RUNTIME_REFRESH=${{ steps.runtime.outputs.refresh }}
           cache-from: |
+            type=registry,ref=ghcr.io/dh666i/dyfire:buildcache
             type=gha,scope=dyfire-console
             type=gha
           cache-to: type=gha,scope=dyfire-console,mode=max
