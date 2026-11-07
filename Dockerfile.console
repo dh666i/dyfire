@@ -8,12 +8,16 @@ RUN npm run build \
     && mkdir /font-assets \
     && mv dist/assets/*.woff2 /font-assets/
 
+FROM node:22-bookworm-slim AS backend-static
+WORKDIR /source
+COPY spark_console/static/ /backend-static/
+# The backend contains about 18 MiB of existing static resources. Keep all
+# compatible URLs while excluding these bytes from ordinary Python changes.
+
 FROM node:22-bookworm-slim AS backend-source
 WORKDIR /source
 COPY spark_console/ ./spark_console/
-# The backend contains about 18 MiB of existing static resources. Keep all
-# compatible URLs while excluding these bytes from ordinary Python changes.
-RUN mv spark_console/static /backend-static
+RUN rm -rf spark_console/static
 
 FROM ubuntu:24.04 AS runtime
 
@@ -42,7 +46,7 @@ FROM runtime AS console
 # Font subsets are copied before application assets so ordinary JS/CSS changes
 # do not download the complete Chinese font collection again.
 COPY --from=frontend --chown=spark:spark /font-assets /app/frontend/dist/assets
-COPY --from=backend-source --chown=spark:spark /backend-static /app/spark_console/static
+COPY --from=backend-static --chown=spark:spark /backend-static /app/spark_console/static
 COPY --chown=spark:spark LICENSE /app/LICENSE
 COPY --chown=spark:spark VERSION /app/VERSION
 COPY --from=frontend --chown=spark:spark /frontend/dist /app/frontend/dist
