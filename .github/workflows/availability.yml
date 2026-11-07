@@ -10,6 +10,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   check:
+    # Activate only after the execution-health endpoint is deployed. Manual
+    # dispatch remains available for the deployment acceptance check.
+    if: github.event_name == 'workflow_dispatch' || vars.DYFIRE_MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:

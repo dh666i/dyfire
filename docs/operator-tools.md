@@ -4,7 +4,7 @@
 
 ## 只读站外健康检查
 
-`python scripts/check_availability.py` 检查公网 `dyfire.cn` 的就绪、版本和执行服务健康。GitHub Actions 每 15 分钟执行，失败由 GitHub 自带通知报告。`/health/execution` 只公开 ready/degraded，内部核对所有已配置 Worker 分片、Auth 心跳和监控采样；不公开客户或主机详情。它检查经过香港桥接的整条链路，不能独自区分香港网络和成都网络故障。
+`python scripts/check_availability.py` 检查公网 `dyfire.cn` 的就绪、版本和执行服务健康。部署并验收后设置仓库变量 `DYFIRE_MONITOR_ENABLED=true`，GitHub Actions 每 15 分钟执行，失败由 GitHub 自带通知报告；手动 dispatch 可用于首次验收。`/health/execution` 只公开 ready/degraded，内部核对所有已配置 Worker 分片、Auth 心跳和监控采样；不公开客户或主机详情。它检查经过香港桥接的整条链路，不能独自区分香港网络和成都网络故障。
 
 ## 浏览器回收测量
 
