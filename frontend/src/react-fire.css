@@ -9,6 +9,8 @@
   --green-bright: #63d18d;
   --ink-dark: #fff4eb;
   --ink-soft: #c2aca0;
+  --ink-muted: #95877f;
+  --surface-soft: rgba(255,255,255,.045);
   --hairline: rgba(255, 219, 198, .14);
   --dark-panel: rgba(20, 14, 18, .86);
   --dark-panel-strong: #171116;
@@ -395,6 +397,7 @@ html[data-theme="light"] .fire-select-option[aria-selected=true] { color:#b94c20
 
 /* Light fire theme: translucent warm glass, not an inverted dark canvas. */
 html[data-theme="light"] body { background:radial-gradient(circle at 92% -8%,rgba(255,111,49,.12),transparent 30%),#ece9e5; color:#25201e; }
+html[data-theme="light"] { --ink-muted:#75665e; --surface-soft:rgba(255,255,255,.72); }
 html[data-theme="light"] .fire-nav { background:rgba(236,233,229,.82); border-bottom:1px solid rgba(48,39,35,.12); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); }
 html[data-theme="light"] .fire-nav-brand, html[data-theme="light"] .fire-nav-tabs, html[data-theme="light"] .fire-account, html[data-theme="light"] .fire-theme { background:rgba(255,255,255,.62); border-color:rgba(48,39,35,.13); box-shadow:0 8px 24px rgba(56,45,38,.08); }
 html[data-theme="light"] .fire-nav-tabs a { color:#74645b; } html[data-theme="light"] .fire-nav-tabs a span { color:#d94716; }
@@ -1267,6 +1270,12 @@ body,
 .cost-estimate-result { display:grid; gap:7px; margin-top:18px; padding-top:14px; border-top:1px solid var(--hairline); }
 .cost-estimate-result b { color:var(--ink); font-size:13px; }
 .cost-estimate-result small { color:var(--ink-muted); font-size:11px; }
+.admin-change-preview { display:grid; gap:8px; padding:12px 14px; border-left:2px solid var(--orange); background:var(--surface-soft); color:var(--ink-soft); font-size:11px; }
+.admin-change-preview>b { color:var(--ink); font-size:12px; }
+.admin-change-preview>div { display:grid; grid-template-columns:minmax(90px,.5fr) minmax(0,1fr); gap:10px; align-items:start; }
+.admin-change-preview>div>span { color:var(--ink-muted); }
+.admin-change-preview>div>small,.admin-change-preview>small { color:var(--ink); font-size:11px; line-height:1.6; overflow-wrap:anywhere; }
+.modal-dialog-body p { white-space:pre-line; }
 .subscription-preview { display:grid; gap:6px; margin-top:12px; padding:12px 14px; border-left:2px solid var(--orange); background:var(--surface-soft); color:var(--ink-soft); font-size:12px; }
 .subscription-preview b { color:var(--ink); }
 .subscription-preview small { color:var(--ink-muted); }

@@ -132,6 +132,29 @@ def test_editing_preserves_unsaved_time_when_close_is_cancelled(browser_site):
     finally:context.close()
 
 
+def test_admin_task_edit_shows_before_after_diff_before_save(browser_site):
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':1440,'height':900},reduced_motion='reduce')
+    context.add_cookies([{'name':'spark_session','value':tokens['admin'],'url':base}])
+    try:
+        page=context.new_page()
+        group=context.request.get(base+'/api/admin/task-groups?q=friend').json()['items'][0]
+        page.goto(base+f"/admin/tasks/groups/{group['owner_id']}/{group['account_id']}",wait_until='networkidle')
+        page.locator('.task-detail-row').filter(has_text='验收好友').get_by_role('button',name='编辑',exact=True).click()
+        editor=page.get_by_role('dialog',name=re.compile('编辑 验收好友'))
+        editor.locator('input[type=time]').fill('10:45')
+        preview=editor.locator('.admin-change-preview')
+        expect(preview).to_contain_text('每日发送时间')
+        expect(preview).to_contain_text('09:30 → 10:45')
+        editor.get_by_role('button',name='保存任务',exact=True).click()
+        confirm=page.get_by_role('dialog',name='确认保存任务修改')
+        expect(confirm.locator('.modal-dialog-body')).to_contain_text('每日发送时间：09:30 → 10:45')
+        confirm.get_by_role('button',name='确认保存',exact=True).click()
+        expect(editor).to_have_count(0)
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+    finally:context.close()
+
+
 def test_admin_sees_full_redemption_code_and_copies_without_extra_request(browser_site):
     browser,base,tokens=browser_site
     context=browser.new_context(viewport={'width':1440,'height':900},permissions=['clipboard-read','clipboard-write'])
@@ -147,3 +170,5 @@ def test_admin_sees_full_redemption_code_and_copies_without_extra_request(browse
         assert page.evaluate('navigator.clipboard.readText()')==code
         assert extra==[]
     finally:context.close()
+
+
