@@ -59,8 +59,10 @@ jobs:
           provenance: mode=max
           sbom: true
           labels: org.opencontainers.image.source=https://github.com/dh666i/dyfire
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=dyfire-console
+            type=gha
+          cache-to: type=gha,scope=dyfire-console,mode=max
       - name: Verify release container
         env:
           RELEASE_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}

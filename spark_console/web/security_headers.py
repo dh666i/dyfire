@@ -5,10 +5,10 @@ import logging
 import re
 import uuid
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlencode
 
 from starlette.datastructures import MutableHeaders
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 logger = logging.getLogger(__name__)
 HASHED_ASSET = re.compile(r"-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?)$")
@@ -93,8 +93,21 @@ class SecurityHeadersMiddleware:
                 origin = request_headers.get(b'origin')
                 if origin:
                     host = request_headers.get(b'host',b'').decode('latin-1')
-                    if not same_origin(origin.decode('latin-1'), scope.get('scheme','http'), host):
-                        await JSONResponse({'detail':'请从本站页面提交登录请求'},status_code=403)(scope,receive,secured_send)
+                    scheme = scope.get('scheme', 'http')
+                    if self.settings.public_origin:
+                        canonical = urlsplit(self.settings.public_origin)
+                        scheme, host = canonical.scheme, canonical.netloc
+                    if not same_origin(origin.decode('latin-1'), scheme, host):
+                        detail = '页面来源未通过校验，请从本站重新打开后提交。'
+                        if b'text/html' in request_headers.get(b'accept', b''):
+                            path = scope['path']
+                            query = {'error': detail}
+                            if path == '/forgot-password/reset':
+                                path = '/forgot-password'; query['sent'] = '1'
+                            response = RedirectResponse(path+'?'+urlencode(query), status_code=303)
+                        else:
+                            response = JSONResponse({'detail':detail}, status_code=403)
+                        await response(scope,receive,secured_send)
                         return
             await self.app(scope, receive, secured_send)
         except Exception as error:

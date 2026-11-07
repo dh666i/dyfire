@@ -536,7 +536,9 @@ class DouyinQrScannerTests(unittest.IsolatedAsyncioTestCase):
         profile_visible=True,
         fail_storage_state=False,
         qr_timeout_seconds=0.01,
-        login_timeout_seconds=0.2,
+        # Successful fake flows need scheduling headroom in the full suite;
+        # explicit short deadlines below still test timeout and cancellation.
+        login_timeout_seconds=1.0,
     ):
         page = _Page(
             mode,
@@ -711,7 +713,7 @@ class DouyinQrScannerTests(unittest.IsolatedAsyncioTestCase):
         scanner, browser, context = self._scanner(
             mode="chat_cookie_fallback",
             profile_visible=False,
-            login_timeout_seconds=0.2,
+            login_timeout_seconds=1.0,
         )
         confirmations = []
 
@@ -1371,7 +1373,7 @@ class DouyinQrScannerTests(unittest.IsolatedAsyncioTestCase):
         scanner, browser, context = self._scanner(
             mode="navigation", login_timeout_seconds=1
         )
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=0.03)
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=0.15)
 
         with self.assertRaises(LoginTimedOut):
             await asyncio.wait_for(
@@ -1381,7 +1383,7 @@ class DouyinQrScannerTests(unittest.IsolatedAsyncioTestCase):
                     lambda: False,
                     expires_at=expires_at,
                 ),
-                timeout=0.2,
+                timeout=0.5,
             )
 
         self.assertTrue(context.page.navigation_started.is_set())

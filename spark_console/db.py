@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 21
+SQLITE_SCHEMA_VERSION = 22
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -136,6 +136,7 @@ def create_schema(engine: Engine) -> None:
             "ON douyin_account_identities (douyin_user_id)"
         ))
         for table, column, definition in (
+            ('task_runs','execution_version','VARCHAR(32)'),
             ('mail_preferences','code_version','INTEGER NOT NULL DEFAULT 1'),
             ('password_resets','digest_version','INTEGER NOT NULL DEFAULT 1'),
             ('mail_deliveries','body_ciphertext','BYTEA'),('mail_deliveries','body_nonce','BYTEA'),
@@ -178,6 +179,7 @@ def _assert_postgres_schema_complete(engine: Engine) -> None:
         "ix_task_runs_status_finished",
         "ix_mail_deliveries_status_updated",
         "uq_douyin_account_user_id",
+        "uq_account_incidents_open",
     }
     actual_indexes = {
         index["name"]
@@ -233,6 +235,7 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (19, "subscription_grant_supersession", _upgrade_sqlite_subscription_grant_supersession),
         (20, "verified_platform_account_identity", _upgrade_sqlite_account_identity),
         (21, "security_lifecycle", _upgrade_sqlite_security_lifecycle),
+        (22, "account_incident_lifecycle", _upgrade_sqlite_account_incidents),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -255,6 +258,16 @@ def _run_sqlite_migrations(connection: Connection) -> None:
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (version, name),
         )
+
+
+def _upgrade_sqlite_account_incidents(connection: Connection) -> None:
+    run_columns={row[1] for row in connection.exec_driver_sql('PRAGMA table_info(task_runs)')}
+    if 'execution_version' not in run_columns:
+        connection.exec_driver_sql('ALTER TABLE task_runs ADD COLUMN execution_version VARCHAR(32)')
+    columns={row[1] for row in connection.exec_driver_sql('PRAGMA table_info(account_incidents)')}
+    if not {'id','account_id','state','started_at','observed_at','resolved_at','observations','alert_delivery_id','alert_queued_at'} <= columns:
+        raise RuntimeError('account incident schema is incomplete')
+    connection.exec_driver_sql('CREATE UNIQUE INDEX IF NOT EXISTS uq_account_incidents_open ON account_incidents (account_id) WHERE resolved_at IS NULL')
 
 
 def _upgrade_sqlite_security_lifecycle(connection: Connection) -> None:

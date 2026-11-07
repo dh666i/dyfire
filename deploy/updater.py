@@ -33,6 +33,54 @@ RELEASE_CACHE_SECONDS = 20 * 60
 COMPOSE_OPERATION_TIMEOUT_SECONDS = 10 * 60
 IMAGE_PULL_TIMEOUT_SECONDS = 60 * 60
 _RELEASE_CACHE = {}
+_LAYER_CACHE = {}
+
+
+def image_layers(image):
+    """Read compressed layer descriptors from this repository's fixed digest."""
+    if not re.fullmatch(re.escape(IMAGE)+r'@sha256:[a-f0-9]{64}', str(image)):
+        raise ValueError('镜像摘要无效')
+    if image in _LAYER_CACHE:
+        return _LAYER_CACHE[image]
+    accept='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+    if QUEUE.is_dir():write_state()
+    manifest, _ = registry('/v2/'+REPOSITORY+'/manifests/'+image.split('@',1)[1],accept=accept)
+    if 'manifests' in manifest:
+        import platform
+        architecture={'x86_64':'amd64','aarch64':'arm64','AMD64':'amd64'}.get(platform.machine(),platform.machine())
+        selected=next((item for item in manifest['manifests'] if item.get('platform',{}).get('os')=='linux' and item['platform'].get('architecture')==architecture),None)
+        if selected is None or not re.fullmatch(r'sha256:[a-f0-9]{64}',str(selected.get('digest'))):
+            raise ValueError('当前服务器没有匹配的发行镜像')
+        if QUEUE.is_dir():write_state()
+        manifest,_=registry('/v2/'+REPOSITORY+'/manifests/'+selected['digest'],accept=accept)
+    layers=manifest.get('layers')
+    if not isinstance(layers,list) or not layers:
+        raise ValueError('镜像层信息不可用')
+    result={}
+    for layer in layers:
+        digest,size=layer.get('digest'),layer.get('size')
+        if not re.fullmatch(r'sha256:[a-f0-9]{64}',str(digest)) or type(size) is not int or not 0<=size<=10*1024**3:
+            raise ValueError('镜像层信息无效')
+        result[digest]=size
+    _LAYER_CACHE[image]=result
+    return result
+
+
+def download_plan(image,current_image):
+    # The running image's layers are definitely present. Other cached layers
+    # may make the real transfer smaller, so this is an upper bound, not a
+    # claim that the expanded image size will be downloaded four times.
+    try:
+        layers=image_layers(image)
+        present=image_layers(current_image)
+        missing={key:size for key,size in layers.items() if key not in present}
+        return {'known':True,'compressed_image_bytes':sum(layers.values()),
+                'download_upper_bound_bytes':sum(missing.values()),
+                'new_layers':len(missing),'reused_layers':len(layers)-len(missing),
+                'shared_by_services':len(SERVICES)}
+    except Exception:
+        # Metadata estimation must never prevent an otherwise valid release.
+        return {'known':False}
 
 
 def _compose_base():
@@ -435,7 +483,8 @@ def install(target, operation_id=''):
     if shutil.disk_usage(ROOT).free < required + 2 * 1024**3:
         raise ValueError('备份空间不足，请清理磁盘后重试')
     assert_no_active_operations(data_dir)
-    write_state(phase='pulling', message='正在下载版本', operation_id=operation_id)
+    plan=download_plan(release['image'],current['image'])
+    write_state(phase='pulling', message='正在下载版本', operation_id=operation_id, download_plan=plan)
     compose(release['image'], 'pull', *SERVICES)
     backup = ROOT / 'backups' / time.strftime('%Y%m%d-%H%M%S')
     backup.mkdir(parents=True, mode=0o700)
@@ -492,7 +541,8 @@ def install_web(target, operation_id=''):
         raise ValueError('数据结构不兼容')
     if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', web_current.get('image', '')):
         raise ValueError('当前 Web 安装记录不是本仓库的固定镜像')
-    write_state(phase='web_pulling', message='正在下载 Web 版本', operation_id=operation_id)
+    write_state(phase='web_pulling', message='正在下载 Web 版本', operation_id=operation_id,
+                download_plan=download_plan(release['image'],web_current['image']))
     compose(release['image'], 'pull', *WEB_SERVICES)
     try:
         write_state(phase='web_installing', message='正在切换 Web 服务，发送服务保持运行')
@@ -566,7 +616,7 @@ def main():
                     if time.time() - data['requested_at'] > 300:
                         raise ValueError('请求已过期，请重试')
                     operation_id = str(data.get('operation_id') or '')
-                    write_state(operation_id=operation_id, requested_at=data.get('requested_at'))
+                    write_state(operation_id=operation_id, requested_at=data.get('requested_at'), error_code=None, error_detail=None, download_plan={'known':False})
                     if data['action'] == 'check':
                         item = latest()
                         current = json.loads((ROOT / 'installed.json').read_text())
@@ -579,6 +629,7 @@ def main():
                         )
                         write_state(phase='checked', latest=item['version'], message='版本检查完成', **item,
                                     rollback_versions=rollback_versions(current['version']),
+                                    download_plan=download_plan(item['image'],current['image']),
                                     runtime=runtime,
                                     runtime_drift=runtime.get('drift', True))
                     elif data['action'] == 'install':

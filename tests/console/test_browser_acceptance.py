@@ -1,20 +1,27 @@
 """Real Chromium against an isolated server/database. No Douyin/SMTP workers."""
 import os
+import re
 from pathlib import Path
 import socket
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
 import uvicorn
 from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect
 from sqlalchemy import select
 
 from spark_console.db import session_scope
 from spark_console.models import User, DouyinAccount, SparkTask, TaskRun
 from spark_console.security import SessionService
+from spark_console.crypto import CookieCipher
+from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.audits import AuditService
 from tests.console.test_web_fixture import UserFixture
+from spark_console.web.app import create_app
 
 
 @pytest.fixture(scope='module')
@@ -28,6 +35,7 @@ def browser_site():
         for role,record in [('user',user),('admin',admin)]:
             token,session=SessionService(fixture.settings.session_key_file.read_bytes()).create_record(record.id)
             db.add(session);tokens[role]=token
+        _row,tokens['redemption_code']=SubscriptionService(db,AuditService(db),cipher=CookieCipher(b'c'*32)).create_redemption_code(admin.id)
         account=DouyinAccount(owner_user_id=user.id,display_name='验收账号',encrypted_cookies=b'isolated',cookie_nonce=b'isolated',validation_state='verification')
         db.add(account);db.flush()
         task=SparkTask(owner_user_id=user.id,douyin_account_id=account.id,target_name='验收好友',send_time='09:30',message_kind='douyin_sticker',message_template='续火花',enabled=True)
@@ -36,7 +44,10 @@ def browser_site():
         db.add(TaskRun(task_id=task.id,scheduled_for=now,status='failed',stage='authenticating',error_code='account_verification_required',error_summary='需要本人验证',finished_at=now))
     sock=socket.socket();sock.bind(('127.0.0.1',0));sock.listen(128)
     port=sock.getsockname()[1]
-    server=uvicorn.Server(uvicorn.Config(fixture.client.app,log_level='error',access_log=False))
+    # HTTP is confined to this isolated loopback fixture. Production cookies
+    # stay secure and the public origin is configured independently.
+    app=create_app(replace(fixture.settings,secure_cookies=False),fixture.engine)
+    server=uvicorn.Server(uvicorn.Config(app,log_level='error',access_log=False))
     thread=threading.Thread(target=lambda:server.run(sockets=[sock]),daemon=True);thread.start()
     deadline=time.monotonic()+10
     while not server.started and time.monotonic()<deadline:time.sleep(.02)
@@ -85,4 +96,54 @@ def test_login_has_no_extra_administrator_verification(browser_site):
         assert page.get_by_label('登录账号').count()==1
         assert page.get_by_text('验证器',exact=False).count()==0
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1')
+    finally:context.close()
+
+
+def test_browser_submits_login_form_and_receives_authenticated_dashboard(browser_site):
+    browser,base,_tokens=browser_site
+    context=browser.new_context(viewport={'width':390,'height':844})
+    try:
+        page=context.new_page();page.goto(base+'/login',wait_until='networkidle')
+        page.locator('input[name=username]').fill('friend')
+        page.locator('input[name=password]').fill('Temporary-123!')
+        page.locator('button[type=submit]').click()
+        page.wait_for_url('**/dashboard');page.locator('.fire-main').wait_for()
+        assert any(cookie['name']=='spark_session' for cookie in context.cookies())
+    finally:context.close()
+
+
+def test_editing_preserves_unsaved_time_when_close_is_cancelled(browser_site):
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
+    context.add_cookies([{'name':'spark_session','value':tokens['user'],'url':base}])
+    try:
+        page=context.new_page();page.goto(base+'/studio',wait_until='networkidle')
+        page.get_by_role('button',name=re.compile('编辑.*验收好友')).first.click()
+        editor=page.get_by_role('dialog',name='编辑 验收好友')
+        editor.locator('input[type=time]').fill('10:45')
+        editor.get_by_role('button',name='关闭',exact=True).click()
+        confirm=page.get_by_role('dialog',name='放弃未保存的修改？')
+        expect(confirm).to_be_visible()
+        confirm.get_by_role('button',name='继续编辑',exact=True).click()
+        expect(editor).to_be_visible();expect(editor.locator('input[type=time]')).to_have_value('10:45')
+        editor.get_by_role('button',name='关闭',exact=True).click()
+        page.get_by_role('dialog',name='放弃未保存的修改？').get_by_role('button',name='放弃修改',exact=True).click()
+        expect(editor).to_have_count(0)
+    finally:context.close()
+
+
+def test_admin_sees_full_redemption_code_and_copies_without_extra_request(browser_site):
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':1440,'height':900},permissions=['clipboard-read','clipboard-write'])
+    context.add_cookies([{'name':'spark_session','value':tokens['admin'],'url':base}])
+    try:
+        page=context.new_page();extra=[]
+        page.on('request',lambda request:extra.append(request.url) if request.url.endswith('/reveal') else None)
+        page.goto(base+'/admin/codes',wait_until='networkidle')
+        code=tokens['redemption_code'];cell=page.locator('.redemption-code-cell').filter(has=page.get_by_text(code,exact=True))
+        expect(cell.get_by_text(code,exact=True)).to_be_visible()
+        cell.get_by_role('button',name='复制',exact=True).click()
+        expect(cell.get_by_role('button',name='已复制',exact=True)).to_be_visible()
+        assert page.evaluate('navigator.clipboard.readText()')==code
+        assert extra==[]
     finally:context.close()

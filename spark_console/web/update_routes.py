@@ -59,6 +59,7 @@ def build_update_router(engine, auth):
                     'release_published_at', 'installed', 'web_installed',
                     'operation_id', 'requested_at', 'rollback_version', 'error_code',
                     'error_detail', 'runtime', 'runtime_drift',
+                    'download_plan',
                 ):
                     if key in state:
                         result[key] = state[key]

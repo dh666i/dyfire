@@ -19,6 +19,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from spark_console.models import (
+    AccountIncident,
     AuditEvent,
     DouyinLoginAction,
     DouyinLoginChallenge,
@@ -339,7 +340,7 @@ def retain(
             policy=policy,
             categories={
                 name: RetentionCategory()
-                for name in ("runs", "login_sessions", "web_sessions", "mail", "audits")
+                for name in ("runs", "login_sessions", "web_sessions", "mail", "audits", "account_incidents")
             },
             lock_acquired=False,
         )
@@ -354,6 +355,7 @@ def retain(
     web_criteria = _web_session_criteria(cutoffs["sessions"], as_of)
     mail_criteria = _mail_criteria(cutoffs["mail"])
     audit_criteria = _audit_criteria(cutoffs["audits"])
+    incident_criteria = (AccountIncident.resolved_at.is_not(None), AccountIncident.resolved_at <= cutoffs['runs'])
 
     categories = {
         "runs": RetentionCategory(candidates=_count(db, TaskRun, *run_criteria)),
@@ -365,6 +367,8 @@ def retain(
         ),
         "mail": RetentionCategory(candidates=_count(db, MailDelivery, *mail_criteria)),
         "audits": RetentionCategory(candidates=_count(db, AuditEvent, *audit_criteria)),
+        "account_incidents": RetentionCategory(candidates=_count(db, AccountIncident, *incident_criteria),
+            protected=_count(db,AccountIncident,AccountIncident.resolved_at.is_(None))),
     }
     protected = _protected_counts(db, as_of)
     for name, count in protected.items():
@@ -417,6 +421,8 @@ def retain(
             audit_criteria,
             batch_size=policy.batch_size,
         )
+        categories['account_incidents'].deleted = _delete_one_batch(db,AccountIncident,AccountIncident.id,
+            incident_criteria,batch_size=policy.batch_size)
         if sum(item.deleted for item in categories.values()):
             db.add(
                 AuditEvent(

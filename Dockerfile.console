@@ -4,9 +4,11 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 COPY spark_console/static/ /spark_console/static/
-RUN npm run build
+RUN npm run build \
+    && mkdir /font-assets \
+    && mv dist/assets/*.woff2 /font-assets/
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS runtime
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PATH=/opt/venv/bin:$PATH
@@ -27,8 +29,12 @@ RUN set -eux; \
     if ! id spark >/dev/null 2>&1; then useradd --create-home --uid 10001 --user-group spark; fi; \
     chmod -R a+rX /ms-playwright; \
     rm -rf /var/lib/apt/lists/*
-# Always start with the maintained OS and pinned Python/browser dependencies.
-# Deleted application files cannot survive through an older application image.
+# The runtime is an explicit build target. Application code and version changes
+# never invalidate the OS, Python or matching Chromium installation above.
+FROM runtime AS console
+# Font subsets are copied before application assets so ordinary JS/CSS changes
+# do not download the complete Chinese font collection again.
+COPY --from=frontend --chown=spark:spark /font-assets /app/frontend/dist/assets
 COPY --chown=spark:spark LICENSE /app/LICENSE
 COPY --chown=spark:spark VERSION /app/VERSION
 COPY --from=frontend --chown=spark:spark /frontend/dist /app/frontend/dist

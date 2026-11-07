@@ -105,6 +105,9 @@ class Worker:
             if run is None:
                 return None
             run_id = run.id
+            from spark_console.version import VERSION
+            if run.execution_version is None:
+                run.execution_version = VERSION
             record_event(run, "claimed", "claimed", "Worker 已领取任务", current_time)
             reclaimed = run.stage in ("reclaimed", "health_retry")
             scheduled = (

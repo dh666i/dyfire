@@ -17,6 +17,7 @@ from sqlalchemy import case, func, or_, select
 from spark_console.db import session_scope
 from spark_console.models import (
     AuditEvent,
+    AccountIncident,
     DouyinAccount,
     InviteCode,
     MailDelivery,
@@ -30,6 +31,7 @@ from spark_console.models import (
     UserSubscription,
 )
 from spark_console.services.account_health import views as account_health_views
+from spark_console.services.incidents import current_map as current_incidents, views as incident_views
 from spark_console.services.directory import profile_map, task_avatar_map
 from spark_console.services.accounts import AccountService
 from spark_console.services.tasks import TaskService
@@ -299,6 +301,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 has_any_run=has_any_run,
                 has_successful_run=has_successful_run,
             )
+            incidents = current_incidents(db,[account.id for account in accounts])
             account_rows = []
             for account in accounts:
                 h = health.get(account.id, {})
@@ -315,6 +318,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                         "health": h,
                         "profile": profile,
                         "validation_state": account.validation_state,
+                        "incident": incidents.get(account.id),
                     }
                 )
             task_rows = _task_payload(db, tasks)
@@ -642,7 +646,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
     ):
         """Load redemption codes only when an administrator opens that screen."""
         with session_scope(engine) as db:
-            auth.admin_context(request, db)
+            admin,_,_ = auth.admin_context(request, db)
+            code_service=SubscriptionService(db,AuditService(db),cipher=cipher)
             now = datetime.now(timezone.utc)
             criteria = []
             query = q.strip()
@@ -703,7 +708,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                 "items": [
                     {
                         "id": item.id,
-                        "code": None,
+                        "code": code_service.reveal_redemption_code(admin.id,item.id),
                         "can_copy": bool(item.code or item.code_ciphertext),
                         "status": status_label(item),
                         "username": username,
@@ -1053,6 +1058,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             } if task_ids else {}
             profiles = profile_map(db, [a.id for a in accounts])
             account_health = account_health_views(db, accounts)
+            customer_incidents = current_incidents(db,[account.id for account in accounts])
             avatars = task_avatar_map(db, tasks)
             runs = db.execute(
                 select(TaskRun, SparkTask).join(SparkTask, TaskRun.task_id == SparkTask.id)
@@ -1070,7 +1076,7 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     "accounts_truncated": account_total > len(accounts),
                     "tasks_truncated": task_total > len(tasks),
                 },
-                "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health.get(a.id, {})} for a in accounts],
+                "accounts": [{"id": a.id, "name": a.display_name, "validation_state": a.validation_state, "incident": customer_incidents.get(a.id), "profile": {"nickname": getattr(profiles.get(a.id), "nickname", None), "avatar_url": getattr(profiles.get(a.id), "avatar_url", None)}, "health": account_health.get(a.id, {})} for a in accounts],
                 "tasks": [{"id": t.id, "name": t.target_name, "accountId": t.douyin_account_id, "sec_uid": (identity.sec_uid if (identity := identities.get(t.id)) else ""), "time": t.send_time, "kind": "续火花表情" if t.message_kind == "douyin_sticker" else "文字消息", "message": t.message_template, "enabled": t.enabled, "avatar": avatars.get(t.id)} for t in tasks],
                 "runs": [{"id": r.id, "taskId": r.task_id, "name": t.target_name, "status": r.status, "label": run_view_status(r)["label"], "time": shanghai_time(r.scheduled_for), "error": r.error_summary} for r, t in runs],
             }
@@ -1355,5 +1361,16 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     "interval_minutes": policy.interval_minutes if policy else 60,
                 },
             }
+
+    @router.get('/api/accounts/{account_id}/incidents')
+    def account_incident_history(request: Request, account_id: str):
+        with session_scope(engine) as db:
+            user,_ = auth.current(request,db)
+            account=db.get(DouyinAccount,account_id)
+            if account is None or (user.role!='admin' and account.owner_user_id!=user.id):
+                raise HTTPException(404,'账号不存在')
+            rows=db.scalars(select(AccountIncident).where(AccountIncident.account_id==account_id)
+                .order_by(AccountIncident.started_at.desc()).limit(20)).all()
+            return {'items':incident_views(db,rows)}
 
     return router

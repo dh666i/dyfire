@@ -56,6 +56,8 @@ def record(db, account_id, expected, state, reason, *, now=None, recheck=False, 
     resolved = ('invalid' if health.negative_checks >= 2 else 'temporary') if state == 'logged_out' else state
     previous = account.validation_state
     account.validation_state = resolved
+    from spark_console.services.incidents import observe
+    observe(db, account_id, resolved, now=now)
     health.reason, health.checked_at = reason[:240], now
     health.next_check_at = None
     if resolved == 'valid':
@@ -94,6 +96,8 @@ def skip_missed(db, account_id, now, *, preserve_recent=False):
 
 def recovered(db, account):
     now = utc_now()
+    from spark_console.services.incidents import observe
+    observe(db, account.id, 'valid', now=now)
     health = db.get(AccountHealth, account.id)
     if health:
         health.next_check_at = None

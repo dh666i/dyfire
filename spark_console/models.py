@@ -178,6 +178,25 @@ class AccountOperation(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AccountIncident(Base):
+    """One continuing account problem, shared by all affected task runs."""
+    __tablename__ = 'account_incidents'
+    __table_args__ = (
+        Index('uq_account_incidents_open', 'account_id', unique=True,
+              sqlite_where=text('resolved_at IS NULL'), postgresql_where=text('resolved_at IS NULL')),
+        Index('ix_account_incidents_account_started', 'account_id', 'started_at'),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    account_id: Mapped[str] = mapped_column(ForeignKey('douyin_accounts.id', ondelete='CASCADE'), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observations: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    alert_delivery_id: Mapped[str | None] = mapped_column(ForeignKey('mail_deliveries.id',ondelete='SET NULL'))
+    alert_queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class DouyinConversation(Base):
     __tablename__ = "douyin_conversations"
 
@@ -563,6 +582,7 @@ class TaskRun(Base):
     error_code: Mapped[str | None] = mapped_column(String(48))
     error_summary: Mapped[str | None] = mapped_column(String(240))
     message_digest: Mapped[str | None] = mapped_column(String(64))
+    execution_version: Mapped[str | None] = mapped_column(String(32))
 
 
 class TaskRunAttempt(Base):

@@ -1,9 +1,11 @@
 from unittest.mock import patch
+from dataclasses import replace
 from fastapi.testclient import TestClient
 import pytest
 from spark_console.db import session_scope
 from spark_console.models import User
 from tests.console.test_web_fixture import UserFixture
+from spark_console.web.app import create_app
 
 @pytest.fixture
 def fixture():
@@ -47,3 +49,45 @@ def test_removed_admin_authenticator_and_elevation_routes_are_not_available(fixt
 def test_malformed_login_origins_are_denied_without_server_error(fixture,origin):
     response=fixture.client.post('/login',data={'username':'friend','password':'unused'},headers={'Origin':origin},follow_redirects=False)
     assert response.status_code==403
+
+
+def test_public_origin_login_works_through_bridge_with_internal_host(fixture):
+    settings=replace(fixture.settings,public_origin='https://dyfire.cn')
+    with TestClient(create_app(settings,fixture.engine),base_url='http://dyfire-origin.internal') as client:
+        response=client.post('/login',data={'username':'friend','password':'Temporary-123!'},
+            headers={'Origin':'https://dyfire.cn','Accept':'text/html'},follow_redirects=False)
+        assert response.status_code==303 and response.headers['location']=='/dashboard'
+        assert client.cookies.get('spark_session')
+        # Internal bridge names and arbitrary Forwarded-Host values must not
+        # grant another origin permission to log the browser in.
+        original=client.cookies.get('spark_session')
+        for origin in ('https://dyfire-origin.internal','https://other.example'):
+            denied=client.post('/login',data={'username':'friend','password':'Temporary-123!'},
+                headers={'Origin':origin,'X-Forwarded-Host':'dyfire.cn'},follow_redirects=False)
+            assert denied.status_code==403
+        assert original==client.cookies.get('spark_session')
+
+
+def test_rejected_browser_form_returns_to_styled_login_without_json_screen(fixture):
+    response=fixture.client.post('/login',data={'username':'friend','password':'unused'},
+        headers={'Origin':'https://other.example','Accept':'text/html'},follow_redirects=False)
+    assert response.status_code==303 and response.headers['location'].startswith('/login?error=')
+    shell=fixture.client.get(response.headers['location'])
+    assert shell.status_code==200 and '<div id="app"></div>' in shell.text
+
+
+@pytest.mark.parametrize('path',['/register','/forgot-password','/forgot-password/reset'])
+def test_all_auth_forms_use_the_configured_public_origin(fixture,path):
+    settings=replace(fixture.settings,public_origin='https://dyfire.cn')
+    with TestClient(create_app(settings,fixture.engine),base_url='http://internal.invalid') as client:
+        body={'username':'friend','password':'Temporary-123!','email':'fixture@example.com','code':'wrong-code'}
+        result=client.post(path,data=body,headers={'Origin':'https://dyfire.cn'},follow_redirects=False)
+        assert result.status_code!=403
+        denied=client.post(path,data=body,headers={'Origin':'https://other.example'},follow_redirects=False)
+        assert denied.status_code==403
+
+
+@pytest.mark.parametrize('origin',['https://dyfire.cn/path','https://user@dyfire.cn','https://dyfire.cn:bad','null','https://dyfire.cn/?x=1'])
+def test_invalid_canonical_origin_is_rejected_at_startup(fixture,origin):
+    with pytest.raises(ValueError,match='public origin'):
+        replace(fixture.settings,public_origin=origin)
