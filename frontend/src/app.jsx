@@ -41,7 +41,9 @@ import {installSelectOverlay} from './select-overlay.js';
 import {hasConfirmedExecution} from './onboarding-state.js';
 const AuthPage=React.lazy(()=>import('./auth-pages.jsx'));
 const AccountIncidents=React.lazy(()=>import('./account-incidents.jsx'));
-import {cloudFrameOverlay, createCloudFrameState, frameLoadError, frameLoaded, retryCloudFrame} from './cloud-frame-state.js';
+import {createBindingComponents} from './binding-components.jsx';
+import {createBusinessPanels} from './business-panels.jsx';
+import {createProbeAction} from './task-probe-action.jsx';
 
 const drawerStack = [];
 const DRAWER_EXIT_MS = 180;
@@ -257,6 +259,9 @@ function mockApi(path, options={}) {
 }
 
 const api=createApiClient({preview:previewRequested,mock:mockApi,dev:import.meta.env.DEV});
+const {AnnouncementInbox,AdminBusinessPanel}=createBusinessPanels({api,Card,Badge,Button,interactionRequestId});
+const TaskProbeAction=createProbeAction({api});
+const {ScanVerification,CloudInteraction,CloudFrame,BindingProgress}=createBindingComponents({api,Button,interactionRequestId,sendCloudAction});
 
 // ── Utility hooks ────────────────────────────────────────────────────────────
 
@@ -767,29 +772,6 @@ function PageHeader({eyebrow, title, text, actions}) { return <header className=
 function Metric({label,value,detail,tone=''}) { return <Card className="metric"><span>{label}</span><strong className={tone}>{value}</strong>{detail&&<small>{detail}</small>}</Card>; }
 function AccountStatus({account={}, onAction}) { const health=account.health||{}; const name=displayName(account.name); const good=health.state==='valid'||account.validation_state==='valid'; const tone=good?'good':(health.state==='verification'||health.blocked?'danger':'warn'); return <div className="account-status-row"><span className="avatar">{account.profile?.avatar_url?<img src={account.profile.avatar_url} alt=""/>:initial(name)}</span><div className="grow"><b>{name}</b><small>{account.profile?.nickname && account.profile.nickname!==name?account.profile.nickname+' · ':''}{health.label||'等待复核'}</small></div><Badge tone={tone}>{health.label||'等待复核'}</Badge><Button variant="quiet" onClick={()=>onAction?.(account)}>{good?'查看':'处理'}</Button></div>; }
 
-function AnnouncementInbox({data}) {
-  const [items,setItems]=useState([]);const [error,setError]=useState('');
-  useEffect(()=>{let active=true;api('/api/announcements').then(value=>{if(active)setItems(value.items||[])}).catch(value=>{if(active)setError(value.message)});return()=>{active=false}},[]);
-  const markRead=async item=>{try{await api(`/api/announcements/${item.id}/read`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data?.csrf||''})});setItems(rows=>rows.map(row=>row.id===item.id?{...row,read:true}:row))}catch(value){setError(value.message)}};
-  const unread=items.filter(item=>!item.read);
-  if(!unread.length&&!error)return null;
-  return <Card className="announcement-inbox"><div className="section-head"><div><span className="eyebrow">SERVICE NOTICE</span><h2>服务公告</h2></div><Badge tone={unread.length?'warn':'neutral'}>{unread.length} 条未读</Badge></div>{error&&<p className="inline-feedback danger-text">{error}</p>}{unread.map(item=><article className="announcement-row" key={item.id}><div><b>{item.title}</b><p>{item.body}</p><small>有效至 {new Date(item.expires_at).toLocaleString('zh-CN')}</small></div><Button variant="quiet" onClick={()=>markRead(item)}>标为已读</Button></article>)}</Card>;
-}
-
-function AdminBusinessPanel({data,onFeedback}) {
-  const [announcements,setAnnouncements]=useState([]);const [payments,setPayments]=useState([]);const [report,setReport]=useState(null);const [busy,setBusy]=useState(false);
-  const [notice,setNotice]=useState({title:'',body:'',user_id:'',days:7});
-  const [payment,setPayment]=useState({user_id:'',source:'paid',amount:'',reference:'',note:''});
-  const [costs,setCosts]=useState({monthly_server_yuan:'',monthly_other_yuan:'',support_hourly_yuan:'',support_minutes_month:''});
-  const reload=async()=>{const [a,p,c]=await Promise.all([api('/api/admin/announcements'),api('/api/admin/payments?page=1'),api('/api/admin/costs')]);setAnnouncements(a.items||[]);setPayments(p.items||[]);setReport(c);setCosts(v=>({...v,...Object.fromEntries(Object.entries(c.cost_inputs||{}).map(([key,value])=>[key,String(value)]))}))};
-  useEffect(()=>{let active=true;Promise.all([api('/api/admin/announcements'),api('/api/admin/payments?page=1'),api('/api/admin/costs')]).then(([a,p,c])=>{if(!active)return;setAnnouncements(a.items||[]);setPayments(p.items||[]);setReport(c);setCosts(v=>({...v,...Object.fromEntries(Object.entries(c.cost_inputs||{}).map(([key,value])=>[key,String(value)]))}))}).catch(error=>{if(active)onFeedback(error.message)});return()=>{active=false}},[]);
-  const publish=async event=>{event.preventDefault();setBusy(true);try{await api('/api/admin/announcements',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf,...notice})});setNotice({title:'',body:'',user_id:'',days:7});await reload();onFeedback('公告已发布')}catch(error){onFeedback(error.message)}finally{setBusy(false)}};
-  const recordPayment=async event=>{event.preventDefault();setBusy(true);try{await api('/api/admin/payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf,request_id:interactionRequestId(),...payment})});setPayment(v=>({...v,amount:'',reference:'',note:''}));await reload();onFeedback('收款来源记录已保存')}catch(error){onFeedback(error.message)}finally{setBusy(false)}};
-  const saveCosts=async event=>{event.preventDefault();setBusy(true);try{await api('/api/admin/costs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf,...costs})});await reload();onFeedback('成本输入已保存')}catch(error){onFeedback(error.message)}finally{setBusy(false)}};
-  const withdraw=async item=>{try{await api(`/api/admin/announcements/${item.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf})});setAnnouncements(rows=>rows.map(row=>row.id===item.id?{...row,withdrawn:true}:row))}catch(error){onFeedback(error.message)}};
-  return <div className="admin-business-grid"><Card><div className="section-head"><div><span className="eyebrow">CUSTOMER NOTICE</span><h2>公告</h2></div></div><form className="form-stack" onSubmit={publish}><label>标题<input className="input" maxLength="160" required value={notice.title} onChange={e=>setNotice(v=>({...v,title:e.target.value}))}/></label><label>内容<textarea className="input textarea" maxLength="5000" required value={notice.body} onChange={e=>setNotice(v=>({...v,body:e.target.value}))}/></label><div className="form-grid"><label>接收对象<select className="input" value={notice.user_id} onChange={e=>setNotice(v=>({...v,user_id:e.target.value}))}><option value="">全体用户</option>{(data.users||[]).filter(user=>user.role!=='admin').map(user=><option key={user.id} value={user.id}>{user.username}</option>)}</select></label><label>有效天数<input className="input" type="number" min="1" max="365" value={notice.days} onChange={e=>setNotice(v=>({...v,days:e.target.value}))}/></label></div><Button type="submit" disabled={busy}>发布公告</Button></form><div className="admin-business-list">{announcements.map(item=><div className="announcement-row" key={item.id}><div><b>{item.title}</b><p>{item.body}</p><small>{item.user_id?'定向通知':'全体通知'} · {item.withdrawn?'已撤回':`有效至 ${new Date(item.expires_at).toLocaleDateString('zh-CN')}`}</small></div>{!item.withdrawn&&<Button variant="quiet" onClick={()=>withdraw(item)}>撤回</Button>}</div>)}</div></Card><Card><div className="section-head"><div><span className="eyebrow">RECORDED RECEIPTS</span><h2>收款与开通来源</h2></div></div><p className="muted-copy">这里只登记已实际收到的款项或赠送、人工调整，不会产生支付或订阅权益。</p><form className="form-stack" onSubmit={recordPayment}><label>用户<select className="input" required value={payment.user_id} onChange={e=>setPayment(v=>({...v,user_id:e.target.value}))}><option value="">选择用户</option>{(data.users||[]).filter(user=>user.role!=='admin').map(user=><option key={user.id} value={user.id}>{user.username}</option>)}</select></label><div className="form-grid"><label>来源<select className="input" value={payment.source} onChange={e=>setPayment(v=>({...v,source:e.target.value,amount:e.target.value==='paid'?v.amount:''}))}><option value="paid">实际收款</option><option value="gift">赠送</option><option value="admin_adjustment">人工调整</option></select></label><label>金额（元）<input className="input" type="number" min="0.01" step="0.01" required={payment.source==='paid'} disabled={payment.source!=='paid'} value={payment.amount} onChange={e=>setPayment(v=>({...v,amount:e.target.value}))}/></label></div><label>收款凭证编号（可选）<input className="input" maxLength="160" value={payment.reference} onChange={e=>setPayment(v=>({...v,reference:e.target.value}))}/></label><label>备注（可选）<input className="input" maxLength="500" value={payment.note} onChange={e=>setPayment(v=>({...v,note:e.target.value}))}/></label><Button type="submit" disabled={busy||!payment.user_id}>保存记录</Button></form><div className="recorded-income">本月已记录实收 <b>¥{report?.recorded_income_yuan??'—'}</b></div><div className="admin-business-list">{payments.map(item=><div className="announcement-row" key={item.id}><div><b>{item.username} · {item.source==='paid'?'实收':item.source==='gift'?'赠送':'人工调整'} ¥{item.amount_yuan}</b><small>{item.note||item.reference||'无备注'} · {new Date(item.created_at).toLocaleString('zh-CN')}</small></div></div>)}</div></Card><Card><div className="section-head"><div><span className="eyebrow">COST INPUTS</span><h2>服务成本估算</h2></div></div><p className="muted-copy">只汇总你填写的实际成本；缺项时显示“尚未填写”，不会用估值替代。</p><form className="form-stack" onSubmit={saveCosts}><label>月服务器成本（元）<input className="input" type="number" min="0" step="0.01" value={costs.monthly_server_yuan} onChange={e=>setCosts(v=>({...v,monthly_server_yuan:e.target.value}))}/></label><label>其他月成本（元）<input className="input" type="number" min="0" step="0.01" value={costs.monthly_other_yuan} onChange={e=>setCosts(v=>({...v,monthly_other_yuan:e.target.value}))}/></label><label>客服每小时成本（元）<input className="input" type="number" min="0" step="0.01" value={costs.support_hourly_yuan} onChange={e=>setCosts(v=>({...v,support_hourly_yuan:e.target.value}))}/></label><label>本月客服分钟数<input className="input" type="number" min="0" step="1" value={costs.support_minutes_month} onChange={e=>setCosts(v=>({...v,support_minutes_month:e.target.value}))}/></label><Button type="submit" disabled={busy}>保存成本</Button></form><div className="cost-estimate-result"><b>{report?.estimated_monthly_cost_yuan==null?'尚未填写完整成本数据':`月成本估算 ¥${report.estimated_monthly_cost_yuan}`}</b><small>{report?.estimated_cost_per_paid_account_yuan==null?'暂无有效账号样本':`每个付费账号约 ¥${report.estimated_cost_per_paid_account_yuan}`}</small><small>实际实收 ¥{report?.recorded_income_yuan??'—'} · 付费账号 {report?.paid_active_accounts??'—'}</small></div></Card></div>;
-}
-
 function Dashboard({data,onRefresh}) {
   const navigate=useNavigate(); const tasks=asList(data?.tasks); const accounts=asList(data?.accounts); const runs=asList(data?.runs); const membership=data.membership||{};
   const [supportOpen,setSupportOpen]=useState(false);
@@ -1110,78 +1092,6 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   </>;
 }
 
-function ScanVerification({scan,data,setScan}) {
-  const [value,setValue]=useState(''); const [sending,setSending]=useState(false); const [notice,setNotice]=useState('');
-  const needs=Boolean(scan?.needs_verification);
-  if(!needs||!['sms','password'].includes(scan?.verification_kind))return null;
-  const password=scan?.verification_kind==='password';
-  const submit=async e=>{e.preventDefault();if(!value.trim()||!scan?.id)return;setSending(true);setNotice('正在提交验证…');try{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');fd.append('kind','text');fd.append('request_id',interactionRequestId());fd.append('text',value);const accepted=await api(`/accounts/scan/${scan.id}/interact`,{method:'POST',body:fd});setValue('');let state=accepted;for(let attempt=0;attempt<24&&['queued','processing'].includes(state?.status);attempt++){await new Promise(resolve=>setTimeout(resolve,650));state=await api(state.status_url)}setNotice(state?.status==='delivered'?'云端已确认验证输入':state?.status==='failed'?'云端未接受验证输入，请查看画面后重试':state?.status==='uncertain'?'验证结果暂时无法确认，请查看云端页面':'已提交，等待抖音确认');const latest=await api(`/accounts/scan/${scan.id}`);if(latest&&typeof latest==='object')setScan(latest)}catch(err){setNotice(err.message)}finally{setSending(false)}};
-  return <form className="verification-panel" onSubmit={submit}><div className="verification-title"><span className="verification-icon">{password?'⌁':'✉'}</span><div><b>{password?'输入抖音登录密码':'短信验证码验证'}</b><small>{password?'请在此输入抖音账号密码，提交一次即可。':scan?.masked_phone?`验证码将发送至 ${scan.masked_phone}`:'请填写抖音页面要求的验证码。'}</small></div></div><label className="verification-field"><span>{password?'登录密码':'验证码'}</span><input className="input" type={password?'password':'text'} inputMode={password?'text':'numeric'} autoComplete={password?'current-password':'one-time-code'} value={value} onChange={e=>setValue(e.target.value)} placeholder={password?'输入密码':'输入验证码'}/></label><div className="verification-actions"><Button type="submit" disabled={sending||!value.trim()}>{sending?'提交中…':'提交验证'}</Button>{!password&&<span className="verification-hint">{scan?.resend_after_seconds?`${scan.resend_after_seconds}s 后可重试`:scan?.verification_sent?'验证码已发送':'等待抖音发送验证码'}</span>}</div>{notice&&<div className="inline-feedback">{notice}</div>}</form>;
-}
-
-function CloudInteraction({scan,data}) {
-  const [value,setValue]=useState(''); const [busy,setBusy]=useState(false); const [status,setStatus]=useState('');
-  if ((scan?.needs_verification&&!['app','other'].includes(scan?.verification_kind)) || (scan?.mode==='recovery'&&!scan?.needs_verification)) return null;
-  const submit=async e=>{
-    e.preventDefault(); if(!value.trim()||busy||!scan?.id)return;
-    setBusy(true); setStatus('正在发送到云端，请勿重复提交…');
-    try {
-      const requestId=interactionRequestId();
-      const fd=new FormData(); fd.append('csrf_token',data?.csrf||''); fd.append('kind','text'); fd.append('request_id',requestId); fd.append('text',value.trim());
-      const accepted=await api(`/accounts/scan/${scan.id}/interact`,{method:'POST',body:fd});
-      setValue('');
-      if(accepted?.status_url){
-        let state=accepted; let tries=0;
-        while(tries++<16 && ['queued','processing'].includes(state?.status)) { await new Promise(resolve=>setTimeout(resolve,650)); state=await api(state.status_url); }
-        setStatus(state?.status==='delivered'?'云端已确认本次输入':state?.status==='failed'?'云端未接受本次输入，请查看画面后重试':'已提交，等待云端回执');
-      } else setStatus('已提交，等待云端回执');
-    } catch(err){ setStatus(err.message||'云端输入未送达'); }
-    finally{setBusy(false)}
-  };
-  return <form className="cloud-interaction" onSubmit={submit}><div className="cloud-interaction-copy"><span className="eyebrow">CLOUD INPUT</span><span>点击上方云端画面选中输入框，或直接在这里输入后发送。</span></div><div className="cloud-input-row"><input className="input" value={value} onChange={e=>setValue(e.target.value)} placeholder="验证码、密码或抖音页面提示内容" autoComplete="one-time-code"/><Button type="submit" disabled={busy||!value.trim()}>{busy?'发送中…':'发送到云端'}</Button></div>{status&&<p className="cloud-interaction-status" role="status">{status}</p>}</form>;
-}
-
-function CloudFrame({scan,data,onError,onReady}) {
-  const [frame,setFrame]=useState(()=>createCloudFrameState(scan?.id)); const [pointer,setPointer]=useState({x:50,y:50}); const [keyboardActive,setKeyboardActive]=useState(false); const [remoteStatus,setRemoteStatus]=useState(''); const dragPoints=useRef([]); const suppressClick=useRef(false); const preview=scan?.id==='preview-scan';
-  const state=frame.status; const attempt=frame.attempt; const frameError=frame.error;
-  useEffect(()=>{setFrame(createCloudFrameState(scan?.id));setPointer({x:50,y:50});setKeyboardActive(false)},[scan?.id]);
-  const sendClick=async (x,y)=>{if(!scan?.id||state!=='ready'||frameError)return;const fd=new FormData();fd.append('csrf_token',data?.csrf||'');fd.append('kind','click');fd.append('x',String(Math.max(0,Math.min(1,x/100))));fd.append('y',String(Math.max(0,Math.min(1,y/100))));try{await api(`/accounts/scan/${scan.id}/interact`,{method:'POST',body:fd})}catch(err){onError?.(err.message)}};
-  const point=e=>{const rect=e.currentTarget.getBoundingClientRect();return {x:Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)),y:Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height))}};
-  const click=async e=>{if(suppressClick.current){suppressClick.current=false;return}const p=point(e);setPointer({x:p.x*100,y:p.y*100});await sendClick(p.x*100,p.y*100)};
-  const pointerDown=e=>{if(e.button!==0)return;e.currentTarget.setPointerCapture?.(e.pointerId);const p=point(e);dragPoints.current=[p]};
-  const pointerMove=e=>{if(!dragPoints.current.length)return;const p=point(e),last=dragPoints.current.at(-1);if(Math.hypot(p.x-last.x,p.y-last.y)>.006&&dragPoints.current.length<40)dragPoints.current.push(p);setPointer({x:p.x*100,y:p.y*100})};
-  const pointerUp=async e=>{if(!dragPoints.current.length)return;const points=dragPoints.current;dragPoints.current=[];if(points.length<3)return;suppressClick.current=true;setRemoteStatus('正在执行云端拖动…');try{const value=await sendCloudAction(scan,data,'drag',{points});setRemoteStatus(value.status==='delivered'?'云端拖动已完成':value.status==='uncertain'?'拖动结果未确认，请查看画面':value.status==='failed'?'云端未执行拖动':'等待云端结果')}catch(error){setRemoteStatus(error.message)}};
-  const remoteKey=async key=>{setRemoteStatus(`正在发送 ${key}…`);try{const value=await sendCloudAction(scan,data,'key',{key});setRemoteStatus(value.status==='delivered'?`${key} 已发送到云端`:value.status==='uncertain'?'按键结果未确认':value.status==='failed'?'云端未接受按键':'等待云端结果')}catch(error){setRemoteStatus(error.message)}};
-  const remoteScroll=async delta_y=>{setRemoteStatus('正在滚动云端页面…');try{const value=await sendCloudAction(scan,data,'scroll',{x:pointer.x/100,y:pointer.y/100,delta_y});setRemoteStatus(value.status==='delivered'?'云端页面已滚动':value.status==='uncertain'?'滚动结果未确认':value.status==='failed'?'云端未执行滚动':'等待云端结果')}catch(error){setRemoteStatus(error.message)}};
-  const keyDown=e=>{
-    if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter',' ','Spacebar'].includes(e.key))return;
-    e.preventDefault();
-    if(e.key==='Enter'||e.key===' '||e.key==='Spacebar'){sendClick(pointer.x,pointer.y);return;}
-    const step=e.shiftKey?10:5;
-    const next={x:pointer.x,y:pointer.y};
-    if(e.key==='ArrowUp')next.y=Math.max(0,next.y-step);
-    if(e.key==='ArrowDown')next.y=Math.min(100,next.y+step);
-    if(e.key==='ArrowLeft')next.x=Math.max(0,next.x-step);
-    if(e.key==='ArrowRight')next.x=Math.min(100,next.x+step);
-    setPointer(next);
-  };
-  useEffect(()=>{
-    if(preview||state==='ready'||frameError||!scan?.id)return;
-    const timer=window.setTimeout(()=>setFrame(current=>frameLoadError(current,{remainingSeconds:scan.remaining_seconds})),Math.min(5000,1600+attempt*500));
-    return ()=>window.clearTimeout(timer);
-  },[preview,state,frameError,attempt,scan?.id,scan?.remaining_seconds]);
-  if(preview) return <div className="scan-stage frame-ready"><div className="preview-qr" aria-label="预览二维码"><span>DYFIRE</span><b>扫码预览</b></div></div>;
-  const revision=scan?.frame_revision||'';
-  const retry=()=>setFrame(current=>retryCloudFrame(current));
-  const sessionStatus=String(scan?.status||'').toLowerCase();
-  const sessionActive=!['succeeded','failed','expired','cancelled'].includes(sessionStatus)&&Number(scan?.remaining_seconds??1)>0;
-  const overlay=cloudFrameOverlay(frame);
-  const frameClass=overlay.kind==='error'?'scan-frame-error':state==='loading'&&attempt>3?'scan-frame-waiting':'';
-  return <><div className={`scan-stage ${state==='ready'?'frame-ready':''} ${frameClass}`}><img className="scan-frame-image" onLoad={()=>{setFrame(current=>frameLoaded(current));onReady?.();document.body.dataset.dyfireFrameReady='true';document.dispatchEvent(new CustomEvent('dyfire-frame-ready'))}} onError={()=>setFrame(current=>frameLoadError(current,{remainingSeconds:scan?.remaining_seconds}))} onClick={click} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={pointerUp} onPointerCancel={()=>{dragPoints.current=[]}} onKeyDown={keyDown} onFocus={()=>setKeyboardActive(true)} onBlur={()=>setKeyboardActive(false)} role="button" tabIndex="0" aria-label="抖音云端登录页面。点击操作，拖动可完成页面要求的滑动验证，方向键移动点击位置" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Enter Space" src={`/accounts/scan/${scan.id}/qr?attempt=${attempt}${revision?`&revision=${encodeURIComponent(revision)}`:''}`} alt="抖音云端登录页面"/>{keyboardActive&&<span className="scan-keyboard-pointer" aria-hidden="true" style={{left:`${pointer.x}%`,top:`${pointer.y}%`}}/>}<div className="scan-loading-overlay" aria-live="polite">{overlay.kind==='error'?<><b>{overlay.title}</b><small>{overlay.detail}</small>{overlay.title!=='二维码已失效'&&<Button type="button" variant="quiet" onClick={retry}>重试加载画面</Button>}</>:<><span className="scan-loading-spinner"/><b>{overlay.title}</b><small>{overlay.detail|| (sessionActive?'云端容器启动后会自动显示，请稍候。':'正在确认登录会话状态，请稍候。')}</small></>}</div></div>{state==='ready'&&!frameError&&<div className="cloud-frame-controls" aria-label="云端页面控制"><span>拖动云端画面可操作滑块</span><Button type="button" variant="quiet" onClick={()=>remoteScroll(-520)}>向上滚动</Button><Button type="button" variant="quiet" onClick={()=>remoteScroll(520)}>向下滚动</Button><Button type="button" variant="quiet" onClick={()=>remoteKey('Tab')}>Tab</Button><Button type="button" variant="quiet" onClick={()=>remoteKey('Enter')}>Enter</Button><Button type="button" variant="quiet" onClick={()=>remoteKey('Escape')}>Esc</Button>{remoteStatus&&<small role="status">{remoteStatus}</small>}</div>}</>;
-}
-
-function BindingProgress({scan}) { const status=String(scan?.status||'').toLowerCase(); const recovery=scan?.mode==='recovery'; const current=scan?.status==='succeeded'?4:scan?.needs_verification?3:['queued','starting','initializing','pending','created'].includes(status)?1:2; const labels=recovery?['准备原账号','检查登录状态','完成复核','账号恢复']:['准备环境','扫码确认','验证输入','绑定完成']; return <div className="scan-progress scan-progress-four" aria-label={`${recovery?'账号复核':'绑定'}进度：${labels[current-1]}`}>{labels.map((label,index)=><React.Fragment key={label}><span className={`scan-progress-step ${index+1<current?'complete':''} ${index+1===current?'active':''}`}><i className="scan-progress-dot"/><span>{label}</span></span>{index<labels.length-1&&<span className={`scan-progress-line ${index+1<current?'complete':''}`} aria-hidden="true"/>}</React.Fragment>)}</div>; }
-
 function Accounts({data,onRefresh}) {
   const [historyAccount,setHistoryAccount]=useState(null);
   const [scan,setScan]=useState(null); const [error,setError]=useState(''); const [busy,setBusy]=useState(false); const [frameReady,setFrameReady]=useState(false); const navigate=useNavigate();
@@ -1201,23 +1111,6 @@ function Accounts({data,onRefresh}) {
   useEffect(()=>{setFrameReady(false);document.body.dataset.dyfireFrameReady='false'},[scan?.id]);
   useEffect(()=>{const ready=()=>setFrameReady(true);document.addEventListener('dyfire-frame-ready',ready);return()=>document.removeEventListener('dyfire-frame-ready',ready)},[]);
   return <><PageHeader eyebrow="03 / DOUYIN ACCOUNTS" title="抖音账号" text="集中管理登录状态、资料同步与安全复核。" actions={<Button onClick={()=>canAddAccount?start():navigate('/subscription')} disabled={busy}>{busy?'正在准备…':canAddAccount?'绑定抖音账号 ↗':'查看订阅额度 ↗'}</Button>}/>{error&&<div className="inline-feedback danger-text">{error}{!canAddAccount&&<> <Link to="/subscription">查看套餐 ↗</Link></>}</div>}<div className="account-grid">{accounts.length?accounts.map(a=>{const name=String(a?.name||'抖音账号'); const profile=a?.profile||{}; const health=a?.health||{}; const taskCount=data?.resource_limits?.task_counts_by_account?.[a.id]??tasks.filter(t=>t?.accountId===a?.id).length; return <Card className="account-card" id={`account-${a.id||name}`} key={a.id||name}><div className="account-card-head"><span className="avatar avatar-large">{profile.avatar_url?<img src={profile.avatar_url} alt=""/>:initial(name)}</span><div className="grow"><h2>{name}</h2><small>{profile.nickname||'抖音账号'} · 绑定于此工作区</small>{health.reason&&<small className="account-health-reason">{health.reason}</small>}{a.incident&&<small className="account-health-reason">本次异常影响 {a.incident.affected_tasks} 个任务 · {a.incident.recovery_actions} 次复核</small>}<button type="button" className="support-inline-link" onClick={()=>setHistoryAccount(a)}>查看异常记录</button></div><Badge tone={(health.state==='valid'||a.validation_state==='valid')?'good':'warn'}>{health.label||'等待复核'}</Badge></div><div className="account-card-meta"><span>登录状态<strong>{health.label||'未复核'}</strong></span><span>续火任务<strong>{taskCount} 条</strong></span></div><div className="account-card-actions"><Button variant="quiet" onClick={()=>navigate('/studio')}>创建任务 ↗</Button><Button variant="quiet" onClick={()=>{const blocked=health.blocked||['verification','invalid','relogin'].includes(health.state)||['verification','invalid'].includes(a.validation_state);blocked?start(a.id):requestHealthCheck(a.id)}}>{(health.blocked||['verification','invalid','relogin'].includes(health.state)||['verification','invalid'].includes(a.validation_state))?'打开验证':'复核状态'}</Button></div></Card>}):<Empty title="还没有绑定抖音账号" text={freeTier?'免费版可直接绑定 1 个抖音账号，扫码后按抖音 App 提示确认登录。':'扫码后按抖音 App 提示确认登录。'} action={<Button onClick={()=>start()}>开始绑定</Button>}/>}</div><Card className="account-guide"><span className="eyebrow">ACCOUNT CARE</span><h2>保持账号稳定</h2><p>系统会在发送前复核账号状态；遇到抖音安全验证时，会暂停相关计划并在这里显示处理入口。</p><div className="guide-steps"><span><b>01</b>扫码确认</span><span><b>02</b>完成验证</span><span><b>03</b>自动复核</span></div></Card>{historyAccount&&<React.Suspense fallback={<LoadingState/>}><AccountIncidents account={historyAccount} onClose={()=>setHistoryAccount(null)} api={api} Drawer={Drawer} Badge={Badge} LoadingState={LoadingState}/></React.Suspense>}<Drawer open={!!scan} onClose={()=>setScan(null)} title={recovery?'复核原抖音账号':'绑定抖音账号'} eyebrow={recovery?'ACCOUNT RECOVERY':'SECURE LOGIN'} wide centered><div className="scan-panel">{scan?.status==='succeeded'?<><div className="success-mark">✓</div><h3>{recovery?'账号已恢复':'绑定成功'}</h3><p>{recovery?'账号状态已确认正常，已保留该账号、好友和续火任务，后续计划会继续执行。':'抖音账号已安全保存，可以创建续火任务。'}</p><Button onClick={()=>{setScan(null);recovery?onRefresh():navigate('/studio')}}>{recovery?'返回账号':'去创建任务 ↗'}</Button></>:terminal?<><div className="success-mark failure-mark">!</div><h3>{recovery?'本次复核未完成':'本次绑定未完成'}</h3><p>{scan?.message|| (recovery?'原账号登录状态仍需处理，请重新打开验证页面。':'二维码已失效，请重新发起绑定。')}</p><Button onClick={()=>start(recovery?scan?.account_id||'':'')}>{recovery?'继续复核':'重新绑定'}</Button></>:<><BindingProgress scan={scan}/><CloudFrame scan={scan} data={data} onError={setError} onInteraction={refreshScan}/><h3>{scan?.message||(recovery?'正在恢复原账号的云端验证页面':'请使用抖音 App 扫码并在手机确认')}</h3><p>{recovery?'系统正在检查原账号登录状态。页面没有验证提示时会自动完成复核，无需输入；只有抖音明确要求验证或重新登录时，才需要按画面提示操作。':scan?.needs_verification?'抖音已要求额外验证，请在下方完成一次提交。':'二维码只在当前登录窗口有效，完成确认后页面会自动更新状态。'}</p><CloudInteraction scan={scan} data={data} onInteraction={refreshScan}/><ScanVerification scan={scan} data={data} setScan={setScan}/><Button variant="quiet" onClick={()=>{const fd=new FormData();fd.append('csrf_token',data?.csrf||'');api(`/accounts/scan/${scan?.id}/cancel`,{method:'POST',body:fd});setScan(null)}}>{recovery?'结束本次复核':'取消绑定'}</Button></>}</div></Drawer></>;
-}
-
-function TaskProbeAction({taskId,runId,csrf,label='检查任务状态'}) {
-  const [probe,setProbe]=useState(null); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
-  const start=async event=>{
-    event?.preventDefault?.();event?.stopPropagation?.();if(busy||!taskId)return;
-    setBusy(true);setError('');
-    try{
-      let current=await api(runId?`/api/runs/${runId}/reconcile`:`/api/tasks/${taskId}/self-check`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf||''})});
-      setProbe(current);
-      for(let attempt=0;attempt<90&&['queued','running'].includes(current?.status);attempt++){
-        await new Promise(resolve=>setTimeout(resolve,2000));current=await api(current.status_url);setProbe(current);
-      }
-    }catch(value){setError(value.message||'检查未完成')}
-    finally{setBusy(false)}
-  };
-  return <><button type="button" className={label==='运行前自检'?'':'button quiet'} onClick={start} disabled={busy||!taskId}>{busy?'检查中…':label}</button>{error&&<small className="task-probe-feedback" role="alert">{error}</small>}{probe?.result?.summary&&<small className="task-probe-feedback" role="status">{probe.result.summary}</small>}{probe&&['queued','running'].includes(probe.status)&&<small className="task-probe-feedback" role="status">等待账号空闲进行只读检查，不会发送消息</small>}</>;
 }
 
 function Runs({data}) {
