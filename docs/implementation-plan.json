@@ -75,8 +75,8 @@
       "area": "发送策略 / P1",
       "task": "将状态分类、资格、重试与恢复策略集中",
       "acceptance": "同一异常在用户端、后台、调度器显示相同事实与处理动作",
-      "status": "implemented_pending_deployment",
-      "evidence": "执行与恢复均复用 SubscriptionService 资格校验；run_policy 统一用户状态与处理动作；health_retry 保留独立的有界恢复策略，已覆盖免费额度、任务修改和提交边界。"
+      "status": "deployed",
+      "evidence": "执行与恢复均复用 SubscriptionService 资格校验；run_policy 统一用户状态与处理动作；health_retry 保留独立的有界恢复策略，已覆盖免费额度、任务修改和提交边界。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 4,
@@ -99,8 +99,8 @@
       "area": "故障诊断 / P1",
       "task": "失败自动生成最小诊断包",
       "acceptance": "版本、阶段耗时、原因码、选择器命中、脱敏页面信息可关联；默认不含 Cookie、验证码、聊天正文",
-      "status": "implemented_pending_deployment",
-      "evidence": "失败自动保存布尔结构证据（编辑器、密码框、挑战、DOM就绪），采集最多1.5秒；排障包关联执行版本、阶段、耗时，拒绝正文、URL、Cookie及输入值。"
+      "status": "deployed",
+      "evidence": "失败自动保存布尔结构证据（编辑器、密码框、挑战、DOM就绪），采集最多1.5秒；排障包关联执行版本、阶段、耗时，拒绝正文、URL、Cookie及输入值。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 7,
@@ -115,16 +115,16 @@
       "area": "链路演练 / P1",
       "task": "执行中 Worker 退出、重启、慢网络测试",
       "acceptance": "已提交不重发，未提交可有界恢复，租约丢失后旧 Worker 不继续操作",
-      "status": "implemented_pending_deployment",
-      "evidence": "真实隔离Worker子进程在提交前后分别终止，验证未提交租约回收、已提交保留待核实；原浏览器断连/页面超时测试一并保留，不触发真实消息。"
+      "status": "deployed",
+      "evidence": "真实隔离Worker子进程在提交前后分别终止，验证未提交租约回收、已提交保留待核实；原浏览器断连/页面超时测试一并保留，不触发真实消息。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 9,
       "area": "账号体验 / P1",
       "task": "用“检查登录—需要操作—保存确认”表达流程",
       "acceptance": "已登录直接完成；真正的验证才展示对应输入，不强制经历每一个步骤",
-      "status": "implemented_pending_deployment",
-      "evidence": "根据实际状态展示检查登录、所需验证、完成结果；无需验证时直接完成。退出路由取消云端会话，取消失败留在原弹窗继续处理。"
+      "status": "deployed",
+      "evidence": "根据实际状态展示检查登录、所需验证、完成结果；无需验证时直接完成。退出路由取消云端会话，取消失败留在原弹窗继续处理。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 10,
@@ -163,8 +163,8 @@
       "area": "登录连续性 / P1",
       "task": "固定真实浏览器环境配置并记录变更",
       "acceptance": "auth、worker、directory、health 使用兼容的浏览器版本、语言、时区；升级可追踪，不随机改环境",
-      "status": "implemented_pending_deployment",
-      "evidence": "所有云端入口复用固定浏览器语言、时区、视口和色彩环境，并在探测结果记录Playwright版本/环境hash；不随机改变原账号环境。"
+      "status": "deployed",
+      "evidence": "所有云端入口复用固定浏览器语言、时区、视口和色彩环境，并在探测结果记录Playwright版本/环境hash；不随机改变原账号环境。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 15,
@@ -203,16 +203,16 @@
       "area": "好友列表 / P1",
       "task": "强化同步范围、时间与重复目标说明",
       "acceptance": "继续只搜索已同步会话；标注已添加，姓名变化不破坏稳定身份绑定",
-      "status": "implemented_pending_deployment",
-      "evidence": "现有目录页已显示同步范围、时间、分页、重复目标禁选；帮助文字明确只搜索已同步会话，不冒充全部好友。"
+      "status": "deployed",
+      "evidence": "现有目录页已显示同步范围、时间、分页、重复目标禁选；帮助文字明确只搜索已同步会话，不冒充全部好友。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 20,
       "area": "少量数据 / P1",
       "task": "建立 0、1、3、20、100 条数据布局",
       "acceptance": "少量好友使用自然高度/紧凑列表，不留出巨型空区域；大量数据分页可用",
-      "status": "implemented_pending_deployment",
-      "evidence": "实际Chromium已验收0/1/3/20/100任务、360/1440宽度布局与菜单隐藏时无逐任务查询；已有账号/任务/记录分页。"
+      "status": "deployed",
+      "evidence": "实际Chromium已验收0/1/3/20/100任务、360/1440宽度布局与菜单隐藏时无逐任务查询；已有账号/任务/记录分页。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 21,
@@ -227,8 +227,8 @@
       "area": "数据更新 / P1",
       "task": "前台恢复刷新、后台轮询降频",
       "acceptance": "当前页面及时更新，后台标签页降低轮询；取消过期请求，避免恢复窗口时集中请求",
-      "status": "implemented_pending_deployment",
-      "evidence": "Runs/SimplePage增加取消与请求代次，账号轮询隐藏时降频，管理员监控隐藏时停止读取；复用统一API客户端。"
+      "status": "deployed",
+      "evidence": "Runs/SimplePage增加取消与请求代次，账号轮询隐藏时降频，管理员监控隐藏时停止读取；复用统一API客户端。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 23,
@@ -267,8 +267,8 @@
       "area": "深浅主题 / P1",
       "task": "将颜色和表面属性整理为语义 token",
       "acceptance": "姓名、禁用文字、菜单、弹窗、表格、表单错误在两种主题都有独立检查",
-      "status": "implemented_pending_deployment",
-      "evidence": "保留现有视觉，修正浅色副标题、表头、成功/警告、服务状态和底部导航文字；axe-core对16条产品/管理路由×2主题×2宽度共64种页面状态自动检查通过。弹窗和真实读屏另行验收。"
+      "status": "deployed",
+      "evidence": "保留现有视觉，修正浅色副标题、表头、成功/警告、服务状态和底部导航文字；axe-core对16条产品/管理路由×2主题×2宽度共64种页面状态自动检查通过。弹窗和真实读屏另行验收。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 28,
@@ -299,8 +299,8 @@
       "area": "管理详情 / P1",
       "task": "编辑展示修改前后差异",
       "acceptance": "用户、任务、额度修改准确说明影响范围，提交后可查审计",
-      "status": "implemented_pending_deployment",
-      "evidence": "管理员任务、续期和额度编辑均显示前后差异，并有真实Chromium交互测试。"
+      "status": "deployed",
+      "evidence": "管理员任务、续期和额度编辑均显示前后差异，并有真实Chromium交互测试。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 32,
@@ -347,24 +347,24 @@
       "area": "营收数据 / P1",
       "task": "添加最小交易/收款来源记录",
       "acceptance": "区分付费、赠送、管理员补偿；不得仅凭订阅额度推算真实收入",
-      "status": "implemented_pending_deployment",
-      "evidence": "实收/赠送/人工调整记录按请求编号幂等，新增收款分页、客户检索和空赠送金额处理；只累计实际实收，不触发真实支付或改变权益。"
+      "status": "deployed",
+      "evidence": "实收/赠送/人工调整记录按请求编号幂等，新增收款分页、客户检索和空赠送金额处理；只累计实际实收，不触发真实支付或改变权益。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 38,
       "area": "单位成本 / P1",
       "task": "按账号统计浏览器耗时与服务成本",
       "acceptance": "明确每活跃付费账号月收入、执行成本、客服成本和异常处理时间",
-      "status": "implemented_pending_deployment",
-      "evidence": "管理员录入实际服务器/其他/客服成本，按账号列出执行墙钟耗时；缺项保留未知，可清除旧输入，不把有效订阅账号冒充实收客户；外部账单仍需实际录入。"
+      "status": "deployed",
+      "evidence": "管理员录入实际服务器/其他/客服成本，按账号列出执行墙钟耗时；缺项保留未知，可清除旧输入，不把有效订阅账号冒充实收客户；外部账单仍需实际录入。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 39,
       "area": "合理使用 / P1",
       "task": "为不限好友方案制定透明的资源规则",
       "acceptance": "管理单账号发送节奏与异常密集任务；既有已售权益不被静默缩水",
-      "status": "implemented_pending_deployment",
-      "evidence": "保留已购不限好友额度，帮助页明确同账号串行与共享资源排队、分散时间建议；已有调度/恢复资格与分片测试。"
+      "status": "deployed",
+      "evidence": "保留已购不限好友额度，帮助页明确同账号串行与共享资源排队、分散时间建议；已有调度/恢复资格与分片测试。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 40,
@@ -378,64 +378,64 @@
       "area": "前端结构 / P1",
       "task": "拆分页面、业务 hooks、API 客户端、组件",
       "acceptance": "维持同一视觉和接口；任务编辑不会连带改坏管理员页面",
-      "status": "implemented_pending_deployment",
-      "evidence": "提取绑定、任务自检和经营面板，经营面板按需分包；统一API、原有独立登录和异常历史分包继续复用。主路由页仍可继续按需求拆分。"
+      "status": "deployed",
+      "evidence": "提取绑定、任务自检和经营面板，经营面板按需分包；统一API、原有独立登录和异常历史分包继续复用。主路由页仍可继续按需求拆分。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 42,
       "area": "接口契约 / P1",
       "task": "Pydantic schema 与前端类型/状态映射联动",
       "acceptance": "字段新增、枚举更改、分页空态均有契约检查；减少 normalize 中静默兜底",
-      "status": "implemented_pending_deployment",
-      "evidence": "Pydantic响应模型导出JSON Schema，前端运行时验证关键bootstrap/probe字段，CI拒绝生成物漂移；契约错误有明确信息。"
+      "status": "deployed",
+      "evidence": "Pydantic响应模型导出JSON Schema，前端运行时验证关键bootstrap/probe字段，CI拒绝生成物漂移；契约错误有明确信息。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 43,
       "area": "样式结构 / P1",
       "task": "收敛重复 CSS，建立 tokens 与组件样式",
       "acceptance": "减少覆盖链和 !important；按实际页面引用图清理，避免将旧模板样式体积算到全部生产页面上",
-      "status": "implemented_pending_deployment",
-      "evidence": "按CSS相同作用域与完整声明精确清理8条重复规则，保留最后覆盖；CI检测重复回归；旧主题样式全部移除。"
+      "status": "deployed",
+      "evidence": "按CSS相同作用域与完整声明精确清理8条重复规则，保留最后覆盖；CI检测重复回归；旧主题样式全部移除。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 44,
       "area": "资源加载 / P1",
       "task": "路由分包、字体按需与明确缓存策略",
       "acceptance": "哈希资源长缓存，HTML/私人数据使用合适缓存；保留中文覆盖，测实际网络瀑布，不把字体仓库总量当每次下载量",
-      "status": "implemented_pending_deployment",
-      "evidence": "登录、账号异常、经营面板按需加载；React/motion独立缓存，字体只打包WOFF2，旧重复字体已移除，哈希资源长期immutable缓存。"
+      "status": "deployed",
+      "evidence": "登录、账号异常、经营面板按需加载；React/motion独立缓存，字体只打包WOFF2，旧重复字体已移除，哈希资源长期immutable缓存。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 45,
       "area": "页面请求 / P1",
       "task": "路由取消、请求代次、缓存与刷新统一",
       "acceptance": "快速切换不会用旧响应覆盖新页面；多处组件不重复拉同一大 bootstrap",
-      "status": "implemented_pending_deployment",
-      "evidence": "统一传输、读请求合并、超时、取消与路由代次；写请求结果未知时不自动重发；账号操作回执保留幂等。"
+      "status": "deployed",
+      "evidence": "统一传输、读请求合并、超时、取消与路由代次；写请求结果未知时不自动重发；账号操作回执保留幂等。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 46,
       "area": "旧代码 / P1",
       "task": "梳理入口、路由、静态资源、兼容节点后分批移除",
       "acceptance": "生产只有一套主 React 页面，旧处理器不能盲删；旧 CLI 发送依赖先提取为共享模块，删除兼容标记前改用 API 自动化",
-      "status": "implemented_pending_deployment",
-      "evidence": "移除旧HTML/CSS/JS和失效harness，表单兼容出口统一React或JSON，不再回退Jinja；保留当前logo和原业务接口。"
+      "status": "deployed",
+      "evidence": "移除旧HTML/CSS/JS和失效harness，表单兼容出口统一React或JSON，不再回退Jinja；保留当前logo和原业务接口。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 47,
       "area": "浏览器容量 / P1",
       "task": "真正实施空闲 Chromium 回收",
       "acceptance": "回收后无浏览器子进程；下次能从加密状态恢复；内存确实下降",
-      "status": "implemented_pending_deployment",
-      "evidence": "成都隔离无网络容器实测2个真实Chromium，关闭前12进程、关闭后0，浏览器断连且测试Cookie重开仍在；无生产数据挂载，不能据此推算真实账号容量。"
+      "status": "deployed",
+      "evidence": "成都隔离无网络容器实测2个真实Chromium，关闭前12进程、关闭后0，浏览器断连且测试Cookie重开仍在；无生产数据挂载，不能据此推算真实账号容量。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 48,
       "area": "队列容量 / P1",
       "task": "显示未来高峰、预计排队与安全余量",
       "acceptance": "不只数每天任务总量，按 5/15 分钟窗口、执行 P95 和恢复窗口评估",
-      "status": "implemented_pending_deployment",
-      "evidence": "保留5/15分钟峰值、P95估算，补充登录/复核/同步等待数、持续异常及恢复P95；平台验证时长仍明确不纳入承诺。"
+      "status": "deployed",
+      "evidence": "保留5/15分钟峰值、P95估算，补充登录/复核/同步等待数、持续异常及恢复P95；平台验证时长仍明确不纳入承诺。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 49,
@@ -450,48 +450,48 @@
       "area": "扩容 / P2",
       "task": "先测登录/复核/同步串行等待，再按账号增加执行分片",
       "acceptance": "auth循环按扫码、健康检查、目录任务串行处理，不是一把覆盖全部服务的全局Worker锁；保持账号操作互斥与浏览器资源预算，多写并发确有需要才迁PostgreSQL",
-      "status": "implemented_pending_deployment",
-      "evidence": "单槽公平调度防止登录/后台操作互相饿死，多槽按账号锁有序执行；只读探测跳过忙账号，未盲目增加浏览器并发。"
+      "status": "deployed",
+      "evidence": "单槽公平调度防止登录/后台操作互相饿死，多槽按账号锁有序执行；只读探测跳过忙账号，未盲目增加浏览器并发。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 51,
       "area": "队列架构 / P2",
       "task": "默认继续数据库领取，扩容时分阶段引入队列",
       "acceptance": "多 Web 副本前需统一分布式限流；Redis 不代替持久化提交检查点，禁止承诺外部平台绝对恰好一次",
-      "status": "implemented_pending_deployment",
-      "evidence": "保留数据库领取、账号稳定分片、PG SKIP LOCKED和Redis可选适配；已有隔离PG并发唯一领取测试。多机投产需独立容量验收，不强行启用新队列。"
+      "status": "deployed",
+      "evidence": "保留数据库领取、账号稳定分片、PG SKIP LOCKED和Redis可选适配；已有隔离PG并发唯一领取测试。多机投产需独立容量验收，不强行启用新队列。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 52,
       "area": "状态流量 / P2",
       "task": "降低扫码截图写库与重复下载成本",
       "acceptance": "按画面变化和前台可见性采样；保留现有 frame_revision 优化，不先增加对象存储服务",
-      "status": "implemented_pending_deployment",
-      "evidence": "保留frame_revision和ETag，后台页面停止状态及画面刷新，云端帧去重与大小限制保持；没有重复下载静止画面的主动刷新。"
+      "status": "deployed",
+      "evidence": "保留frame_revision和ETag，后台页面停止状态及画面刷新，云端帧去重与大小限制保持；没有重复下载静止画面的主动刷新。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 53,
       "area": "业务监控 / P1",
       "task": "计划兑现率、阻塞时长、排队延迟、恢复耗时",
       "acceptance": "告警关联用户受影响程度；主机 CPU 图不替代业务监控",
-      "status": "implemented_pending_deployment",
-      "evidence": "已记录计划成功率、跳过、排队P95，新增持续异常数、24h阻塞秒数和已恢复事件P95，有限样本不冒充全量SLA。"
+      "status": "deployed",
+      "evidence": "已记录计划成功率、跳过、排队P95，新增持续异常数、24h阻塞秒数和已恢复事件P95，有限样本不冒充全量SLA。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 54,
       "area": "外部可用性 / P1",
       "task": "监测香港入口、成都源站与 Worker 心跳",
       "acceptance": "外部只上报匿名健康/延迟；全站打不开时仍能向管理员发出提醒",
-      "status": "implemented_pending_deployment",
-      "evidence": "站外15分钟只读检测公网入口ready/version/execution，execution核对所有Worker分片、auth和monitor心跳；通过GitHub Actions原生失败通知，不发送真实邮件。"
+      "status": "deployed",
+      "evidence": "站外15分钟只读检测公网入口ready/version/execution，execution核对所有Worker分片、auth和monitor心跳；通过GitHub Actions原生失败通知，不发送真实邮件。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。 站外监控已启用，首次公网本地只读检测全部通过；GitHub手动验收见Actions。"
     },
     {
       "id": 55,
       "area": "更新诊断 / P1",
       "task": "明确拉取进度、数据库读取与失败阶段",
       "acceptance": "对旧长进程读库异常复现、显式关闭连接；保持更新前活跃操作检查、固定摘要和可验证回滚",
-      "status": "implemented_pending_deployment",
-      "evidence": "Docker Engine逐层下载事件实时进度/心跳，区分复用与实际下载字节，结束校验固定digest后才停服务；成都用已缓存生产摘要安全拉取实测通过。"
+      "status": "deployed",
+      "evidence": "Docker Engine逐层下载事件实时进度/心跳，区分复用与实际下载字节，结束校验固定digest后才停服务；成都用已缓存生产摘要安全拉取实测通过。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。 现场发现Docker还会下载OCI安全证明附件，后续发行清单改选同构建运行平台摘要，完整证明仍保留。"
     },
     {
       "id": 56,
@@ -506,16 +506,16 @@
       "area": "恢复能力 / P1",
       "task": "保留可验证的发布快照与人工导出/恢复流程",
       "acceptance": "不启用用户已拒绝的周期自动备份；快照保留与清理另行设计，优先删除经过确认的过期副本，不擅自删线上恢复点",
-      "status": "implemented_pending_deployment",
-      "evidence": "新更新快照含DB/WAL哈希、大小、schema及SQLite完整性/FK清单；只读盘点/验证与明确人工清理，旧副本不删、不启用周期备份。"
+      "status": "deployed",
+      "evidence": "新更新快照含DB/WAL哈希、大小、schema及SQLite完整性/FK清单；只读盘点/验证与明确人工清理，旧副本不删、不启用周期备份。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 58,
       "area": "密钥生命周期 / P1-P2",
       "task": "最小挂载、用途 AAD、key id 与安全轮换",
       "acceptance": "最小挂载、用途 AAD、key id 与安全轮换须兼容旧账号解密；管理员验证器已排除",
-      "status": "implemented_pending_deployment",
-      "evidence": "用途AAD与最小挂载保持；离线新目录密钥轮换工具覆盖账号、兑换码、邀请及邮件，输出key id，不覆盖live；错误密钥/原库不变测试通过，生产未轮换。"
+      "status": "deployed",
+      "evidence": "用途AAD与最小挂载保持；离线新目录密钥轮换工具覆盖账号、兑换码、邀请及邮件，输出key id，不覆盖live；错误密钥/原库不变测试通过，生产未轮换。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 59,
@@ -537,16 +537,16 @@
       "area": "滥用控制 / P1",
       "task": "同平台账号去重、注册与扫码资源预算",
       "acceptance": "身份去重先修；生产可信代理已配置，不扩大信任 CIDR。多副本前用统一限流，当前单实例不为形式强加 Redis",
-      "status": "implemented_pending_deployment",
-      "evidence": "现有注册/登录/扫码分动作限流、每用户单活动会话、全局20等待预算、稳定身份去重保持；前端关闭/离开正确取消，减少占用通道。"
+      "status": "deployed",
+      "evidence": "现有注册/登录/扫码分动作限流、每用户单活动会话、全局20等待预算、稳定身份去重保持；前端关闭/离开正确取消，减少占用通道。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 62,
       "area": "退订与解绑 / P1",
       "task": "明确撤销托管后的任务和凭据处理",
       "acceptance": "用户可停止服务并解绑；抖音端撤销设备登录需本人操作。将普通用户的数据删除申请与管理员删用户区分",
-      "status": "implemented_pending_deployment",
-      "evidence": "账号卡片可停止全部托管任务或解绑；解绑清密钥和好友缓存，保留暂停任务和历史；拒绝正在发送/活跃云端操作，所有权和FK测试通过。"
+      "status": "deployed",
+      "evidence": "账号卡片可停止全部托管任务或解绑；解绑清密钥和好友缓存，保留暂停任务和历史；拒绝正在发送/活跃云端操作，所有权和FK测试通过。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 63,
@@ -561,8 +561,8 @@
       "area": "产品边界 / P1",
       "task": "展示真实发送状态与平台限制",
       "acceptance": "已发出不自动宣称对方已读或火花天数增加；实际火花天数只有读取到平台数据才展示，并标注更新时间",
-      "status": "implemented_pending_deployment",
-      "evidence": "统一真实执行状态与处理建议，帮助页解释待核实/未发出，补充共享资源和平台安全验证边界，不承诺永久免验证。"
+      "status": "deployed",
+      "evidence": "统一真实执行状态与处理建议，帮助页解释待核实/未发出，补充共享资源和平台安全验证边界，不承诺永久免验证。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 65,
@@ -625,8 +625,8 @@
       "area": "快照体积 / P1",
       "task": "发布快照预算、排除副本目录与可验证保留策略",
       "acceptance": "当前 38 份约 1.13 GB；防止复制 data/backups 扩大冗余，保留必要回滚点，清理独立授权",
-      "status": "implemented_pending_deployment",
-      "evidence": "快照预算默认只读、保留最近恢复点，新清单可校验；没有自动删除历史恢复点。"
+      "status": "deployed",
+      "evidence": "快照预算默认只读、保留最近恢复点，新清单可校验；没有自动删除历史恢复点。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 73,
@@ -665,8 +665,8 @@
       "area": "宿主更新器 / P1",
       "task": "缩小 root 更新程序边界并增强 systemd 防护",
       "acceptance": "Docker 权限本就接近 root，不能只改成 docker 组用户就宣称降权；目录白名单、有限写入、凭据权限与审计可验证",
-      "status": "implemented_pending_deployment",
-      "evidence": "宿主更新器systemd权限/资源限制和最小密钥挂载保留；新增镜像进度与快照模块需与更新器同步部署。Docker socket仍属于高权限运维边界。"
+      "status": "deployed",
+      "evidence": "宿主更新器systemd权限/资源限制和最小密钥挂载保留；新增镜像进度与快照模块需与更新器同步部署。Docker socket仍属于高权限运维边界。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。 宿主三模块已同步并重启更新器，业务容器固定摘要通过核对。"
     },
     {
       "id": 78,
@@ -680,8 +680,8 @@
       "area": "用户数据 / P1",
       "task": "最小化好友资料及实现可追踪的删除申请",
       "acceptance": "不收聊天正文；列出账号、好友、头像、验证码、日志、快照留存与删除范围；已有管理员删除路径须逐表验收",
-      "status": "implemented_pending_deployment",
-      "evidence": "技术资料最小化、敏感输入终态清理、解绑清除好友缓存/登录资料、历史任务记录保留；用户排除的政策和申请体系不添加。"
+      "status": "deployed",
+      "evidence": "技术资料最小化、敏感输入终态清理、解绑清除好友缓存/登录资料、历史任务记录保留；用户排除的政策和申请体系不添加。；2026-11-07 0.4.2已部署，四服务健康及公网只读验收通过。"
     },
     {
       "id": 80,
@@ -695,16 +695,20 @@
   "last_reviewed": "2026-11-07",
   "verification_note": "v0.4.0 已部署生产并完成公网验收。0.4.1 额外补齐管理员任务/额度修改前差异预览，并通过针对性 Chromium 测试与前端构建；完整 GitHub quality/release workflow 与生产更新尚待完成。",
   "production": {
-    "version": "0.4.0",
+    "version": "0.4.2",
     "schema": 25,
-    "image": "ghcr.io/dh666i/dyfire@sha256:e9dd68aeb3fd443a274ec1caa5817794cd2d22404379ce204d813d07e00115a2",
-    "public_health": "ready",
-    "services": 4,
-    "active_identities_enrolled": 2,
-    "dormant_accounts_preserved": 2
+    "source": "fd8f0bfb32955517bfe8986c344770855acce905",
+    "image": "ghcr.io/dh666i/dyfire@sha256:b6c7aa892dcac237cb83de44cba1ea2f7ba84744c7f1db17ad7c0eb9e3d27613",
+    "runtime_image": "ghcr.io/dh666i/dyfire@sha256:b49cd7fd32c3f11011143b912da0454aadf36766c2ee94a862836afd3b282324",
+    "release_run": 42379849887,
+    "schema_integrity": "ok",
+    "users": 10,
+    "accounts": 4,
+    "tasks": 23,
+    "staff_tables": 0
   },
   "batch_0_4_2": {
-    "source_status": "validation_in_progress",
+    "source_status": "deployed_with_external_acceptance_items",
     "schema": 25,
     "notes": "设备、真实平台、外部邮件送达与真实吞吐仍单列验收，不承诺永久免验证。"
   }
