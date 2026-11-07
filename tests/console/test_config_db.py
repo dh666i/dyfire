@@ -784,8 +784,11 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(
                 (6, "normalize_spark_task_target_keys"), migrations[5]
             )
-            self.assertEqual((21, "security_lifecycle"), migrations[-2])
-            self.assertEqual((22, "account_incident_lifecycle"), migrations[-1])
+            self.assertEqual((21, "security_lifecycle"), migrations[-5])
+            self.assertEqual((22, "account_incident_lifecycle"), migrations[-4])
+            self.assertEqual((23, "complete_optimization"), migrations[-3])
+            self.assertEqual((24, "remote_action_payload_fingerprint"), migrations[-2])
+            self.assertEqual((25, "payment_request_fingerprint"), migrations[-1])
         finally:
             engine.dispose()
 

@@ -51,6 +51,7 @@ class Settings:
     worker_shard: int = 0
     worker_shards: int = 1
     auth_poll_seconds: int = 1
+    auth_browser_slots: int = 2
     clock_offset_limit_seconds: int = 5
     secure_cookies: bool = True
     max_request_bytes: int = 2 * 1024 * 1024
@@ -74,6 +75,7 @@ class Settings:
     redis_max_connections: int = 20
 
     def __post_init__(self) -> None:
+        if not 1<=self.auth_browser_slots<=4:raise ValueError('auth browser slots must be 1–4')
         if self.public_origin is not None:
             try:
                 origin = urlsplit(self.public_origin)
@@ -148,6 +150,7 @@ class Settings:
             worker_shard=int(environ.get("SPARK_WORKER_SHARD", "0")),
             worker_shards=int(environ.get("SPARK_WORKER_SHARDS", "1")),
             auth_poll_seconds=int(environ.get("SPARK_AUTH_POLL_SECONDS", "1")),
+            auth_browser_slots=int(environ.get('SPARK_AUTH_BROWSER_SLOTS','2')),
             clock_offset_limit_seconds=int(
                 environ.get("SPARK_CLOCK_OFFSET_LIMIT_SECONDS", "5")
             ),

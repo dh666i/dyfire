@@ -1,4 +1,5 @@
 from __future__ import annotations
+from spark_console.browser_environment import options as browser_options
 
 import asyncio
 import hashlib
@@ -79,6 +80,11 @@ VERIFICATION_TEXT = (
     "人脸识别",
     "身份验证",
     "请前往抖音完成验证",
+    "密码验证",
+    "请输入密码",
+    "滑块验证",
+    "拖动滑块",
+    "安全校验",
 )
 SMS_VERIFICATION_TEXT = (
     "接收短信验证码",
@@ -199,9 +205,7 @@ class DouyinQrScanner:
                     deadline,
                 )
                 context = await self._await_stage(
-                    browser.new_context(storage_state=recovery_storage_state)
-                    if recovery_storage_state is not None
-                    else browser.new_context(), cancelled, deadline
+                    browser.new_context(**browser_options(recovery_storage_state)), cancelled, deadline
                 )
                 page = await self._await_stage(
                     context.new_page(), cancelled, deadline
@@ -908,6 +912,13 @@ class DouyinQrScanner:
                             )
                     if not delivered:
                         logger.warning("auth scan browser click was not delivered")
+                elif kind in ('key','scroll','drag'):
+                    from spark_console.remote_actions import deliver
+                    status='uncertain'
+                    try:status='delivered' if await deliver(page,kind,action.get('payload',{})) else 'failed'
+                    finally:
+                        if on_interaction_result is not None:
+                            await _invoke(on_interaction_result,{'kind':'browser','interaction_id':action.get('interaction_id'),'delivery':status})
                 elif kind == "text":
                     value = action.get("text")
                     if self._is_safe_browser_text(value):
@@ -1295,23 +1306,42 @@ class DouyinQrScanner:
                 tasks, return_when=asyncio.FIRST_COMPLETED
             )
             sms_detected = sms_text in done
-            if sms_detected:
-                sms_text.result()
-            if extra_text in done:
-                extra_text.result()
+            if sms_detected:sms_text.result()
+            if extra_text in done:extra_text.result()
+            verification_kind=await self._classify_verification_kind(page,sms_detected)
             return {
                 "required": True,
-                # Keep the public projection compatible with the existing
-                # session model.  The value is only informational; the page
-                # itself determines whether the challenge is SMS, face, or
-                # another security check.
-                "verification_kind": "sms" if sms_detected else "app",
+                "verification_kind": verification_kind,
             }
         finally:
             for task in tasks:
                 if not task.done():
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+
+    @staticmethod
+    async def _classify_verification_kind(page, sms_detected=False):
+        """Return a challenge category without copying page text or values."""
+        if sms_detected:
+            return "sms"
+        try:
+            return await page.evaluate("""() => {
+              const visible = element => {
+                const rect = element.getBoundingClientRect();
+                const style = getComputedStyle(element);
+                return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+              };
+              const inputs = [...document.querySelectorAll('input,textarea')].filter(visible);
+              if (inputs.some(el => el.type === 'password')) return 'password';
+              const text = (document.body?.innerText || '').slice(0, 8000);
+              if (/滑块|拖动滑块|按住滑块|安全校验|拖动验证/.test(text) || document.querySelector('[class*="slider"], [class*="Slider"], [data-testid*="captcha"]')) return 'drag';
+              if (/短信验证码|验证码已发送|接收短信验证码|发送短信验证/.test(text)) return 'sms';
+              if (/抖音.{0,8}(确认|验证)|打开抖音.{0,8}确认|手机上确认/.test(text)) return 'app';
+              if (inputs.some(el => /one-time-code|numeric/i.test(el.autocomplete + ' ' + el.inputMode))) return 'sms';
+              return 'other';
+            }""")
+        except Exception:
+            return "app"
 
     @classmethod
     async def _wait_for_scan_confirmation(cls, page) -> None:

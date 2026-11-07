@@ -24,6 +24,7 @@ from core.web_chat import (
     select_web_chat_target,
 )
 from spark_console.credentials import CredentialError, CredentialPayload
+from spark_console.browser_environment import credential_options
 from core.session_health import inspect_session, require_session, wait_for_session, SessionUnavailable
 
 
@@ -53,6 +54,7 @@ class ExecutionResult:
     contact_avatars: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
     health_state: str | None = None
     health_reason: str | None = None
+    receipt: dict | None = None
 
 
 class DouyinExecutor:
@@ -141,7 +143,7 @@ class DouyinExecutor:
         browser = None
         try:
             browser = await playwright.chromium.launch(headless=True)
-            context = await browser.new_context(**payload.context_options())
+            context = await browser.new_context(**credential_options(payload))
         except Exception:
             if browser is not None:
                 try:
@@ -213,17 +215,18 @@ class DouyinExecutor:
         message_kind: str = "text",
         session_key: str | None = None,
         on_authenticated: Callable[[str], object] | None = None,
+        on_receipt: Callable[[dict], object] | None = None,
     ) -> ExecutionResult:
         self._executing = True
         try:
             return await self._execute(cookie_payload, target, message, credential_version,
-                target_sec_uid, on_submitted, message_kind, session_key, on_authenticated)
+                target_sec_uid, on_submitted, message_kind, session_key, on_authenticated,on_receipt)
         finally:
             self._executing = False
 
     async def _execute(self, cookie_payload, target, message, credential_version=1,
                        target_sec_uid=None, on_submitted=None, message_kind='text',
-                       session_key=None, on_authenticated=None):
+                       session_key=None, on_authenticated=None,on_receipt=None):
         from playwright.async_api import async_playwright
         from core.tasks import (
             MessageNetworkAckMonitor,
@@ -270,7 +273,7 @@ class DouyinExecutor:
                 playwright = await playwright_cm.__aenter__()
                 browser = await playwright.chromium.launch(headless=True)
                 try:
-                    context = await browser.new_context(**payload.context_options())
+                    context = await browser.new_context(**credential_options(payload))
                 except Exception:
                     try:
                         await browser.close()
@@ -447,11 +450,16 @@ class DouyinExecutor:
                         )
                     delivery_confirmed = sticker_result.confirmed
                     if delivery_confirmed:
+                        receipt={'source':'native_sticker','reason':sticker_result.reason,'message_id':sticker_result.message_id}
+                        if on_receipt is not None and receipt['message_id']:
+                            value=on_receipt(receipt)
+                            if isawaitable(value):await value
                         return ExecutionResult(
                             True,
                             ExecutionStage.COMPLETE,
                             refreshed_storage_state=refreshed_storage_state,
                             contact_avatars=user_info.avatar_urls,
+                            receipt=receipt,
                         )
                     return ExecutionResult(
                         True,
@@ -569,11 +577,17 @@ class DouyinExecutor:
                         contact_avatars=user_info.avatar_urls,
                     )
                 delivery_confirmed = True
+                receipt={'source':getattr(confirmation,'source','legacy'),'reason':getattr(confirmation,'reason','helper_confirmed'),
+                         'message_id':getattr(confirmation,'message_id',None)}
+                if on_receipt is not None and receipt['message_id']:
+                    value=on_receipt(receipt)
+                    if isawaitable(value):await value
                 return ExecutionResult(
                     True,
                     ExecutionStage.COMPLETE,
                     refreshed_storage_state=refreshed_storage_state,
                     contact_avatars=user_info.avatar_urls,
+                    receipt=receipt,
                 )
             finally:
                 # A reused page survives across scheduled tasks. Remove the

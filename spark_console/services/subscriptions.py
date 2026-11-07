@@ -865,11 +865,9 @@ class SubscriptionService:
             resolved_tasks = subscription.max_tasks if max_tasks is None else max_tasks
             subscription.valid_until = period_start + timedelta(days=duration_days)
             active = persisted_until > current
-            is_downgrade = active and (
-                resolved_accounts < subscription.max_accounts
-                or resolved_tasks < subscription.max_tasks
-            )
-            if not is_downgrade:
+            from spark_console.subscription_preview import is_downgrade
+            delayed = is_downgrade(active,subscription.max_accounts,subscription.max_tasks,resolved_accounts,resolved_tasks)
+            if not delayed:
                 future_lower_grants = self.session.scalars(
                     select(SubscriptionGrant).where(
                         SubscriptionGrant.user_id == user_id,

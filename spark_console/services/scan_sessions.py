@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import math
 import uuid
+import json
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import case, delete, func, or_, select, update
@@ -46,10 +47,14 @@ FINAL_DELIVERY_STATUSES = frozenset(
 )
 NEEDS_VERIFICATION = "needs_verification"
 NEEDS_APP_VERIFICATION = "needs_app_verification"
+NEEDS_PASSWORD_VERIFICATION = "needs_password_verification"
+NEEDS_DRAG_VERIFICATION = "needs_drag_verification"
+NEEDS_OTHER_VERIFICATION = "needs_other_verification"
 SMS_VERIFICATION = "sms"
 APP_VERIFICATION = "app"
 ACTIVE_VERIFICATION_CODES = frozenset(
-    {NEEDS_VERIFICATION, NEEDS_APP_VERIFICATION}
+    {NEEDS_VERIFICATION, NEEDS_APP_VERIFICATION, NEEDS_PASSWORD_VERIFICATION,
+     NEEDS_DRAG_VERIFICATION, NEEDS_OTHER_VERIFICATION}
 )
 
 ACTIVE_STATUSES = frozenset(
@@ -139,6 +144,9 @@ ERROR_MESSAGES = {
     "automation_failed": "自动化登录失败，请重试",
     NEEDS_VERIFICATION: "请在云端抖音页面完成短信验证",
     NEEDS_APP_VERIFICATION: "请在云端抖音页面完成额外验证",
+    NEEDS_PASSWORD_VERIFICATION: "抖音要求输入账号密码，请在云端验证区域完成",
+    NEEDS_DRAG_VERIFICATION: "抖音要求完成滑块验证，请在云端页面按提示操作",
+    NEEDS_OTHER_VERIFICATION: "抖音要求完成页面中的安全验证，请查看云端页面提示",
 }
 
 
@@ -432,6 +440,38 @@ class ScanSessionService:
         self.session.flush()
         return action
 
+    def queue_browser_action(self,owner_id,scan_id,kind,payload,request_id):
+        from spark_console.remote_actions import validate
+        import hashlib
+        scan=self.get_owned(owner_id,scan_id);current=self._now()
+        identifier=normalize_interaction_request_id(request_id)
+        value=validate(kind,payload)
+        canonical=json.dumps({'kind':kind,'payload':value},sort_keys=True,separators=(',',':'))
+        digest=hashlib.sha256(canonical.encode()).hexdigest()
+        old=self.session.scalar(select(DouyinLoginAction).where(DouyinLoginAction.scan_id==scan_id,DouyinLoginAction.request_id==identifier))
+        if old:
+            if old.payload_digest!=digest:raise Conflict('interaction_request_conflict')
+            return old
+        if scan.slot is None or self._status(scan) not in ACTIVE_STATUSES or _aware(scan.expires_at)<=current:raise Conflict('scan_not_active')
+        row=DouyinLoginAction(scan_id=scan_id,kind=kind,x_million=0,y_million=0,
+            payload_json=json.dumps(value),payload_digest=digest,request_id=identifier,delivery_status='queued',created_at=current)
+        self.session.add(row);self.session.flush();return row
+
+    def browser_action_status(self,owner_id,scan_id,identifier):
+        scan=self.get_owned(owner_id,scan_id)
+        row=self.session.get(DouyinLoginAction,identifier)
+        if row is None or row.scan_id!=scan_id:raise NotFound('interaction not found')
+        if row.delivery_status=='processing' and (scan.slot is None or self._status(scan) not in ACTIVE_STATUSES or _aware(scan.expires_at)<=self._now()):
+            row.delivery_status='uncertain';row.payload_json=None
+        return {'interaction_id':row.id,'status':row.delivery_status or ('uncertain' if row.consumed_at else 'queued'),
+            'status_url':f'/accounts/scan/{scan_id}/actions/{row.id}'}
+
+    def finish_browser_action(self,scan_id,identifier,status):
+        if status not in ('delivered','uncertain','failed'):raise ValidationError('invalid_interaction')
+        row=self.session.get(DouyinLoginAction,identifier)
+        if row is not None and row.scan_id==scan_id and row.delivery_status=='processing':
+            row.delivery_status=status;row.payload_json=None
+
     def queue_text(
         self,
         owner_id: str,
@@ -587,6 +627,10 @@ class ScanSessionService:
                 action.consumed_at = current
                 self.session.flush()
                 result = {"kind": action.kind}
+                if action.delivery_status is not None:
+                    result['interaction_id']=action.id
+                    action.delivery_status='processing'
+                if action.payload_json:result['payload']=json.loads(action.payload_json)
                 if action.kind == "click":
                     result.update(
                         x=action.x_million / 1_000_000,
@@ -752,11 +796,12 @@ class ScanSessionService:
             raise Conflict("transition_conflict")
         current = self._now()
         verification_kind = self._requested_verification_kind(details)
-        error_code = (
-            NEEDS_VERIFICATION
-            if verification_kind == SMS_VERIFICATION
-            else NEEDS_APP_VERIFICATION
-        )
+        error_code = {
+            SMS_VERIFICATION: NEEDS_VERIFICATION,
+            APP_VERIFICATION: NEEDS_APP_VERIFICATION,
+            "password": NEEDS_PASSWORD_VERIFICATION,
+            "drag": NEEDS_DRAG_VERIFICATION,
+        }.get(verification_kind, NEEDS_OTHER_VERIFICATION)
         result = self.session.execute(
             update(DouyinLoginSession)
             .where(
@@ -990,8 +1035,9 @@ class ScanSessionService:
                 }[status]
             elif status in TERMINAL_STATUSES and status != ScanStatus.SUCCEEDED:
                 message = "原账号复核未完成，请重新打开验证页面"
-        if verification_kind == SMS_VERIFICATION:
-            message = ERROR_MESSAGES[NEEDS_VERIFICATION]
+        verification_error = self._verification_error_for_kind(verification_kind)
+        if verification_error:
+            message = ERROR_MESSAGES[verification_error]
         return {
             "id": scan.id,
             "mode": getattr(scan, "mode", "login"),
@@ -1069,9 +1115,16 @@ class ScanSessionService:
         value = details.get("kind", details.get("verification_kind"))
         if value is None:
             return SMS_VERIFICATION
-        if isinstance(value, str) and value.strip().lower() == SMS_VERIFICATION:
-            return SMS_VERIFICATION
-        return APP_VERIFICATION
+        normalized=value.strip().lower() if isinstance(value,str) else ""
+        aliases={"sms":"sms","otp":"sms","app":"app","phone":"app",
+                 "password":"password","drag":"drag","slider":"drag","other":"other"}
+        return aliases.get(normalized,"other")
+
+    @staticmethod
+    def _verification_error_for_kind(kind: str | None) -> str | None:
+        return {SMS_VERIFICATION:NEEDS_VERIFICATION,APP_VERIFICATION:NEEDS_APP_VERIFICATION,
+                "password":NEEDS_PASSWORD_VERIFICATION,"drag":NEEDS_DRAG_VERIFICATION,
+                "other":NEEDS_OTHER_VERIFICATION}.get(kind)
 
     @staticmethod
     def _verification_kind_for_error(error_code: str | None) -> str | None:
@@ -1079,6 +1132,9 @@ class ScanSessionService:
             return SMS_VERIFICATION
         if error_code == NEEDS_APP_VERIFICATION:
             return APP_VERIFICATION
+        if error_code == NEEDS_PASSWORD_VERIFICATION:return "password"
+        if error_code == NEEDS_DRAG_VERIFICATION:return "drag"
+        if error_code == NEEDS_OTHER_VERIFICATION:return "other"
         return None
 
     def _get(self, scan_id: str) -> DouyinLoginSession:
@@ -1223,6 +1279,16 @@ class ScanSessionService:
                 DouyinLoginAction.consumed_at.is_(None),
             )
             .values(consumed_at=current)
+            .execution_options(synchronize_session="fetch")
+        )
+        self.session.execute(
+            update(DouyinLoginAction)
+            .where(
+                DouyinLoginAction.scan_id.in_(scan_ids),
+                DouyinLoginAction.consumed_at == current,
+                DouyinLoginAction.delivery_status == "queued",
+            )
+            .values(delivery_status="failed", payload_json=None)
             .execution_options(synchronize_session="fetch")
         )
         if result.rowcount:

@@ -257,11 +257,12 @@ def build_account_scan_router(
         text: str = Form(default=""),
         x: float = Form(default=-1),
         y: float = Form(default=-1),
+        action_json: str = Form(default='{}'),
     ):
         with session_scope(engine) as db:
             user, record = auth.current(request, db)
             auth.csrf(record, csrf_token)
-            if kind in {"click", "text"}:
+            if kind in {"click", "text",'key','scroll','drag'}:
                 if kind == "text":
                     action, limit = f"otp:{scan_id}", OTP_LIMIT
                 else:
@@ -306,6 +307,14 @@ def build_account_scan_router(
                         "accepted": True,
                         **service.public_text_interaction(pending),
                     }
+                elif kind in ('key','scroll','drag'):
+                    if response := limited(user.id,action,limit):return response
+                    import json
+                    try:payload=json.loads(action_json)
+                    except (TypeError,ValueError):raise ValidationError('invalid_interaction') from None
+                    if not isinstance(payload,dict):raise ValidationError('invalid_interaction')
+                    queued=service.queue_browser_action(user.id,scan_id,kind,payload,request_id)
+                    projection={'accepted':True,**service.browser_action_status(user.id,scan_id,queued.id)}
                 elif kind == "click":
                     if response := limited(user.id, action, limit):
                         return response
@@ -336,9 +345,18 @@ def build_account_scan_router(
                             headers=NO_STORE,
                         )
                 return _error(409, "scan_not_active", "扫码会话已结束")
-        if kind == "text":
+        if kind in ("text",'key','scroll','drag'):
             return JSONResponse(projection, status_code=202, headers=NO_STORE)
         return JSONResponse({"accepted": True}, status_code=202, headers=NO_STORE)
+
+    @router.get('/accounts/scan/{scan_id}/actions/{identifier}')
+    def action_status(request:Request,scan_id:str,identifier:int):
+        with session_scope(engine) as db:
+            user,_=auth.current(request,db)
+            if response := limited(user.id,'action-status:'+scan_id,STATUS_LIMIT):return response
+            try:result=ScanSessionService(db).browser_action_status(user.id,scan_id,identifier)
+            except NotFound:return _error(404,'not_found','交互不存在')
+            return JSONResponse(result,headers=NO_STORE)
 
     @router.get(
         "/accounts/scan/{scan_id}/interactions/{interaction_id}"
