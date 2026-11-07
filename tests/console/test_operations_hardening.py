@@ -75,3 +75,17 @@ def test_snapshot_budget_never_selects_recent_recovery_points_or_unknown_dirs(tm
     assert result['candidates']==['20260101-010000','20260102-010000','20260103-010000']
     assert result['over_budget']  # Minimum recovery points take precedence.
     assert len(list((tmp_path/'backups').iterdir()))==9  # Planning never deletes.
+
+
+def test_snapshot_manifest_detects_valid_but_changed_database(tmp_path):
+    import sqlite3
+    from deploy.snapshot_inventory import seal_snapshot,verify_snapshot
+    snapshot=tmp_path/'snapshot';(snapshot/'data').mkdir(parents=True)
+    with sqlite3.connect(snapshot/'data/spark.db') as db:
+        db.execute('create table fixture (id integer primary key,value text)')
+        db.execute("insert into fixture values (1,'original')")
+    assert verify_snapshot(snapshot)=={'verified':False,'legacy':True}
+    seal_snapshot(snapshot)
+    assert verify_snapshot(snapshot)=={'verified':True,'legacy':False}
+    with sqlite3.connect(snapshot/'data/spark.db') as db:db.execute("update fixture set value='changed'")
+    assert verify_snapshot(snapshot)=={'verified':False,'legacy':False}

@@ -30,5 +30,13 @@ class AuthDispatchTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(dispatch(Worker(),stopping,background,slots=1,poll_seconds=.01),timeout=1)
         self.assertEqual(['scan'],calls)
 
+    async def test_memory_constrained_single_slot_still_runs_background_jobs(self):
+        stopping=asyncio.Event();calls=[]
+        class Worker:
+            async def run_once(self,_stopping):calls.append('scan');return False
+        async def background():calls.append('background');stopping.set();return True
+        await asyncio.wait_for(dispatch(Worker(),stopping,background,slots=1,poll_seconds=.005),timeout=1)
+        self.assertEqual(['scan','background'],calls)
+
 
 if __name__=='__main__':unittest.main()

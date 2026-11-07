@@ -383,9 +383,11 @@ class DouyinQrScanner:
                     evidence = SessionEvidence("temporary", f"复核页面暂时无法读取：{type(error).__name__}")
                 if evidence.state == "verification":
                     cached_api = None
-                    if evidence.reason != last_verification_reason and on_needs_verification:
-                        await _invoke(on_needs_verification, {"required": True, "verification_kind": "app", "reason": evidence.reason})
-                    last_verification_reason = evidence.reason
+                    kind=await self._classify_verification_kind(page)
+                    key=(evidence.reason,kind)
+                    if key != last_verification_reason and on_needs_verification:
+                        await _invoke(on_needs_verification, {"required": True, "verification_kind": kind, "reason": evidence.reason})
+                    last_verification_reason = key
                 if evidence.state == "valid":
                     return
                 await asyncio.sleep(self.poll_interval_seconds)
@@ -606,6 +608,7 @@ class DouyinQrScanner:
                 self._stream_browser_view(page, on_view, initial_view=initial_view)
             )
             pending.add(live_view)
+        verification_updates=None
         try:
             while pending:
                 done, pending = await asyncio.wait(
@@ -631,6 +634,12 @@ class DouyinQrScanner:
                     if on_needs_verification is None:
                         raise VerificationRequired()
                     await _invoke(on_needs_verification, verification_state)
+                    verification_updates=asyncio.create_task(self._watch_verification_changes(
+                        page,on_needs_verification,verification_state.get('verification_kind')
+                    ))
+                    pending.add(verification_updates)
+                if verification_updates is not None and verification_updates in done:
+                    verification_updates.result()
                 if confirming in done:
                     confirming.result()
                     await confirm_scan()
@@ -957,7 +966,6 @@ class DouyinQrScanner:
             except Exception:
                 logger.warning(
                     "auth scan browser interaction failed",
-                    exc_info=True,
                 )
 
             if pending_texts:
@@ -1334,7 +1342,7 @@ class DouyinQrScanner:
               const inputs = [...document.querySelectorAll('input,textarea')].filter(visible);
               if (inputs.some(el => el.type === 'password')) return 'password';
               const text = (document.body?.innerText || '').slice(0, 8000);
-              if (/滑块|拖动滑块|按住滑块|安全校验|拖动验证/.test(text) || document.querySelector('[class*="slider"], [class*="Slider"], [data-testid*="captcha"]')) return 'drag';
+              if (/滑块|拖动滑块|按住滑块|拖动验证/.test(text) || [...document.querySelectorAll('[class*="slider"], [class*="Slider"], [data-testid*="captcha"]')].some(visible)) return 'drag';
               if (/短信验证码|验证码已发送|接收短信验证码|发送短信验证/.test(text)) return 'sms';
               if (/抖音.{0,8}(确认|验证)|打开抖音.{0,8}确认|手机上确认/.test(text)) return 'app';
               if (inputs.some(el => /one-time-code|numeric/i.test(el.autocomplete + ' ' + el.inputMode))) return 'sms';
@@ -1342,6 +1350,17 @@ class DouyinQrScanner:
             }""")
         except Exception:
             return "app"
+
+    async def _watch_verification_changes(self,page,callback,last_kind):
+        # Once a real challenge has appeared, keep observing its family while
+        # the owner interacts (for example password -> SMS). Authentication
+        # remains authoritative and cancels this observer on completion.
+        while True:
+            await asyncio.sleep(max(1,self.poll_interval_seconds))
+            kind=await self._classify_verification_kind(page)
+            if kind in ('sms','password','drag','app') and kind!=last_kind:
+                await _invoke(callback,{'required':True,'verification_kind':kind})
+                last_kind=kind
 
     @classmethod
     async def _wait_for_scan_confirmation(cls, page) -> None:

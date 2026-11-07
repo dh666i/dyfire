@@ -1,0 +1,21 @@
+name: Public availability
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dyfire-public-availability
+  cancel-in-progress: false
+jobs:
+  check:
+    # Activate only after the execution-health endpoint is deployed. Manual
+    # dispatch remains available for the deployment acceptance check.
+    if: github.event_name == 'workflow_dispatch' || vars.DYFIRE_MONITOR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify public entry and execution heartbeat
+        run: python3 scripts/check_availability.py

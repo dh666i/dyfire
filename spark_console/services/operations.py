@@ -54,7 +54,7 @@ def record_payment(db,actor,values):
     if target.role=='admin' and actor.role!='admin':raise NotFound('用户不存在')
     source=values.get('source','paid')
     if source not in ('paid','gift','admin_adjustment'):raise ValidationError('开通来源不正确')
-    amount=money(values.get('amount','0'))
+    amount=money(values.get('amount') or '0')
     if source=='paid' and amount<=0:raise ValidationError('实收金额须大于 0')
     if source!='paid' and amount:raise ValidationError('非收款记录金额应为 0')
     grant_id=values.get('grant_id') or None

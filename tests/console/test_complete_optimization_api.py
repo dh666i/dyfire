@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, event
 
 from spark_console.config import Settings
 from spark_console.db import create_schema, session_scope
@@ -19,7 +19,10 @@ class CompleteOptimizationApiTests(unittest.TestCase):
         self.settings=Settings(data_dir=root,database_url=f"sqlite:///{root/'test.db'}",
             cookie_key_file=root/'cookie.key',session_key_file=root/'session.key')
         self.settings.cookie_key_file.write_bytes(b'c'*32);self.settings.session_key_file.write_bytes(b's'*32)
-        self.engine=create_engine(self.settings.database_url,connect_args={'check_same_thread':False});create_schema(self.engine)
+        self.engine=create_engine(self.settings.database_url,connect_args={'check_same_thread':False})
+        @event.listens_for(self.engine,'connect')
+        def foreign_keys(connection,_):connection.execute('PRAGMA foreign_keys=ON')
+        create_schema(self.engine)
         digest=PasswordService().hash('Permanent-123!')
         with session_scope(self.engine) as db:
             self.admin=User(username='admin',password_hash=digest,role='admin',must_change_password=False)
@@ -78,6 +81,34 @@ class CompleteOptimizationApiTests(unittest.TestCase):
         self.assertIsNone(value['estimated_monthly_cost_yuan'])
         self.assertTrue(value['income_from_recorded_payments_only'])
 
+    def test_customer_lookup_is_admin_only_and_bounded(self):
+        self.assertEqual(404,self.user_client.get('/api/admin/customer-options').status_code)
+        value=self.admin_client.get('/api/admin/customer-options?q=customer').json()
+        self.assertEqual([{'id':self.user_id,'username':'customer'}],value['items'])
+        self.assertEqual([],self.admin_client.get('/api/admin/customer-options?q=%25').json()['items'])
+
+    def test_execution_health_requires_all_services_and_discloses_no_details(self):
+        from unittest.mock import patch
+        from datetime import timedelta
+        from spark_console.models import WorkerLock, utc_now
+        with session_scope(self.engine) as db:
+            db.merge(WorkerLock(id=1,worker_id='isolated-worker',lease_until=utc_now()+timedelta(minutes=2)))
+        with patch('spark_console.runtime_health._fresh',return_value=True),patch('spark_console.ops_history.read_history',return_value={'state':'fresh'}):
+            response=self.user_client.get('/health/execution')
+            self.assertEqual(200,response.status_code)
+            self.assertEqual({'status':'ready'},response.json())
+        with patch('spark_console.runtime_health._fresh',return_value=False):
+            response=self.user_client.get('/health/execution')
+            self.assertEqual(503,response.status_code)
+            self.assertEqual('degraded',response.json()['status'])
+            self.assertLessEqual(set(response.json()),{'status','request_id','error_code'})
+
+    def test_gift_source_accepts_empty_disabled_amount_without_inventing_income(self):
+        response=self.admin_client.post('/api/admin/payments',json={'csrf_token':self.admin_csrf,'request_id':'42b98a5e-75e7-4366-9d40-dbf78002afe7','user_id':self.user_id,'source':'gift','amount':''})
+        self.assertEqual(200,response.status_code,response.text)
+        report=self.admin_client.get('/api/admin/costs').json()
+        self.assertEqual(0,report['recorded_income_yuan'])
+
     def test_self_check_is_owner_scoped_and_queues_without_sending(self):
         payload={'csrf_token':self.user_csrf}
         response=self.user_client.post(f'/api/tasks/{self.task_id}/self-check',json=payload)
@@ -95,6 +126,39 @@ class CompleteOptimizationApiTests(unittest.TestCase):
         with session_scope(self.engine) as db:
             row=db.scalar(select(RedemptionCode).where(RedemptionCode.code_hash==_digest('PREVIEW-10')))
             self.assertIsNone(row.redeemed_at)
+
+    def test_stop_hosting_preserves_login_and_history_then_unlink_clears_material(self):
+        from spark_console.models import DouyinConversation, DouyinContactIdentity, TaskRun
+        with session_scope(self.engine) as db:
+            db.add(DouyinConversation(account_id=self.account_id,display_name='private-friend'))
+            db.add(DouyinContactIdentity(account_id=self.account_id,sec_uid='private-uid',nickname='private-friend'))
+            run=TaskRun(task_id=self.task_id,scheduled_for=__import__('spark_console.models',fromlist=['utc_now']).utc_now(),status='success')
+            db.add(run);db.flush();run_id=run.id
+        stopped=self.user_client.post(f'/api/accounts/{self.account_id}/stop-hosting',json={'csrf_token':self.user_csrf})
+        self.assertEqual(200,stopped.status_code,stopped.text)
+        with session_scope(self.engine) as db:
+            self.assertFalse(db.get(SparkTask,self.task_id).enabled)
+            self.assertEqual(b'cipher',db.get(DouyinAccount,self.account_id).encrypted_cookies)
+        removed=self.user_client.request('DELETE',f'/api/accounts/{self.account_id}',json={'csrf_token':self.user_csrf})
+        self.assertEqual(200,removed.status_code,removed.text)
+        with session_scope(self.engine) as db:
+            self.assertIsNone(db.get(DouyinAccount,self.account_id))
+            self.assertIsNone(db.get(SparkTask,self.task_id).douyin_account_id)
+            self.assertIsNotNone(db.get(TaskRun,run_id))
+            self.assertEqual([],list(db.scalars(select(DouyinConversation))))
+            self.assertEqual([],list(db.scalars(select(DouyinContactIdentity))))
+
+    def test_unlink_refuses_active_probe_and_hides_other_accounts(self):
+        from spark_console.models import AccountOperation, utc_now
+        from datetime import timedelta
+        payload=__import__('json').dumps({'csrf_token':self.user_csrf})
+        with session_scope(self.engine) as db:
+            db.add(AccountOperation(account_id=self.account_id,kind='probe',token='probe',expires_at=utc_now()+timedelta(minutes=3)))
+        response=self.user_client.request('DELETE',f'/api/accounts/{self.account_id}',content=payload,headers={'Content-Type':'application/json'})
+        self.assertEqual(409,response.status_code,response.text)
+        csrf=self.other_client.get('/api/app/bootstrap').json()['csrf']
+        response=self.other_client.request('DELETE',f'/api/accounts/{self.account_id}',json={'csrf_token':csrf})
+        self.assertEqual(404,response.status_code)
 
 
 if __name__=='__main__':unittest.main()

@@ -1,4 +1,5 @@
 """A minimal support bundle: no cookies, names, chat content or page dumps."""
+from spark_console.execution_diagnostics import decode
 from sqlalchemy import select
 from spark_console.models import TaskRunEvent
 from spark_console.version import VERSION
@@ -21,4 +22,5 @@ def bundle(db, run):
                 'before_submission':duration(run.started_at,run.submitted_at),
                 'confirmation':duration(run.submitted_at,run.finished_at),
                 'total':duration(run.started_at,run.finished_at)},
+            'structure': [decode(e.detail) for e in events if e.event=='diagnostic'],
             'events':[{'stage':e.stage,'event':e.event,'at':stamp(e.occurred_at)} for e in events]}

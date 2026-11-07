@@ -29,10 +29,9 @@ async def dispatch(worker,stopping,background,*,slots=2,poll_seconds=1):
                 except asyncio.CancelledError:pass
                 active.pop(job,None)
             while len(active)<admission_limit(slots) and not stopping.is_set():
-                scan_running='scan' in active.values()
-                background_running='background' in active.values()
-                which='scan' if not scan_running and (not background_running or turn%2==0) else 'background'
-                if which=='background' and background_running and scan_running:break
+                order=('scan','background') if turn%2==0 else ('background','scan')
+                which=next((kind for kind in order if kind not in active.values()),None)
+                if which is None:break
                 turn+=1
                 job=asyncio.create_task(run(which));active[job]=which
                 # Let empty queue claims finish before admitting the next

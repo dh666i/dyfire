@@ -1,5 +1,6 @@
 // One transport implementation for pages and hooks. Never retry a write whose
 // response was lost: the server may already have committed the operation.
+import {assertApiContract} from './api-contract-validation.js';
 export function createApiClient({fetcher=globalThis.fetch, preview=false, mock, dev=false, onUnauthorized=()=>globalThis.location?.assign('/login')}={}) {
   const pending=new Map();
   async function request(path,options={}) {
@@ -32,7 +33,7 @@ export function createApiClient({fetcher=globalThis.fetch, preview=false, mock, 
       const error=new Error(typeof value?.detail==='string'?value.detail:value?.detail?.message||value?.message||'请求未完成');
       error.status=response.status;error.payload=value;error.requestId=response.headers?.get?.('x-request-id');throw error;
     }
-    return value;
+    return assertApiContract(path,value);
   }
   return function api(path,options={}) {
     const method=String(options.method||'GET').toUpperCase();
