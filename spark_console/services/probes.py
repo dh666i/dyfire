@@ -20,7 +20,7 @@ def queue(db,user,task_id,*,run_id=None):
     task=db.get(SparkTask,task_id)
     if task is None or (user.role!='admin' and task.owner_user_id!=user.id):raise NotFound('任务不存在')
     account=db.get(DouyinAccount,task.douyin_account_id) if task.douyin_account_id else None
-    if account is None:raise ValidationError('请先绑定发送账号')
+    if account is None or account.owner_user_id!=task.owner_user_id:raise ValidationError('请先绑定发送账号')
     if run_id:
         run=db.get(TaskRun,run_id)
         if run is None or run.task_id!=task.id or run.status!='submitted_unconfirmed':raise ValidationError('此记录无需结果核对')
@@ -42,17 +42,19 @@ async def process(engine,cipher,reader=None):
         db.execute(update(TaskProbe).where(TaskProbe.status=='queued',TaskProbe.created_at<now-timedelta(minutes=15)).values(status='failed',finished_at=now,result_json=json.dumps({'summary':'账号忙碌，自检等待已结束；可在任务空闲时重新发起，未发送消息'})))
         db.execute(update(TaskProbe).where(TaskProbe.status=='running',TaskProbe.started_at<now-timedelta(minutes=4)).values(status='failed',finished_at=now,result_json=json.dumps({'summary':'自检进程已中断，未发送消息'})))
         db.execute(delete(TaskProbe).where(TaskProbe.finished_at<now-timedelta(days=30)))
-        row=db.scalar(select(TaskProbe).where(TaskProbe.status=='queued').order_by(TaskProbe.created_at,TaskProbe.id).limit(1))
-        if row is None:return False
-        task=db.get(SparkTask,row.task_id);account=db.get(DouyinAccount,task.douyin_account_id) if task and task.douyin_account_id else None
-        user=db.get(User,row.owner_id)
-        if not task or not account or not user or user.status!='active' or json.loads(row.result_json or '{}').get('revision')!=task.updated_at.isoformat():
-            row.status='failed';row.finished_at=now;row.result_json=json.dumps({'summary':'任务或账号已变化，请重新发起自检'});return True
-        imminent=db.scalar(select(SparkTask.id).where(SparkTask.douyin_account_id==account.id,SparkTask.enabled.is_(True),SparkTask.next_run_at<=now+timedelta(minutes=3)).limit(1))
-        if imminent or is_relogging(db,account.id):return False
-        if not acquire(db,account.id,row.id,'probe',now,180):return False
-        changed=db.execute(update(TaskProbe).where(TaskProbe.id==row.id,TaskProbe.status=='queued').values(status='running',started_at=now)).rowcount
-        if not changed:release(db,account.id,row.id);return False
+        candidates=db.scalars(select(TaskProbe).where(TaskProbe.status=='queued').order_by(TaskProbe.created_at,TaskProbe.id).limit(100)).all()
+        for row in candidates:
+            task=db.get(SparkTask,row.task_id);account=db.get(DouyinAccount,task.douyin_account_id) if task and task.douyin_account_id else None
+            user=db.get(User,row.owner_id)
+            if not task or not account or account.owner_user_id!=task.owner_user_id or not user or user.status!='active' or json.loads(row.result_json or '{}').get('revision')!=task.updated_at.isoformat():
+                row.status='failed';row.finished_at=now;row.result_json=json.dumps({'summary':'任务或账号已变化，请重新发起自检'});return True
+            imminent=db.scalar(select(SparkTask.id).where(SparkTask.douyin_account_id==account.id,SparkTask.enabled.is_(True),SparkTask.next_run_at<=now+timedelta(minutes=3)).limit(1))
+            if imminent or is_relogging(db,account.id):continue
+            if not acquire(db,account.id,row.id,'probe',now,180):continue
+            changed=db.execute(update(TaskProbe).where(TaskProbe.id==row.id,TaskProbe.status=='queued').values(status='running',started_at=now)).rowcount
+            if not changed:release(db,account.id,row.id);return False
+            break
+        else:return False
         identifier,account_id=row.id,account.id;expected=snapshot(account)
         binding=db.get(SparkTaskTargetIdentity,task.id);uid=binding.sec_uid if binding else ''
         identity=db.get(DouyinAccountIdentity,account.id)

@@ -317,7 +317,8 @@ class DirectoryTests(unittest.TestCase):
         self.assertNotIn('Friend 0', page.text)
         partial = self.client.get(path)
         self.assertEqual(200, partial.status_code)
-        self.assertEqual(20, partial.text.count('data-bulk-item="tasks"'))
+        self.assertIn('<div id="app"></div>', partial.text)
+        self.assertNotIn('data-bulk-item="tasks"', partial.text)
 
     def test_same_name_avatar_uses_account_and_stable_identity(self):
         with session_scope(self.engine) as db:

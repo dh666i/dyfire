@@ -8,9 +8,8 @@ from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import RedirectResponse, JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, case, delete, func, select, text
 from sqlalchemy.engine import Engine
 from core.avatars import safe_avatar_url
@@ -64,7 +63,6 @@ from spark_console.web.subscription_routes import build_subscription_router
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
 
 from spark_console.run_policy import RUN_STATUS_LABELS, RUN_STAGE_LABELS, run_view_status, run_guidance
 
@@ -99,11 +97,6 @@ LEGACY_WORKSPACE_PAGE_SIZE = 100
 ACCOUNT_CONVERSATION_PAGE_SIZE = 100
 
 
-templates.env.filters["shanghai_time"] = shanghai_time
-templates.env.filters["run_status"] = lambda value: RUN_STATUS_LABELS.get(value, value)
-templates.env.filters["run_stage"] = lambda value: RUN_STAGE_LABELS.get(value, value)
-templates.env.filters["run_view_status"] = run_view_status
-templates.env.filters["run_guidance"] = run_guidance
 
 
 def create_app(settings: Settings, engine: Engine) -> FastAPI:
@@ -153,6 +146,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     )
     login_limiter = build_rate_limiter(redis_backend, namespace="login")
     cipher = CookieCipher(settings.cookie_key_file.read_bytes())
+    from spark_console.web.account_lifecycle_routes import build_account_lifecycle_router
+    app.include_router(build_account_lifecycle_router(engine,auth,cipher))
     from spark_console.web.studio_routes import build_studio_router
     app.include_router(build_studio_router(engine, auth, cipher))
     from spark_console.web.spa_routes import build_spa_router
@@ -164,9 +159,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     # Every authenticated product surface is served by the same React entry.
     # API and authentication routes continue through their existing handlers.
     spa_index = PACKAGE_ROOT.parent / 'frontend' / 'dist' / 'index.html'
-    # Authentication remains on the established server-rendered flow.  The
-    # React entry is reserved for the authenticated product and admin surfaces
-    # so a 401 bootstrap response can never replace the login form.
+    # Public authentication and signed-in routes share the React entry.
+    # Form actions keep their established redirects and session handling.
     spa_prefixes = (
         '/dashboard', '/studio', '/accounts', '/tasks', '/runs', '/subscription',
         '/account-center', '/notifications', '/attention', '/help', '/admin',
@@ -210,17 +204,6 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         )
         if auth_shell:
             return FileResponse(spa_index, headers={'Cache-Control': 'no-store'})
-        # Keep direct legacy automation links compatible while still serving
-        # the same React shell. The hidden markers are inert and only preserve
-        # the old task-group selection hook for external tooling.
-        if (
-            request.method == 'GET'
-            and has_session
-            and spa_index.exists()
-            and path.startswith('/admin/tasks/groups/')
-        ):
-            compatibility = '\n'.join('<span hidden data-bulk-item="tasks"></span>' for _ in range(20))
-            return HTMLResponse(spa_index.read_text(encoding='utf-8') + compatibility, headers={'Cache-Control': 'no-store'})
         if request.method == 'GET' and has_session and spa_index.exists() and not is_api and not server_owned and (
             any(path == prefix or path.startswith(prefix + '/') for prefix in spa_prefixes)
         ):
@@ -249,13 +232,19 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             if params:
                 location += '?' + urlencode(params)
             return RedirectResponse(location, status_code=303)
-        notice = UI_NOTICES.get(request.query_params.get("notice", ""))
-        if notice and "ui_notice" not in context:
-            context["ui_notice"] = {"tone": notice[0], "message": notice[1]}
-        return templates.TemplateResponse(
-            request=request, name=name, context=context, status_code=status_code,
-            headers={"Cache-Control": "no-store"},
-        )
+        # Existing form actions remain compatible with the React client, but
+        # no request can fall back to a second server-rendered interface.
+        if request.method == 'GET' and status_code < 400:
+            if spa_index.is_file():
+                return FileResponse(spa_index, headers={'Cache-Control': 'no-store'})
+            raise HTTPException(503, '页面资源尚未构建，请完成前端构建后启动服务')
+        payload = {'ok': status_code < 400}
+        if status_code >= 400:
+            payload['detail'] = context.get('error') or context.get('message') or '请求未完成'
+        for key in ('one_time_codes', 'one_time_password'):
+            if context.get(key) is not None:
+                payload[key] = context[key]
+        return JSONResponse(payload, status_code=status_code, headers={'Cache-Control': 'no-store'})
 
     def render_admin(request: Request, db, context: dict, **extra):
         return render_admin_codes(
@@ -334,6 +323,25 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             except Exception as error:
                 raise HTTPException(503, "Redis 依赖暂时不可用") from error
         return {"status": "ready"}
+
+    @app.get('/health/execution')
+    def execution_health():
+        """Public boolean for an external monitor; no customer or host details."""
+        from spark_console.models import WorkerLock
+        from spark_console.runtime_health import _fresh
+        from spark_console.ops_history import read_history, history_path
+        now=datetime.now(timezone.utc)
+        with session_scope(engine) as db:
+            leases={row.id:row for row in db.scalars(select(WorkerLock))}
+            worker=all(
+                (row:=leases.get(index+1)) is not None and row.worker_id and row.lease_until
+                and (row.lease_until if row.lease_until.tzinfo else row.lease_until.replace(tzinfo=timezone.utc))>now
+                for index in range(settings.worker_shards)
+            )
+        auth_fresh=_fresh(settings.data_dir/'auth-worker.heartbeat',60)
+        monitor_fresh=read_history(history_path(settings)).get('state')=='fresh'
+        ok=bool(worker and auth_fresh and monitor_fresh)
+        return JSONResponse({'status':'ready' if ok else 'degraded'},status_code=200 if ok else 503,headers={'Cache-Control':'no-store'})
 
     @app.get("/")
     def root():

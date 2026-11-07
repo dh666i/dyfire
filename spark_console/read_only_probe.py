@@ -1,7 +1,7 @@
 """Inspect a task's real account and conversation without composing a message."""
 import asyncio,time
 from core.web_chat import WEB_CHAT_URL,CHAT_EDITOR_SELECTOR,select_web_chat_target
-from core.session_health import wait_for_session,require_session
+from core.session_health import wait_for_session,SessionUnavailable
 from core.account_profile import read_self_profile
 from core.stickers import STICKER_BUTTON_SELECTORS
 from spark_console.credentials import CredentialPayload
@@ -25,7 +25,8 @@ async def inspect_task(raw,version,target,uid,kind,*,message_id=None,expected_us
             page=await context.new_page()
             await step('navigation',page.goto(WEB_CHAT_URL,wait_until='domcontentloaded',timeout=45000))
             evidence=await step('authentication',wait_for_session(page,context,timeout=45))
-            require_session(evidence);result['checks']['account']=True
+            if evidence.state!='valid':raise SessionUnavailable(evidence)
+            result['checks']['account']=True
             profile=await step('identity',read_self_profile(context))
             if not profile.get('platform_user_id') or profile['platform_user_id']!=expected_user_id:
                 result.update(error_code='account_identity_unavailable',summary='无法确认绑定身份，已停止自检');return result

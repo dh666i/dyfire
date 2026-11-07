@@ -1,5 +1,5 @@
 from datetime import timezone
-from fastapi import APIRouter,Request,HTTPException
+from fastapi import APIRouter,Request,HTTPException,Query
 from sqlalchemy import select,func
 from spark_console.db import session_scope
 from spark_console.models import Announcement,AnnouncementRead,PaymentRecord,User,utc_now
@@ -10,6 +10,17 @@ from spark_console.services.audits import AuditService
 
 def build_operations_router(engine,auth):
     router=APIRouter()
+
+    @router.get('/api/admin/customer-options')
+    def customer_options(request:Request,q:str=Query('',max_length=100),page:int=Query(1,ge=1,le=100000)):
+        with session_scope(engine) as db:
+            auth.admin_context(request,db)
+            query=select(User.id,User.username).where(User.role=='user')
+            if q.strip():query=query.where(User.username.contains(q.strip(),autoescape=True))
+            total=db.scalar(select(func.count()).select_from(query.subquery())) or 0
+            rows=db.execute(query.order_by(User.username,User.id).offset((page-1)*30).limit(30)).all()
+            return {'items':[{'id':identifier,'username':username} for identifier,username in rows],
+                'pagination':{'page':page,'total':total,'has_next':page*30<total,'has_previous':page>1}}
 
     async def body(request):
         try:value=await request.json()

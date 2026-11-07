@@ -7,10 +7,6 @@ async function main(scenario) {
   const source = fs.readFileSync(modulePath, 'utf8');
   assert.match(source, /CLOUD_FRAME_LOAD_TIMEOUT_MS/);
   assert.match(source, /retryCloudFrame/);
-  const appSource = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/app.jsx'), 'utf8');
-  assert.match(appSource, /frameLoadError\(current/);
-  assert.match(appSource, /accounts\/scan\/\$\{scan\.id\}\/qr/);
-  assert.doesNotMatch(appSource, /const maxAttempts=5/);
 
   const {
     CLOUD_FRAME_LOAD_TIMEOUT_MS,

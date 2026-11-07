@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import case, func, or_, select
 
 from spark_console.db import session_scope
+from spark_console.web.contracts import AppBootstrap
 from spark_console.models import (
     AuditEvent,
     AccountIncident,
@@ -166,7 +167,7 @@ def _aware(value):
 def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
     router = APIRouter()
 
-    @router.get("/api/app/bootstrap")
+    @router.get("/api/app/bootstrap", response_model=AppBootstrap)
     def bootstrap(request: Request):
         with session_scope(engine) as db:
             user, record = auth.current(request, db)

@@ -43,6 +43,8 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - run: python scripts/check_version.py
+      - run: python scripts/export_contracts.py --check
+      - run: node scripts/dedupe_css.mjs --check
       - run: npm run build
         working-directory: frontend
       - name: All isolated console and shared-core tests

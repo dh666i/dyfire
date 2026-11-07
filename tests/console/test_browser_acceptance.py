@@ -172,3 +172,70 @@ def test_admin_sees_full_redemption_code_and_copies_without_extra_request(browse
     finally:context.close()
 
 
+@pytest.mark.parametrize('count',[0,1,3,20,100])
+@pytest.mark.parametrize('width',[360,1440])
+def test_workspace_data_sizes_and_probe_requests_are_bounded(browser_site,count,width):
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':width,'height':900},reduced_motion='reduce')
+    context.add_cookies([{'name':'spark_session','value':tokens['user'],'url':base}])
+    try:
+        value=context.request.get(base+'/api/app/bootstrap').json()
+        template=value['tasks'][0]
+        value['tasks']=[{**template,'id':f'layout-task-{index}','name':f'布局好友 {index}'} for index in range(count)]
+        value['resource_limits'].update(tasks_total=count,tasks_enabled_total=count,tasks_paused_total=0)
+        value['tasks_pagination'].update(total=count,has_next=False)
+        page=context.new_page();errors=[];probe_reads=[]
+        page.on('pageerror',lambda error:errors.append(str(error)))
+        page.on('request',lambda request:probe_reads.append(request.url) if '/checks' in request.url else None)
+        page.route('**/api/app/bootstrap',lambda route:route.fulfill(json=value))
+        for path in ('/dashboard','/studio'):
+            page.goto(base+path,wait_until='networkidle');page.locator('.fire-main').wait_for()
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'),f'{path} count={count}, width={width}'
+        assert page.locator('.task-row').count()==count
+        assert probe_reads==[],'hidden menus must not poll once per task'
+        assert errors==[]
+    finally:context.close()
+
+
+@pytest.mark.parametrize('width',[390,1440])
+def test_recovery_frame_fullscreen_and_failed_cancel_remains_actionable(browser_site,width):
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':width,'height':844},reduced_motion='reduce')
+    context.add_cookies([{'name':'spark_session','value':tokens['user'],'url':base}])
+    try:
+        page=context.new_page();requests=[];cancels=[]
+        state={'id':'isolated-recovery','mode':'recovery','account_id':'fixture-account',
+               'status':'confirming','remaining_seconds':180,'needs_verification':True,
+               'verification_kind':'password','frame_revision':'fixture-1'}
+        def start(route):
+            requests.append(route.request.post_data)
+            route.fulfill(json=state)
+        def cancel(route):
+            cancels.append(route.request.post_data)
+            route.fulfill(status=503,json={'detail':'isolated failure'}) if len(cancels)==1 else route.fulfill(json={**state,'status':'cancelled'})
+        page.route('**/accounts/recovery',start)
+        page.route('**/accounts/scan/isolated-recovery',lambda route:route.fulfill(json=state))
+        page.route('**/accounts/scan/isolated-recovery/qr?*',lambda route:route.fulfill(content_type='image/svg+xml',body='<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><rect width="1280" height="720" fill="white"/></svg>'))
+        page.route('**/accounts/scan/isolated-recovery/cancel',cancel)
+        page.goto(base+'/accounts',wait_until='networkidle')
+        page.get_by_role('button',name='打开验证',exact=True).first.click()
+        modal=page.get_by_role('dialog',name='复核原抖音账号',exact=True)
+        expect(modal).to_be_visible();expect(modal.locator('.scan-stage')).to_have_class(re.compile('frame-ready'))
+        assert requests and 'account_id' in requests[0]
+        expect(modal.locator('input[type=password]')).to_be_visible()
+        modal.get_by_role('button',name='放大云端画面').click()
+        fullscreen=page.get_by_role('dialog',name='云端验证画面',exact=True)
+        expect(fullscreen).to_be_visible()
+        expect(fullscreen.locator('input[type=password]')).to_be_visible()
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+        fullscreen.get_by_role('button',name='关闭',exact=True).click()
+        expect(modal).to_be_visible()
+        modal.get_by_role('button',name='结束本次复核').click()
+        expect(modal).to_contain_text('未能结束云端会话')
+        expect(modal).to_be_visible()
+        modal.get_by_role('button',name='结束本次复核').click()
+        expect(modal).to_have_count(0)
+        assert len(cancels)==2
+    finally:context.close()
+
+

@@ -4,7 +4,7 @@ import hashlib
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from inspect import isawaitable
 
@@ -55,6 +55,7 @@ class ExecutionResult:
     health_state: str | None = None
     health_reason: str | None = None
     receipt: dict | None = None
+    diagnostics: dict = field(default_factory=dict, repr=False, compare=False)
 
 
 class DouyinExecutor:
@@ -218,9 +219,11 @@ class DouyinExecutor:
         on_receipt: Callable[[dict], object] | None = None,
     ) -> ExecutionResult:
         self._executing = True
+        self._diagnostics = {}
         try:
-            return await self._execute(cookie_payload, target, message, credential_version,
+            result = await self._execute(cookie_payload, target, message, credential_version,
                 target_sec_uid, on_submitted, message_kind, session_key, on_authenticated,on_receipt)
+            return replace(result, diagnostics=self._diagnostics)
         finally:
             self._executing = False
 
@@ -590,6 +593,8 @@ class DouyinExecutor:
                     receipt=receipt,
                 )
             finally:
+                from spark_console.execution_diagnostics import structural_evidence
+                self._diagnostics = await structural_evidence(page) if not delivery_confirmed else {}
                 # A reused page survives across scheduled tasks. Remove the
                 # per-run user-info listener or every task would keep parsing
                 # future responses, gradually slowing the session and mixing

@@ -658,6 +658,10 @@ class Worker:
                         "task_deleted_during_run",
                         "任务执行期间已被删除",
                     )
+                if getattr(result, 'diagnostics', None):
+                    from spark_console.execution_diagnostics import encode
+                    from spark_console.run_events import record
+                    record(run, 'diagnostic', result.stage, encode(result.diagnostics), now=finished_at)
                 account_service = AccountService(db, self.cipher, AuditService(db))
                 avatars = getattr(result, "contact_avatars", {})
                 if result.success and avatars and account_id and credential_snapshot:

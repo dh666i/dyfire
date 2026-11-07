@@ -404,7 +404,11 @@ class AccountService:
         return bytearray(self.cipher.decrypt(account.encrypted_cookies, account.cookie_nonce))
 
     def delete_owned(self, owner_id: str, account_id: str) -> None:
+        from spark_console.models import AccountOperation, TaskProbe, ContactDirectoryJob
         account = self.get_owned(owner_id, account_id)
+        operation=self.session.scalar(select(AccountOperation.account_id).where(AccountOperation.account_id==account.id,AccountOperation.expires_at>utc_now()))
+        if operation is not None:
+            raise Conflict('该账号正在执行云端操作，请完成后再解绑')
         relogin = self.session.scalar(
             select(DouyinLoginSession.id)
             .where(
@@ -436,6 +440,11 @@ class AccountService:
         )
         if running is not None:
             raise Conflict("该账号有任务正在执行，请完成后再删除")
+        task_ids=select(SparkTask.id).where(SparkTask.douyin_account_id==account.id)
+        self.session.execute(update(TaskProbe).where(TaskProbe.task_id.in_(task_ids),TaskProbe.status.in_(('queued','running')))
+            .values(status='failed',finished_at=utc_now(),result_json=json.dumps({'summary':'账号已解除绑定，检查已取消；未发送消息'},ensure_ascii=False)))
+        self.session.execute(update(ContactDirectoryJob).where(ContactDirectoryJob.account_id==account.id,ContactDirectoryJob.status.in_(('queued','running')))
+            .values(status='failed',finished_at=utc_now(),error='账号已解除绑定'))
         self.session.execute(
             update(SparkTask)
             .where(SparkTask.douyin_account_id == account.id)

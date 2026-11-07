@@ -351,6 +351,15 @@ def latest(force=False):
 
 
 def compose(image, *args):
+    if args and args[0]=='pull':
+        try:
+            from deploy.image_pull import pull
+        except ModuleNotFoundError:
+            from image_pull import pull
+        try:layers=image_layers(image)
+        except Exception:layers={}
+        pull(image,layers,lambda value:write_state(pull_progress=value),timeout=IMAGE_PULL_TIMEOUT_SECONDS)
+        return
     env = dict(os.environ, SPARK_IMAGE_NAME=image, COMPOSE_PROJECT_NAME=COMPOSE_PROJECT)
     process = subprocess.Popen(['docker', 'compose', '--project-name', COMPOSE_PROJECT, '--env-file', str(ROOT / '.env.console'),
                     '--file', str(ROOT / 'compose.console.yml'), *args], cwd=ROOT, env=env,
@@ -441,7 +450,7 @@ def assert_no_active_operations(data_dir):
                     "WHERE status NOT IN ('succeeded','failed','expired','cancelled')"
                 ).fetchone()[0]
                 if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='account_operations'").fetchone()[0]:
-                    active += db.execute("SELECT count(*) FROM account_operations WHERE kind IN ('send','login','health','directory','probe') AND expires_at > datetime('now')").fetchone()[0]
+                    active += db.execute("SELECT count(*) FROM account_operations WHERE julianday(expires_at) > julianday('now')").fetchone()[0]
                 if db.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='task_probes'").fetchone()[0]:
                     active += db.execute("SELECT count(*) FROM task_probes WHERE status='running'").fetchone()[0]
             break
@@ -505,17 +514,22 @@ def install(target, operation_id=''):
         web_file = ROOT / 'web-installed.json'
         if web_file.is_file():
             shutil.copy2(web_file, backup / 'web-installed.json')
+        try:
+            from deploy.snapshot_inventory import seal_snapshot
+        except ModuleNotFoundError:
+            from snapshot_inventory import seal_snapshot
+        seal_snapshot(backup)
         write_state(phase='installing', message='正在启动新版本')
         compose(release['image'], 'up', '-d', '--no-build', *SERVICES)
         ready(target)
-        verify_runtime(target, release['image'], SERVICES)
+        runtime=verify_runtime(target, release['image'], SERVICES)
         temp = ROOT / 'installed.tmp'
         temp.write_text(json.dumps(release))
         temp.replace(current_file)
         web_temp = ROOT / 'web-installed.tmp'
         web_temp.write_text(json.dumps(release))
         web_temp.replace(ROOT / 'web-installed.json')
-        write_state(phase='complete', message='更新完成', installed=target)
+        write_state(phase='complete', message='更新完成', installed=target,latest=target,**release,runtime=runtime,runtime_drift=False)
     except Exception:
         write_state(phase='rollback', message='更新未通过检查，正在恢复原版本')
         # Same schema only: retain new run records to avoid replaying a send.
@@ -552,11 +566,11 @@ def install_web(target, operation_id=''):
         write_state(phase='web_installing', message='正在切换 Web 服务，发送服务保持运行')
         compose(release['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
         ready(target)
-        verify_runtime(target, release['image'], WEB_SERVICES)
+        runtime=verify_runtime(target, release['image'], WEB_SERVICES)
         temp = ROOT / 'web-installed.tmp'
         temp.write_text(json.dumps(release))
         temp.replace(ROOT / 'web-installed.json')
-        write_state(phase='web_complete', message='Web 更新完成，发送服务未重启', web_installed=target)
+        write_state(phase='web_complete', message='Web 更新完成，发送服务未重启', web_installed=target,latest=target,**release,runtime=runtime,runtime_drift=False)
     except Exception:
         write_state(phase='web_failed', message='Web 更新未通过健康检查')
         raise
@@ -620,7 +634,7 @@ def main():
                     if time.time() - data['requested_at'] > 300:
                         raise ValueError('请求已过期，请重试')
                     operation_id = str(data.get('operation_id') or '')
-                    write_state(operation_id=operation_id, requested_at=data.get('requested_at'), error_code=None, error_detail=None, download_plan={'known':False})
+                    write_state(operation_id=operation_id, requested_at=data.get('requested_at'), error_code=None, error_detail=None, download_plan={'known':False},pull_progress=None)
                     if data['action'] == 'check':
                         item = latest()
                         current = json.loads((ROOT / 'installed.json').read_text())

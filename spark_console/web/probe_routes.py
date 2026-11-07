@@ -2,6 +2,7 @@ import json
 from fastapi import APIRouter,Request,HTTPException
 from sqlalchemy import select
 from spark_console.db import session_scope
+from spark_console.web.contracts import ProbeResponse
 from spark_console.models import TaskProbe,TaskRun
 from spark_console.services import probes,NotFound,ValidationError,Conflict
 
@@ -32,7 +33,7 @@ def build_probe_router(engine,auth):
             except (ValidationError,Conflict) as error:raise HTTPException(409,str(error)) from error
             return probes.view(row)
 
-    @router.get('/api/task-probes/{identifier}')
+    @router.get('/api/task-probes/{identifier}',response_model=ProbeResponse)
     def status(request:Request,identifier:str):
         with session_scope(engine) as db:
             user,_=auth.current(request,db);row=db.get(TaskProbe,identifier)

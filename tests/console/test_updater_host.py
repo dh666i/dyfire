@@ -194,6 +194,7 @@ def test_release_manifest_must_match_tag_and_digest(host):
 
 def test_compose_uses_longer_timeout_only_for_image_pulls(host, monkeypatch):
     module, *_ = host
+    from deploy import image_pull
     module.IMAGE_PULL_TIMEOUT_SECONDS = 7
     module.COMPOSE_OPERATION_TIMEOUT_SECONDS = 1
     class Process:
@@ -207,9 +208,12 @@ def test_compose_uses_longer_timeout_only_for_image_pulls(host, monkeypatch):
     monkeypatch.setattr(module, 'write_state', lambda: None)
     ticks = iter([0, 8])
     monkeypatch.setattr(module.time, 'monotonic', lambda: next(ticks))
-    with pytest.raises(TimeoutError):
-        module._real_compose('image', 'pull', 'spark-web')
-    assert processes[-1].killed
+    arguments=[]
+    def pull(image,layers,publish,*,timeout):arguments.append((image,timeout))
+    monkeypatch.setattr(image_pull,'pull',pull)
+    monkeypatch.setattr(module,'image_layers',lambda image:{})
+    module._real_compose('image', 'pull', 'spark-web')
+    assert arguments==[('image',7)] and processes==[]
 
     ticks = iter([0, 2])
     monkeypatch.setattr(module.time, 'monotonic', lambda: next(ticks))

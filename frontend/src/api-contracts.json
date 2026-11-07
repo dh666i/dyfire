@@ -1,0 +1,240 @@
+{
+  "app": {
+    "$defs": {
+      "RunSummary": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "retrying",
+              "success",
+              "failed",
+              "skipped",
+              "submitted_unconfirmed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "label"
+        ],
+        "title": "RunSummary",
+        "type": "object"
+      },
+      "TaskSummary": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accountid"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "time": {
+            "title": "Time",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "name",
+          "time",
+          "enabled"
+        ],
+        "title": "TaskSummary",
+        "type": "object"
+      },
+      "UserIdentity": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role"
+        ],
+        "title": "UserIdentity",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "properties": {
+      "user": {
+        "$ref": "#/$defs/UserIdentity"
+      },
+      "csrf": {
+        "title": "Csrf",
+        "type": "string"
+      },
+      "accounts": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Accounts",
+        "type": "array"
+      },
+      "tasks": {
+        "items": {
+          "$ref": "#/$defs/TaskSummary"
+        },
+        "title": "Tasks",
+        "type": "array"
+      },
+      "runs": {
+        "items": {
+          "$ref": "#/$defs/RunSummary"
+        },
+        "title": "Runs",
+        "type": "array"
+      },
+      "membership": {
+        "additionalProperties": true,
+        "title": "Membership",
+        "type": "object"
+      },
+      "resource_limits": {
+        "additionalProperties": true,
+        "title": "Resource Limits",
+        "type": "object"
+      },
+      "activity": {
+        "additionalProperties": true,
+        "title": "Activity",
+        "type": "object"
+      }
+    },
+    "required": [
+      "user",
+      "csrf",
+      "accounts",
+      "tasks",
+      "runs",
+      "membership",
+      "resource_limits",
+      "activity"
+    ],
+    "title": "AppBootstrap",
+    "type": "object"
+  },
+  "probe": {
+    "additionalProperties": true,
+    "properties": {
+      "id": {
+        "title": "Id",
+        "type": "string"
+      },
+      "task_id": {
+        "title": "Task Id",
+        "type": "string"
+      },
+      "run_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Run Id"
+      },
+      "kind": {
+        "enum": [
+          "selfcheck",
+          "reconcile"
+        ],
+        "title": "Kind",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Result"
+      },
+      "status_url": {
+        "title": "Status Url",
+        "type": "string"
+      },
+      "created_at": {
+        "title": "Created At",
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "task_id",
+      "run_id",
+      "kind",
+      "status",
+      "result",
+      "status_url",
+      "created_at"
+    ],
+    "title": "ProbeResponse",
+    "type": "object"
+  }
+}

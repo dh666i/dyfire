@@ -41,7 +41,6 @@ from spark_console.web.app import create_app
 
 
 ROOT = Path(__file__).resolve().parents[2]
-OPERATIONS_JS_HARNESS = ROOT / "tests" / "console" / "admin_operations_js_harness.js"
 
 
 class OperationsMetricsTests(unittest.TestCase):
@@ -499,31 +498,6 @@ class OperationsWebTests(unittest.TestCase):
         self.assertEqual(30, snapshot.json()["refresh_interval_seconds"])
         self.assertEqual({"web", "auth", "worker"}, set(snapshot.json()["services"]))
 
-        script = Path("spark_console/static/admin_operations.js").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("window.setInterval(refresh, refreshSeconds * 1000)", script)
-        self.assertIn('cache: "no-store"', script)
-        self.assertIn("new AbortController()", script)
-        self.assertIn('percent !== null && percent >= 75', script)
-        self.assertIn('percent !== null && percent >= 90', script)
-        self.assertIn('response.status === 401 || response.status === 403', script)
-        self.assertIn('!response.redirected || !response.url', script)
-        self.assertIn('window.location.assign("/login")', script)
-        self.assertIn('登录状态已失效，正在返回登录页…', script)
-        self.assertIn('刷新失败，已保留上次数据并将自动重试', script)
-
-        stylesheet = Path("spark_console/static/admin_operations.css").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn('.ops-meter.is-warning > i { background: var(--mr-gold); }', stylesheet)
-        self.assertIn('.ops-meter.is-danger > i { background: var(--mr-danger); }', stylesheet)
-        self.assertIn('@media (max-width: 1100px)', stylesheet)
-        self.assertIn('@media (max-width: 820px)', stylesheet)
-        self.assertIn('.ops-toolbar-separator { display: none; }', stylesheet)
-        self.assertIn('overflow-wrap: anywhere', stylesheet)
-        self.assertNotIn('font-size: 9px', stylesheet)
-
         history = self.client.get("/admin/operations/history?hours=24")
         self.assertEqual(200, history.status_code)
         self.assertEqual("no-store", history.headers["cache-control"])
@@ -539,22 +513,6 @@ class OperationsWebTests(unittest.TestCase):
                 self.assertEqual("/login", anonymous.headers["location"])
                 self.client.cookies.set("spark_session", self.customer_token)
                 self.assertEqual(404, self.client.get(path).status_code)
-
-
-@unittest.skipUnless(shutil.which("node"), "Node.js is required for operations UI tests")
-class OperationsJavaScriptTests(unittest.TestCase):
-    def test_resource_thresholds_and_login_expiry_detection(self):
-        completed = subprocess.run(
-            [shutil.which("node"), str(OPERATIONS_JS_HARNESS)],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            check=False,
-        )
-
-        self.assertEqual(0, completed.returncode, completed.stderr)
-        self.assertIn('"ok":true', completed.stdout)
 
 
 if __name__ == "__main__":

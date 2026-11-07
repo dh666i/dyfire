@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from math import ceil
-from sqlalchemy import select, func
-from spark_console.models import DouyinAccount, DouyinLoginSession, TaskRun, MailDelivery, SparkTask
+from sqlalchemy import select, func, or_
+from spark_console.models import DouyinAccount, DouyinLoginSession, TaskRun, MailDelivery, SparkTask, AccountIncident, ContactDirectoryJob
 
 
 def schedule_capacity(slots, p95, *, shards=1, gap_seconds=8):
@@ -15,9 +15,9 @@ def schedule_capacity(slots, p95, *, shards=1, gap_seconds=8):
         index=max(range(288),key=lambda i:sum(buckets[(i+j)%288] for j in range(window)))
         count=sum(buckets[(index+j)%288] for j in range(window))
         peaks.append({'window_minutes':window*5,'start':f'{index//12:02d}:{index%12*5:02d}',
-                      'tasks':count,'estimated_drain_seconds':round(count*(p95+gap_seconds)/max(1,shards),1) if p95 is not None else None})
+                      'tasks':count,'estimated_drain_seconds':round(count*(p95+gap_seconds),1) if p95 is not None else None})
     return {'peaks':peaks,'duration_p95_seconds':p95,'worker_shards':max(1,shards),'estimate_only':True,
-            'sample_required':p95 is None}
+            'sample_required':p95 is None,'assumption':'single_slot_conservative'}
 
 
 def business_health(db):
@@ -34,6 +34,9 @@ def business_health(db):
     latencies=sorted(max(0,(started-scheduled).total_seconds()) for scheduled,started in db.execute(select(TaskRun.scheduled_for,TaskRun.started_at).where(TaskRun.scheduled_for>=since,TaskRun.started_at.is_not(None)).limit(500)))
     peak=db.execute(select(SparkTask.send_time,func.count()).where(SparkTask.enabled.is_(True)).group_by(SparkTask.send_time).order_by(func.count().desc()).limit(1)).first()
     overdue=db.scalar(select(func.count()).select_from(SparkTask).where(SparkTask.enabled.is_(True),SparkTask.next_run_at<now-timedelta(minutes=5)))
+    incidents=db.execute(select(AccountIncident.started_at,AccountIncident.resolved_at).where(or_(AccountIncident.resolved_at>=since,AccountIncident.resolved_at.is_(None))).order_by(AccountIncident.observed_at.desc()).limit(500)).all()
+    def aware(value):return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    recovered=sorted(max(0,(aware(end)-aware(start)).total_seconds()) for start,end in incidents if end)
     return {
         'queued_logins':db.scalar(select(func.count()).select_from(DouyinLoginSession).where(DouyinLoginSession.status=='queued',DouyinLoginSession.expires_at>now)),
         'login_wait_seconds':int((now-oldest).total_seconds()) if oldest else 0,
@@ -45,5 +48,10 @@ def business_health(db):
         'recorded_plan_success_percent':round(counts.get('success',0)*100/terminal,1) if terminal else None,
         'recorded_terminal_runs':terminal,'skipped_runs':counts.get('skipped',0),
         'queue_delay_p95_seconds':round(latencies[ceil(len(latencies)*.95)-1],1) if latencies else None,
+        'active_incidents':db.scalar(select(func.count()).select_from(AccountIncident).where(AccountIncident.resolved_at.is_(None))) or 0,
+        'blocked_account_seconds':round(sum(max(0,((aware(end) if end else now)-max(since,aware(start))).total_seconds()) for start,end in incidents),1),
+        'incident_duration_sample_limit':500,
+        'recovery_p95_seconds':round(recovered[ceil(len(recovered)*.95)-1],1) if recovered else None,
+        'queued_directory_jobs':db.scalar(select(func.count()).select_from(ContactDirectoryJob).where(ContactDirectoryJob.status=='queued')) or 0,
         'capacity':schedule_capacity(slots,p95),
     }
