@@ -239,3 +239,24 @@ def test_recovery_frame_fullscreen_and_failed_cancel_remains_actionable(browser_
     finally:context.close()
 
 
+@pytest.mark.parametrize('theme',['light','dark'])
+def test_status_labels_keep_readable_contrast_in_both_themes(browser_site,theme):
+    browser,base,tokens=browser_site
+    context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
+    context.add_init_script(f"localStorage.setItem('dyfire-theme','{theme}')")
+    context.add_cookies([{'name':'spark_session','value':tokens['user'],'url':base}])
+    try:
+        page=context.new_page();page.goto(base+'/studio',wait_until='networkidle')
+        page.locator('.task-row .badge.good').wait_for()
+        ratios=page.evaluate("""() => {
+          const rgb=s=>(s.match(/[\\d.]+/g)||[]).map(Number);
+          const lum=c=>c.slice(0,3).map(x=>x/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((a,x,i)=>a+x*[.2126,.7152,.0722][i],0);
+          const color=getComputedStyle(document.body).backgroundColor;
+          return [...document.querySelectorAll('.task-row .badge.good')].map(e=>{
+            const a=lum(rgb(getComputedStyle(e).color)),b=lum(rgb(color));return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+          });
+        }""")
+        assert ratios and min(ratios)>=4.5,(theme,ratios)
+    finally:context.close()
+
+

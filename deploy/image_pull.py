@@ -104,4 +104,10 @@ def pull(image,layers,publish,*,timeout=3600):
             if time.monotonic()-last>=2:publish(state);last=time.monotonic()
         raise TimeoutError('镜像下载超时，原服务保持运行')
     finally:
-        stop.set();connection.close()
+        stop.set()
+        active_socket=getattr(connection,'sock',None)
+        if active_socket is not None:
+            try:active_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:pass
+        connection.close()
+        worker.join(timeout=2)

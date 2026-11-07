@@ -1312,3 +1312,11 @@ body,
   .icon-action,.task-row-menu-btn,.drawer-close,.theme-toggle { min-width:44px; }
   .form-actions { flex-wrap:wrap; gap:8px; }
 }
+
+.admin-business-lookup { margin-bottom:14px; }
+.admin-business-lookup .form-actions,.admin-business-grid .form-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; }
+html[data-theme="light"] { --green-bright:#20723e; --orange-soft:#a84614; }
+html[data-theme="light"] .badge { color:var(--ink-muted); }
+html[data-theme="light"] .badge.good { color:var(--green-bright); }
+html[data-theme="light"] .badge.warn,html[data-theme="light"] .badge.running { color:#84591c; }
+html[data-theme="light"] .badge.danger { color:#b43327; }

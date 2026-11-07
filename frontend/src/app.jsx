@@ -1285,7 +1285,7 @@ function Admin({data,onRefresh}) {
   const path=location.pathname;
   const isTaskGroup=path.startsWith('/admin/tasks/groups/');
   const rawSection=isTaskGroup?'tasks':path.split('/')[2]||'overview';
-  const baseSection=isTaskGroup||['subscriptions','tasks','customers'].includes(rawSection)?'users':rawSection==='today'?'runs':['diagnostics','audit'].includes(rawSection)?'operations':rawSection;
+  const baseSection=isTaskGroup||['subscriptions','tasks','customers'].includes(rawSection)?'users':rawSection==='today'?'runs':['diagnostics','audit','business'].includes(rawSection)?'operations':rawSection;
   const isMail=baseSection==='settings' && path.endsWith('/mail');
   const groupParts=isTaskGroup?path.split('/').slice(-2):[];
   const requestedView=new URLSearchParams(location.search).get('view');
@@ -1309,7 +1309,7 @@ function Admin({data,onRefresh}) {
   const [runPagination,setRunPagination]=useState(null);
   const [runDay,setRunDay]=useState(rawSection==='today'?'today':requestedView==='today'?'today':'all');
   const [sendBoard,setSendBoard]=useState(null);
-  const [operationsTab,setOperationsTab]=useState(rawSection==='diagnostics'?'diagnostics':rawSection==='audit'?'audit':requestedView==='diagnostics'||requestedView==='audit'?requestedView:'server');
+  const [operationsTab,setOperationsTab]=useState(rawSection==='diagnostics'?'diagnostics':rawSection==='audit'?'audit':rawSection==='business'?'business':['diagnostics','audit','business'].includes(requestedView)?requestedView:'server');
   const [selectedUsers,setSelectedUsers]=useState(new Set());
   const [selectedTasks,setSelectedTasks]=useState(new Set());
   const [update,setUpdate]=useState(null);
@@ -1387,7 +1387,7 @@ function Admin({data,onRefresh}) {
   },[isMail]);
   useEffect(()=>{setSelectedUsers(new Set())},[query,userStatusFilter]);
   useEffect(()=>{setSelectedTasks(new Set())},[query,path]);
-  const title={overview:'业务概览',users:'用户管理',subscriptions:'用户管理',tasks:'用户管理','task-group':'用户管理',customers:'用户管理',codes:'兑换码',runs:'执行记录',today:'执行记录',operations:'运维监控',diagnostics:'运维监控',audit:'运维监控',settings:'系统设置'}[section]||'管理后台';
+  const title={overview:'业务概览',users:'用户管理',subscriptions:'用户管理',tasks:'用户管理','task-group':'用户管理',customers:'用户管理',codes:'兑换码',runs:'执行记录',today:'执行记录',operations:'运维监控',diagnostics:'运维监控',audit:'运维监控',business:'运维监控',settings:'系统设置'}[section]||'管理后台';
   const counts=data.counts||{};
   const copyRedemptionCode=async code=>{
     if(!code)return;
