@@ -1,6 +1,6 @@
 from datetime import timedelta
 import pytest
-from sqlalchemy import select,func
+from sqlalchemy import select,func,event
 from spark_console.db import session_scope
 from spark_console.models import AccountIncident,TaskRun,User,utc_now
 from spark_console.services.account_health import record
@@ -11,6 +11,12 @@ from tests.console import test_account_health as health_tests
 @pytest.fixture
 def account_case():
     f=health_tests.AccountHealthTests();f.setUp()
+    @event.listens_for(f.engine,'connect')
+    def enforce_foreign_keys(connection,_record):
+        connection.execute('PRAGMA foreign_keys=ON')
+    with f.engine.connect() as connection:
+        connection.exec_driver_sql('PRAGMA foreign_keys=ON');connection.commit()
+        assert connection.exec_driver_sql('PRAGMA foreign_keys').scalar()==1
     yield f
     f.doCleanups()
 

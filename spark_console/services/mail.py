@@ -160,6 +160,10 @@ def collect(db,config,now,cipher):
                 summary=('以下账号已恢复，已启用的任务将执行后续计划；错过的消息不补发：' if event=='account_recovered' else '以下账号需要你完成安全验证，相关任务暂缓发送：')+'、'.join(names)
                 delivery=enqueue(db,config,event,f'{event}:{user.id}:{digest}',user,pref.email,summary,cipher)
                 if event=='account_alert':
+                    # Persist the outbox parent before linking an existing
+                    # incident. Without an ORM relationship, FK-enforcing
+                    # databases can otherwise flush the UPDATE first.
+                    db.flush()
                     for incident in incidents[event]:
                         if incident.alert_delivery_id is None:
                             incident.alert_delivery_id=delivery.id;incident.alert_queued_at=now
