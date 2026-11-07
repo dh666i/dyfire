@@ -54,7 +54,7 @@ jobs:
       - run: pip-audit --strict
       - run: npm audit --audit-level=high
         working-directory: frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: quality-evidence
@@ -91,7 +91,7 @@ jobs:
       - run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" dyfire:validation /app/smoke.py
       - name: Prove code-only updates reuse browser and font layers
         run: python scripts/check_image_reuse.py --runtime-refresh '${{ steps.runtime.outputs.refresh }}'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: image-layer-evidence
           path: image-layer-reuse.json
