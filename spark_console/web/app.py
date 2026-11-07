@@ -129,6 +129,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     # Administrator actions use the same normal session, CSRF and role checks.
     from spark_console.web.update_routes import build_update_router
     app.include_router(build_update_router(engine, auth))
+    from spark_console.web.operations_routes import build_operations_router
+    app.include_router(build_operations_router(engine,auth))
+    from spark_console.web.probe_routes import build_probe_router
+    app.include_router(build_probe_router(engine,auth))
     @app.get('/api/version')
     def version_info():
         from spark_console.version import VERSION

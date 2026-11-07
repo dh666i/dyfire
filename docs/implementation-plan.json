@@ -1,6 +1,6 @@
 {
   "baseline": "0.3.41",
-  "working_version": "0.3.43",
+  "working_version": "0.4.0",
   "excluded_scope": [
     "运营主体信息",
     "对外政策联系方式配置",
@@ -82,15 +82,16 @@
       "area": "结果证据 / P1",
       "task": "增强待核实的只读对账能力",
       "acceptance": "利用可验证消息身份、时间范围、回执核对；证据不足保留待核实，不自动重发",
-      "status": "planned",
-      "evidence": "待核实仍维持不自动重发；尚未增加新的平台只读对账证据"
+      "status": "implemented_pending_validation",
+      "evidence": "新增受账号操作锁保护的只读核对队列；仅在已有持久化平台消息编号、稳定目标会话中精确匹配时改为成功，否则保留待核实且不重发；尚待部署及真实账号验收"
     },
     {
       "id": 5,
       "area": "目标定位 / P1",
       "task": "增加不发送消息的任务自检",
       "acceptance": "检查账号、目标会话、编辑器与表情入口；不输入、不提交消息，遵守账号操作锁",
-      "status": "planned"
+      "status": "implemented_pending_validation",
+      "evidence": "新增只读任务自检入口，检查账号身份、目标会话、编辑器与续火花表情入口；队列受账号锁保护且不输入/发送消息，已补 API 所有权测试；尚待部署和真实账号验收"
     },
     {
       "id": 6,
@@ -127,35 +128,40 @@
       "area": "验证交互 / P1",
       "task": "补齐用户亲自操作的远程交互能力",
       "acceptance": "点击、必要键盘按键、滚动、触摸和拖动按实际挑战类型支持；不自动破解或跳过挑战",
-      "status": "planned"
+      "status": "partially_implemented",
+      "evidence": "新增远程按键、滚动、拖动接口和请求载荷指纹，并在云端绑定画面提供操作控件；触摸真机、拖动坐标和挑战样本仍待浏览器/实体设备验证"
     },
     {
       "id": 11,
       "area": "验证输入 / P1",
       "task": "按页面实际区分短信、密码、App 确认等",
       "acceptance": "不把所有额外验证都写成短信；敏感输入不回显、不进入日志",
-      "status": "planned"
+      "status": "implemented_pending_validation",
+      "evidence": "从可见页面输入类型、验证文案与滑块结构分类 SMS、密码、拖动、App 确认和其他类型；状态不采集验证码或页面正文，已补分类单测；尚待抖音变化样本验收"
     },
     {
       "id": 12,
       "area": "手机扫码 / P1",
       "task": "同设备绑定提供明确说明与可行路径",
       "acceptance": "在真实 iOS/Android 上验证扫码入口；仅在抖音确实支持时使用官方唤起/分享流程，不伪造“免验证快捷登录”",
-      "status": "planned"
+      "status": "partially_implemented",
+      "evidence": "绑定弹窗继续复用真实扫码、远程操作及短信/密码已有流程；同设备扫码路径依抖音平台能力，尚无实体 iOS/Android 验收，不承诺快捷绕过验证"
     },
     {
       "id": 13,
       "area": "页面尺寸 / P1",
       "task": "云端画面全屏、适配缩放、输入区固定",
       "acceptance": "二维码可识别；手机键盘弹出后不遮挡提交和关闭，图像坐标换算正确",
-      "status": "planned"
+      "status": "partially_implemented",
+      "evidence": "已有宽屏云端画面、响应式弹窗、验证码输入区；新增滚动/按键/拖动控件，手机键盘、安全区、全屏缩放和真实拖动仍待实体设备验证"
     },
     {
       "id": 14,
       "area": "登录连续性 / P1",
       "task": "固定真实浏览器环境配置并记录变更",
       "acceptance": "auth、worker、directory、health 使用兼容的浏览器版本、语言、时区；升级可追踪，不随机改环境",
-      "status": "planned"
+      "status": "implemented_pending_validation",
+      "evidence": "绑定、Worker、目录、健康检查和探测复用稳定的语言、时区、视口、色彩模式及 Playwright 版本；保留旧账号指纹配置，尚待生产兼容验收"
     },
     {
       "id": 15,
@@ -302,14 +308,16 @@
       "area": "运营通知 / P1",
       "task": "公告与定向维护通知",
       "acceptance": "全站/受影响客户可区分；有有效期和阅读状态，不新增拥挤导航层级",
-      "status": "planned"
+      "status": "implemented_pending_validation",
+      "evidence": "新增全站/定向公告、有效期、撤回和阅读状态；管理员运维页发布，用户首页显示未读公告，已补可见范围和阅读 API 测试；尚待部署验收"
     },
     {
       "id": 34,
       "area": "管理权限 / P2",
       "task": "有第二位员工时再做最小权限角色",
       "acceptance": "客服可处理普通客户，不能读取凭据或部署；管理员账号的重置/角色修改使用独立受控流程，禁止普通客服接管管理员",
-      "status": "planned"
+      "status": "excluded_by_user",
+      "evidence": "用户说明当前只有一位管理员和普通用户，不需要员工管理；不创建员工角色、表单或接口，维持原两类账号"
     },
     {
       "id": 35,
@@ -324,22 +332,24 @@
       "area": "兑换体验 / P1",
       "task": "兑换前说明权益生效与叠加结果",
       "acceptance": "展示期限、账号/任务额度、旧订阅如何衔接，不让用户猜测",
-      "status": "partially_implemented",
-      "evidence": "后端兑换预览存在；React 兑换表单尚未接预览确认"
+      "status": "implemented_pending_validation",
+      "evidence": "订阅页先预览再确认兑换，展示期限、账号/任务额度和生效时机；预览不会消费兑换码，已补只读 API 测试；尚待部署验收"
     },
     {
       "id": 37,
       "area": "营收数据 / P1",
       "task": "添加最小交易/收款来源记录",
       "acceptance": "区分付费、赠送、管理员补偿；不得仅凭订阅额度推算真实收入",
-      "status": "planned"
+      "status": "implemented_pending_validation",
+      "evidence": "管理员运维页登记实际实收、赠送和人工调整；金额按分存储，固定请求编号重放相同载荷幂等、载荷变化拒绝；收入只累计实收记录；尚待部署验收"
     },
     {
       "id": 38,
       "area": "单位成本 / P1",
       "task": "按账号统计浏览器耗时与服务成本",
       "acceptance": "明确每活跃付费账号月收入、执行成本、客服成本和异常处理时间",
-      "status": "planned"
+      "status": "partially_implemented",
+      "evidence": "管理员可录入服务器/其他/客服成本，并按账号汇总执行耗时、已记录实收和有效付费账号；成本缺项时显示未知，外部账单/工时仍需人工录入"
     },
     {
       "id": 39,
@@ -666,7 +676,7 @@
     }
   ],
   "last_reviewed": "2026-11-07",
-  "verification_note": "0.3.43 发行 CI 1004 测试/子用例、失败0、跳过0；真实 Chromium 登录/兑换码/编辑及双主题四视口通过。schema21→22只读临时副本原列不变、完整性与外键通过。已部署四个健康容器；仍按单项验收保留部分实现与待验状态。",
+  "verification_note": "本地 v0.4.0 全套控制台回归 725 passed、19 environment skips、273 subtests passed；Node tests 29 passed/1 skipped；Vite build 和 Python compileall 通过。0.3.43 仍是当前生产版本；v0.4.0 尚待同提交 GitHub PostgreSQL/Redis/Chromium、安全扫描、固定摘要镜像构建、发布和公网验收。",
   "production": {
     "version": "0.3.43",
     "schema": 22,

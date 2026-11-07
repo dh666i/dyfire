@@ -235,8 +235,6 @@ class ContactDirectoryJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
 class DouyinContactIdentity(Base):
     __tablename__ = "douyin_contact_identities"
 
@@ -447,12 +445,17 @@ class DouyinLoginChallenge(Base):
 
 class DouyinLoginAction(Base):
     __tablename__ = "douyin_login_actions"
+    __table_args__=(Index('uq_login_action_request','scan_id','request_id',unique=True),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     scan_id: Mapped[str] = mapped_column(
         ForeignKey("douyin_login_sessions.id", ondelete="CASCADE"), index=True
     )
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    payload_json: Mapped[str | None] = mapped_column(Text)
+    payload_digest: Mapped[str | None] = mapped_column(String(64))
+    request_id: Mapped[str | None] = mapped_column(String(36))
+    delivery_status: Mapped[str | None] = mapped_column(String(24))
     x_million: Mapped[int] = mapped_column(Integer, nullable=False)
     y_million: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -583,6 +586,7 @@ class TaskRun(Base):
     error_summary: Mapped[str | None] = mapped_column(String(240))
     message_digest: Mapped[str | None] = mapped_column(String(64))
     execution_version: Mapped[str | None] = mapped_column(String(32))
+    receipt_json: Mapped[str | None] = mapped_column(Text)
 
 
 class TaskRunAttempt(Base):
@@ -664,3 +668,62 @@ class AuditEvent(Base):
     outcome: Mapped[str | None] = mapped_column(String(16))
     error_code: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Announcement(Base):
+    __tablename__ = 'announcements'
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=uuid_string)
+    title: Mapped[str] = mapped_column(String(160),nullable=False)
+    body: Mapped[str] = mapped_column(Text,nullable=False)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey('users.id',ondelete='CASCADE'),index=True)
+    created_by: Mapped[str | None] = mapped_column(ForeignKey('users.id',ondelete='SET NULL'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),nullable=False,index=True)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AnnouncementRead(Base):
+    __tablename__ = 'announcement_reads'
+    announcement_id: Mapped[str] = mapped_column(ForeignKey('announcements.id',ondelete='CASCADE'),primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id',ondelete='CASCADE'),primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=utc_now)
+
+
+class PaymentRecord(Base):
+    __tablename__ = 'payment_records'
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=uuid_string)
+    request_id: Mapped[str] = mapped_column(String(36),unique=True,nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(64),nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey('users.id',ondelete='CASCADE'),index=True)
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey('users.id',ondelete='SET NULL'))
+    source: Mapped[str] = mapped_column(String(24),nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer,nullable=False)
+    reference: Mapped[str] = mapped_column(String(160),default='')
+    note: Mapped[str] = mapped_column(String(500),default='')
+    grant_id: Mapped[str | None] = mapped_column(ForeignKey('subscription_grants.id',ondelete='SET NULL'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=utc_now,index=True)
+
+
+class OperationSettings(Base):
+    __tablename__ = 'operation_settings'
+    id: Mapped[int] = mapped_column(Integer,primary_key=True,default=1)
+    values_json: Mapped[str] = mapped_column(Text,nullable=False,default='{}')
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=utc_now)
+
+
+class TaskProbe(Base):
+    __tablename__ = 'task_probes'
+    __table_args__ = (Index('ix_task_probes_status_created','status','created_at'),)
+    id: Mapped[str] = mapped_column(String(36),primary_key=True,default=uuid_string)
+    task_id: Mapped[str] = mapped_column(ForeignKey('spark_tasks.id',ondelete='CASCADE'),index=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('users.id',ondelete='CASCADE'),index=True)
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey('users.id',ondelete='SET NULL'))
+    run_id: Mapped[str | None] = mapped_column(ForeignKey('task_runs.id',ondelete='CASCADE'))
+    kind: Mapped[str] = mapped_column(String(16),default='selfcheck')
+    status: Mapped[str] = mapped_column(String(24),default='queued',index=True)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),default=utc_now)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+

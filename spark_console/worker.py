@@ -360,6 +360,7 @@ class Worker:
                     self._event_time(current_time, now is not None),
                 )
             if isinstance(self.executor, DouyinExecutor):
+                kwargs['on_receipt']=lambda value:self._record_receipt(run_id,value)
                 kwargs["on_authenticated"] = lambda uid: self._record_authenticated_identity(
                     run_id, account_id, credential_snapshot, uid,
                     self._event_time(current_time, now is not None),
@@ -554,6 +555,19 @@ class Worker:
             or parameter.kind is inspect.Parameter.VAR_KEYWORD
             for parameter in parameters
         )
+
+    def _record_receipt(self,run_id,value):
+        import re,json
+        identifier=value.get('message_id')
+        if not isinstance(identifier,str) or not re.fullmatch(r'[A-Za-z0-9:_-]{1,160}',identifier):return
+        with session_scope(self.engine) as db:
+            run=db.get(TaskRun,run_id)
+            if run is None or run.worker_id!=self.worker_id or run.status!='running' or run.submitted_at is None:return
+            if not self._renew_leases_in_session(db,run_id,self._clock()):return
+            run.receipt_json=json.dumps({'schema':1,'run_id':run.id,'task_id':run.task_id,
+                'message_id':identifier,'source':str(value.get('source',''))[:32],
+                'confirmed_at':self._clock().isoformat()},separators=(',',':'))
+            record_event(run,'receipt','confirming','已取得可关联的平台消息回执')
 
     def _record_authenticated_identity(self, run_id, account_id, expected, uid, now):
         with session_scope(self.engine) as db:

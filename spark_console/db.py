@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 22
+SQLITE_SCHEMA_VERSION = 25
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -136,13 +136,22 @@ def create_schema(engine: Engine) -> None:
             "ON douyin_account_identities (douyin_user_id)"
         ))
         for table, column, definition in (
+            ('task_runs','receipt_json','TEXT'),
+            ('douyin_login_actions','payload_json','TEXT'),
+            ('douyin_login_actions','payload_digest','VARCHAR(64)'),
+            ('douyin_login_actions','request_id','VARCHAR(36)'),
+            ('douyin_login_actions','delivery_status','VARCHAR(24)'),
             ('task_runs','execution_version','VARCHAR(32)'),
             ('mail_preferences','code_version','INTEGER NOT NULL DEFAULT 1'),
             ('password_resets','digest_version','INTEGER NOT NULL DEFAULT 1'),
             ('mail_deliveries','body_ciphertext','BYTEA'),('mail_deliveries','body_nonce','BYTEA'),
             ('redemption_codes','code_ciphertext','BYTEA'),('redemption_codes','code_nonce','BYTEA'),
+            ('payment_records','request_digest','VARCHAR(64)'),
         ):
             connection.execute(text(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}'))
+        connection.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_login_action_request ON douyin_login_actions (scan_id,request_id)'))
+        connection.execute(text('ALTER TABLE payment_records ADD COLUMN IF NOT EXISTS request_digest VARCHAR(64)'))
+        connection.execute(text("UPDATE payment_records SET request_digest=md5(request_id) WHERE request_digest IS NULL"))
     _assert_postgres_schema_complete(engine)
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
@@ -180,6 +189,7 @@ def _assert_postgres_schema_complete(engine: Engine) -> None:
         "ix_mail_deliveries_status_updated",
         "uq_douyin_account_user_id",
         "uq_account_incidents_open",
+        "uq_login_action_request",
     }
     actual_indexes = {
         index["name"]
@@ -236,6 +246,9 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (20, "verified_platform_account_identity", _upgrade_sqlite_account_identity),
         (21, "security_lifecycle", _upgrade_sqlite_security_lifecycle),
         (22, "account_incident_lifecycle", _upgrade_sqlite_account_incidents),
+        (23, "complete_optimization", _upgrade_sqlite_complete_optimization),
+        (24, "remote_action_payload_fingerprint", _upgrade_sqlite_remote_action_fingerprint),
+        (25, "payment_request_fingerprint", _upgrade_sqlite_payment_request_fingerprint),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -258,6 +271,29 @@ def _run_sqlite_migrations(connection: Connection) -> None:
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (version, name),
         )
+
+
+def _upgrade_sqlite_complete_optimization(connection: Connection) -> None:
+    for table,column in (('task_runs','receipt_json'),('douyin_login_actions','payload_json')):
+        columns={row[1] for row in connection.exec_driver_sql(f'PRAGMA table_info({table})')}
+        if column not in columns:connection.exec_driver_sql(f'ALTER TABLE {table} ADD COLUMN {column} TEXT')
+    columns={row[1] for row in connection.exec_driver_sql('PRAGMA table_info(douyin_login_actions)')}
+    for name,kind in (('request_id','VARCHAR(36)'),('delivery_status','VARCHAR(24)')):
+        if name not in columns:connection.exec_driver_sql(f'ALTER TABLE douyin_login_actions ADD COLUMN {name} {kind}')
+    connection.exec_driver_sql('CREATE UNIQUE INDEX IF NOT EXISTS uq_login_action_request ON douyin_login_actions (scan_id,request_id)')
+
+
+def _upgrade_sqlite_remote_action_fingerprint(connection: Connection) -> None:
+    columns={row[1] for row in connection.exec_driver_sql('PRAGMA table_info(douyin_login_actions)')}
+    if 'payload_digest' not in columns:
+        connection.exec_driver_sql('ALTER TABLE douyin_login_actions ADD COLUMN payload_digest VARCHAR(64)')
+
+
+def _upgrade_sqlite_payment_request_fingerprint(connection: Connection) -> None:
+    columns={row[1] for row in connection.exec_driver_sql('PRAGMA table_info(payment_records)')}
+    if 'request_digest' not in columns:
+        connection.exec_driver_sql("ALTER TABLE payment_records ADD COLUMN request_digest VARCHAR(64)")
+        connection.exec_driver_sql("UPDATE payment_records SET request_digest=lower(hex(randomblob(32))) WHERE request_digest IS NULL")
 
 
 def _upgrade_sqlite_account_incidents(connection: Connection) -> None:

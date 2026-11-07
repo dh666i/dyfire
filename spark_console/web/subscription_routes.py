@@ -143,18 +143,15 @@ def build_subscription_router(engine, auth: WebAuth, page, render_admin, cipher=
 
     @router.post('/subscription/preview')
     def preview_redemption(request:Request,csrf_token:str=Form(''),code:str=Form('')):
-        from datetime import timedelta
-        from spark_console.services.subscriptions import _digest
         with session_scope(engine) as db:
             user,record=auth.current(request,db);auth.csrf(record,csrf_token)
-            item=db.scalar(select(RedemptionCode).where(RedemptionCode.code_hash==_digest(code.strip())))
-            now=datetime.now(timezone.utc)
-            if not item or item.redeemed_at or item.revoked_at or (item.expires_at is not None and _aware(item.expires_at) < NEVER_EXPIRES_AT and _aware(item.expires_at)<=now):return JSONResponse({'message':'兑换码不可用，请检查输入或联系管理员。'},status_code=400)
-            subscription=db.get(UserSubscription,user.id)
-            start=max(now,_aware(subscription.valid_until)) if subscription else now
+            from spark_console.subscription_preview import preview
+            try:value=preview(db,user.id,code)
+            except ValidationError as error:return JSONResponse({'message':str(error)},status_code=400)
             from zoneinfo import ZoneInfo
-            until=(start+timedelta(days=item.duration_days)).astimezone(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M')
-            return JSONResponse({'message':f'将增加 {item.duration_days} 天，有效期预计至 {until}（北京时间）。账号额度更新为 {item.max_accounts}，任务额度更新为 {task_limit_label(item.max_tasks)}。额度不叠加。预览不会消耗兑换码，实际兑换时重新校验。'})
+            until=datetime.fromisoformat(value['valid_until']).astimezone(ZoneInfo('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M')
+            effect='本期到期后生效' if value['quota_effect']=='after_current_term' else '立即生效'
+            return {'preview':value,'message':f"增加 {value['duration_days']} 天，有效期预计至 {until}（北京时间）。账号额度 {value['max_accounts']}，任务额度 {task_limit_label(value['max_tasks'])}，{effect}，额度不叠加。"}
 
     @router.post("/admin/redemption-codes")
     def create_redemption_codes(

@@ -1,4 +1,5 @@
 """Evidence-based session checks. No verification submission or message action."""
+from spark_console.browser_environment import credential_options
 import asyncio
 import os
 from dataclasses import dataclass, field, replace
@@ -203,7 +204,7 @@ async def check_saved_session(raw, version):
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
         try:
-            context = await browser.new_context(**payload.context_options())
+            context = await browser.new_context(**credential_options(payload))
             if payload.cookies_to_add():
                 await context.add_cookies(payload.cookies_to_add())
             page = await context.new_page()

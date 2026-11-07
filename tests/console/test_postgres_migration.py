@@ -213,6 +213,11 @@ def _source(tmp_path: Path, *, populated: bool = True):
                 "resource_type": "account", "resource_id": ACCOUNT_IDS[0], "detail": "历史记录",
             }],
             "account_incidents": [],
+            "announcements": [],
+            "announcement_reads": [],
+            "payment_records": [],
+            "operation_settings": [],
+            "task_probes": [],
         }
         assert set(records) | {"worker_lock"} == set(Base.metadata.tables)
         with engine.begin() as connection:

@@ -1,4 +1,5 @@
 """Read profile and conversation directory. Never enters or submits a message."""
+from spark_console.browser_environment import credential_options
 import asyncio
 from dataclasses import asdict
 
@@ -91,7 +92,7 @@ async def read_directory(payload_bytes, version, limit, query):
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
         try:
-            context = await browser.new_context(**payload.context_options())
+            context = await browser.new_context(**credential_options(payload))
             if payload.cookies_to_add():
                 await context.add_cookies(payload.cookies_to_add())
             page = await context.new_page()

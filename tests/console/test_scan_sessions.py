@@ -192,6 +192,37 @@ class ScanSessionServiceTests(unittest.TestCase):
         self.assertIsNotNone(action.consumed_at)
         self.assertIsNone(self.service.claim_interaction(scan.id))
 
+    def test_remote_drag_is_owner_scoped_idempotent_and_reports_delivery(self):
+        scan=self._claim_and_publish();request='9a8c922b-513d-4638-9efc-007699802891'
+        payload={'points':[{'x':0.1,'y':0.6},{'x':0.25,'y':0.6},{'x':0.5,'y':0.55}]}
+        with self.assertRaises(NotFound):
+            self.service.queue_browser_action(self.other.id,scan.id,'drag',payload,request)
+        first=self.service.queue_browser_action(self.owner.id,scan.id,'drag',payload,request)
+        repeated=self.service.queue_browser_action(self.owner.id,scan.id,'drag',payload,request)
+        self.assertEqual(first.id,repeated.id)
+        with self.assertRaisesRegex(Conflict,'interaction_request_conflict'):
+            self.service.queue_browser_action(self.owner.id,scan.id,'drag',{'points':[{'x':0.1,'y':0.6},{'x':0.4,'y':0.6}]},request)
+        claimed=self.service.claim_interaction(scan.id)
+        self.assertEqual('drag',claimed['kind']);self.assertEqual(payload,claimed['payload'])
+        self.assertEqual(first.id,claimed['interaction_id'])
+        self.service.finish_browser_action(scan.id,first.id,'delivered')
+        self.assertEqual('delivered',self.service.browser_action_status(self.owner.id,scan.id,first.id)['status'])
+        self.assertIsNone(first.payload_json)
+        queued=self.service.queue_browser_action(self.owner.id,scan.id,'key',{'key':'Enter'},'f81de1cb-c120-4166-930b-1486299aad15')
+        self.service.cancel_owned(self.owner.id,scan.id)
+        self.assertEqual('failed',self.service.browser_action_status(self.owner.id,scan.id,queued.id)['status'])
+        self.assertIsNone(queued.payload_json)
+
+    def test_verification_kind_projection_preserves_actual_challenge_family(self):
+        for kind,expected,error in (('password','password','needs_password_verification'),('drag','drag','needs_drag_verification'),('other','other','needs_other_verification')):
+            with self.subTest(kind=kind):
+                scan=self._claim_and_publish()
+                state=self.service.mark_needs_verification(scan.id,{'verification_kind':kind})
+                public=self.service.public_status(state)
+                self.assertEqual(expected,public['verification_kind'])
+                self.assertEqual(error,public['error'])
+                self.service.cancel_owned(self.owner.id,scan.id)
+
     def test_verification_signal_is_active_idempotent_and_public(self):
         scan = self._claim_and_publish()
 

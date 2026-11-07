@@ -307,6 +307,7 @@ class UserService:
         return user
 
     def delete(self, actor_id: str, user_id: str, confirmation: str) -> None:
+        from spark_console.models import PaymentRecord
         user = self.session.get(User, user_id)
         if user is None:
             raise NotFound("user not found")
@@ -314,6 +315,9 @@ class UserService:
             raise ValidationError("不能删除当前管理员账号")
         if confirmation != user.username:
             raise ValidationError("确认用户名不匹配")
+        payment_record=self.session.scalar(select(PaymentRecord.id).where(PaymentRecord.user_id==user.id).limit(1))
+        if payment_record is not None:
+            raise Conflict("该用户已有收款台账记录，请先导出并处理账目后再删除")
         running = self.session.scalar(
             select(TaskRun.id)
             .join(SparkTask, SparkTask.id == TaskRun.task_id)

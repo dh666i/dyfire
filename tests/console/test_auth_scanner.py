@@ -492,7 +492,7 @@ class _Browser:
         self.fail_new_context = fail_new_context
         self.closed = False
 
-    async def new_context(self):
+    async def new_context(self, **options):
         if self.fail_new_context:
             raise RuntimeError("fixed context failure")
         return self.context
@@ -566,6 +566,14 @@ class DouyinQrScannerTests(unittest.IsolatedAsyncioTestCase):
             poll_interval_seconds=0,
         )
         return scanner, browser, context
+
+    async def test_verification_classifier_returns_only_the_visible_challenge_kind(self):
+        for value in ('sms','password','drag','app','other'):
+            async def evaluate(_script,expected=value):return expected
+            page=type('ChallengePage',(),{'evaluate':staticmethod(evaluate)})()
+            self.assertEqual(value,await DouyinQrScanner._classify_verification_kind(page))
+        page=type('SmsPage',(),{})()
+        self.assertEqual('sms',await DouyinQrScanner._classify_verification_kind(page,sms_detected=True))
 
     async def test_randomized_square_qr_is_found_without_qrcode_class(self):
         scanner, browser, context = self._scanner(semantic_qr=True)

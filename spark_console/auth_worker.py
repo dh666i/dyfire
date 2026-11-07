@@ -123,6 +123,10 @@ class AuthWorker:
                 )
 
         def on_interaction_result(result: dict[str, object]) -> None:
+            if isinstance(result,dict) and result.get('kind')=='browser':
+                with session_scope(self.engine) as db:
+                    ScanSessionService(db).finish_browser_action(scan_id,result.get('interaction_id'),result.get('delivery'))
+                return
             if not isinstance(result, dict) or result.get("kind") != "text":
                 return
             interaction_id = result.get("interaction_id")
@@ -357,26 +361,21 @@ async def run_loop() -> None:
         _heartbeat_loop(settings.data_dir / "auth-worker.heartbeat", stopping)
     )
     try:
-        while not stopping.is_set():
-            try:
-                handled = await worker.run_once(stopping)
-                if not handled and not stopping.is_set():
-                    from spark_console.health_worker import process_health_check
-                    handled = await process_health_check(engine, worker.cipher)
-                if not handled and not stopping.is_set():
-                    from spark_console.services.directory import process_directory_job
-                    await process_directory_job(engine, worker.cipher)
-            except Exception as error:
-                logger.error(
-                    "auth worker iteration failed exception=%s",
-                    type(error).__name__,
-                )
-            try:
-                await asyncio.wait_for(
-                    stopping.wait(), timeout=settings.auth_poll_seconds
-                )
-            except TimeoutError:
-                continue
+        from spark_console.auth_dispatch import dispatch
+        background_turn=0
+        async def background():
+            nonlocal background_turn
+            from spark_console.health_worker import process_health_check
+            from spark_console.services.directory import process_directory_job
+            from spark_console.services.probes import process
+            actions=[lambda:process_health_check(engine,worker.cipher),lambda:process_directory_job(engine,worker.cipher),lambda:process(engine,worker.cipher)]
+            # Rotate even when one kind has a backlog so self-checks and
+            # directory reads cannot permanently starve one another.
+            first=background_turn%len(actions);background_turn+=1
+            for offset in range(len(actions)):
+                if await actions[(first+offset)%len(actions)]():return True
+            return False
+        await dispatch(worker,stopping,background,slots=settings.auth_browser_slots,poll_seconds=settings.auth_poll_seconds)
     finally:
         stopping.set()
         await heartbeat

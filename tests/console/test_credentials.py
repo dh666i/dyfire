@@ -640,7 +640,8 @@ class ExecutorCredentialTests(unittest.IsolatedAsyncioTestCase):
 
         browser, result = await self._execute_until_target_selection(raw, 1)
 
-        self.assertEqual(0, len(browser.context_options))
+        self.assertNotIn("storage_state",browser.context_options)
+        self.assertEqual("UTC",browser.context_options["timezone_id"])
         self.assertEqual(1, len(browser.context.cookies_added))
         self.assertEqual("target_not_found", result.error_code)
 
