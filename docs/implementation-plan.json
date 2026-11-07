@@ -1,6 +1,6 @@
 {
   "baseline": "0.3.41",
-  "working_version": "0.4.0",
+  "working_version": "0.4.1",
   "excluded_scope": [
     "运营主体信息",
     "对外政策联系方式配置",
@@ -292,8 +292,8 @@
       "area": "管理详情 / P1",
       "task": "编辑展示修改前后差异",
       "acceptance": "用户、任务、额度修改准确说明影响范围，提交后可查审计",
-      "status": "planned",
-      "evidence": "已有修改审计；尚未实现统一的提交前差异预览"
+      "status": "implemented_pending_validation",
+      "evidence": "管理员编辑任务时显示变更字段和前后值，点击保存再次确认；续期与账号/任务额度修改显示期限、额度差异和生效说明，已补 Chromium 交互测试；0.4.1 待门禁和部署"
     },
     {
       "id": 32,
@@ -676,11 +676,11 @@
     }
   ],
   "last_reviewed": "2026-11-07",
-  "verification_note": "本地 v0.4.0 全套控制台回归 725 passed、19 environment skips、273 subtests passed；Node tests 29 passed/1 skipped；Vite build 和 Python compileall 通过。0.3.43 仍是当前生产版本；v0.4.0 尚待同提交 GitHub PostgreSQL/Redis/Chromium、安全扫描、固定摘要镜像构建、发布和公网验收。",
+  "verification_note": "v0.4.0 已部署生产并完成公网验收。0.4.1 额外补齐管理员任务/额度修改前差异预览，并通过针对性 Chromium 测试与前端构建；完整 GitHub quality/release workflow 与生产更新尚待完成。",
   "production": {
-    "version": "0.3.43",
-    "schema": 22,
-    "image": "ghcr.io/dh666i/dyfire@sha256:f10748b4340eb40cda9a5a475f7b0c6beb25430f1f31264427e4b7d2a0632e0f",
+    "version": "0.4.0",
+    "schema": 25,
+    "image": "ghcr.io/dh666i/dyfire@sha256:e9dd68aeb3fd443a274ec1caa5817794cd2d22404379ce204d813d07e00115a2",
     "public_health": "ready",
     "services": 4,
     "active_identities_enrolled": 2,

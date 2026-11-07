@@ -62,6 +62,26 @@ def test_busy_accounts_block_update_before_stop(host):
     assert calls==[]
 
 
+def test_active_readonly_probe_blocks_update_before_stopping_services(host):
+    module,_,_,calls=host
+    with sqlite3.connect(module.DATA_DIR/'spark.db') as db:
+        db.execute('CREATE TABLE task_probes (status TEXT)')
+        db.execute("INSERT INTO task_probes VALUES ('running')")
+    with pytest.raises(ValueError,match='扫码或发送'):
+        module.install('0.2.0')
+    assert calls==[]
+
+
+def test_active_probe_account_lease_blocks_update(host):
+    module,_,_,calls=host
+    with sqlite3.connect(module.DATA_DIR/'spark.db') as db:
+        db.execute('CREATE TABLE account_operations (kind TEXT, expires_at DATETIME)')
+        db.execute("INSERT INTO account_operations VALUES ('probe', datetime('now','+3 minutes'))")
+    with pytest.raises(ValueError,match='扫码或发送'):
+        module.install('0.2.0')
+    assert calls==[]
+
+
 def test_active_operation_guard_retries_transient_sqlite_database_errors(host, monkeypatch):
     module, _, _, _ = host
     real_connect = sqlite3.connect
