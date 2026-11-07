@@ -11,9 +11,9 @@
     "@fontsource/inter": "5.2.8",
     "@fontsource/noto-sans-sc": "5.2.9",
     "motion": "^12.43.0",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-router-dom": "^7.9.4"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
     "axe-core": "4.14.0",
