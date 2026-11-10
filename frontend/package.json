@@ -1,6 +1,6 @@
 {
   "name": "dyfire",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,12 +8,15 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@fontsource/inter": "5.2.8",
     "@fontsource/noto-sans-sc": "5.2.9",
+    "@number-flow/react": "0.6.2",
     "motion": "^12.43.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-router-dom": "^7.9.4"
+    "react-router-dom": "^7.9.4",
+    "sonner": "2.0.8"
   },
   "devDependencies": {
     "axe-core": "4.14.0",

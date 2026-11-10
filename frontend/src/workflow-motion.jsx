@@ -147,29 +147,29 @@ export function MotionDisclosure({open,children,className='',...props}) {
   const ref = useRef(null);
   const animation = useRef(null);
   const generation = useRef(0);
-  const previousOpen = useRef(Boolean(open));
   useLayoutEffect(() => {
     const sequence = ++generation.current;
     const node = ref.current;
-    previousOpen.current = Boolean(open);
-    const opacity = animation.current && node ? node.ownerDocument.defaultView.getComputedStyle(node).opacity : null;
-    animation.current?.cancel();
-    animation.current = null;
-    if (open && !mounted) { setMounted(true); return; }
-    if (!node || !mounted) return;
-    if (!node.animate || reducedWorkflowMotion()) { if (!open) setMounted(false); return; }
-    const active = node.animate(open
-      ? [{opacity:opacity ?? 0,transform:'translateY(-3px)'},{opacity:1,transform:'none'}]
-      : [{opacity:opacity ?? 1,transform:'none'},{opacity:0,transform:'translateY(-3px)'}], motionOptions(node,'--motion-short',150));
-    animation.current = active;
-    active.onfinish = () => {
-      if (generation.current !== sequence) return;
-      animation.current = null;
-      if (!open) setMounted(false);
-      active.cancel();
+    const currentHeight=animation.current&&node?node.getBoundingClientRect().height:null;
+    const opacity=animation.current&&node?getComputedStyle(node).opacity:null;
+    animation.current?.cancel();animation.current=null;
+    if(open&&!mounted){setMounted(true);return;}
+    if(!node||!mounted)return;
+    if(!node.animate||reducedWorkflowMotion()){node.style.overflow='';if(!open)setMounted(false);return;}
+    const naturalHeight=node.getBoundingClientRect().height;
+    const active=node.animate(open
+      ? [{height:`${currentHeight??0}px`,opacity:opacity??0},{height:`${naturalHeight}px`,opacity:1}]
+      : [{height:`${currentHeight??naturalHeight}px`,opacity:opacity??1},{height:'0px',opacity:0}],
+      {...motionOptions(node,'--motion-medium',260),duration:open?280:200});
+    node.style.overflow='clip';animation.current=active;
+    active.onfinish=()=>{
+      if(generation.current!==sequence)return;
+      animation.current=null;
+      if(!open)setMounted(false);
+      active.cancel();node.style.overflow='';
     };
-    return () => { active.cancel(); };
+    // The next layout effect reads the interrupted height before cancelling.
   },[open,mounted]);
-  useLayoutEffect(() => () => { generation.current++; animation.current?.cancel(); },[]);
-  return <div {...props} ref={ref} className={`workflow-disclosure ${className}`.trim()} hidden={!mounted} aria-hidden={!open} inert={!open}>{mounted?children:null}</div>;
+  useLayoutEffect(()=>()=>{generation.current++;animation.current?.cancel()},[]);
+  return <div {...props} ref={ref} className="workflow-disclosure" hidden={!mounted} aria-hidden={!open} inert={!open}>{mounted?<div className={className}>{children}</div>:null}</div>;
 }

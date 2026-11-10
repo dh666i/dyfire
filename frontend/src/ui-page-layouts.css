@@ -1,0 +1,180 @@
+/* Shared page rhythm. This layer follows ui-quality.css; business state stays in React. */
+.fire-main .section-head :is(h2,h3) { margin:0; }
+.fire-main .section-head .eyebrow + :is(h2,h3) { margin-top:6px; }
+.fire-main .fire-section-title,
+.fire-main .section-head :is(h2,h3) {
+  font-family:var(--font-sans,Inter,"Noto Sans SC",system-ui,sans-serif);
+  font-weight:600;
+  letter-spacing:0;
+  text-transform:none;
+}
+.fire-main .fire-section-title { color:var(--ink-dark); font-size:15px; line-height:1.5; }
+html :is(.fire-main,.drawer) select.input:not([multiple]) { appearance:none; padding-right:38px; background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%); background-position:calc(100% - 17px) 50%,calc(100% - 11px) 50%; background-size:6px 6px; background-repeat:no-repeat; }
+.fire-main .admin-code-selection { margin:12px 0 16px; font-size:12px; line-height:1.7; }
+
+/* Short content should stay short instead of inheriting a neighboring card's height. */
+.fire-main .simple-grid { align-items:start; gap:20px; }
+.fire-main .simple-grid > .card { min-width:0; min-height:0; align-self:start; }
+.fire-main .simple-grid > .card > h2 { margin:0 0 14px; font-size:20px; line-height:1.4; }
+.fire-main .simple-grid > .card > .eyebrow + h2 { margin-top:6px; }
+.fire-main .simple-grid > .card > p { margin:0 0 18px; font-size:13px; line-height:1.75; }
+.fire-main .simple-grid > .card > p:last-child { margin-bottom:0; }
+.fire-main .simple-page-subscription { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
+.fire-main .simple-page-subscription > .contact-support-card,
+.fire-main .simple-page-subscription > .card:last-child { grid-column:1 / -1; }
+.fire-main .simple-page-subscription > .contact-support-card { margin:0; padding:22px; }
+.fire-main .simple-page-subscription .contact-support-copy p { color:var(--ink-soft); font-size:13px; }
+.fire-main .simple-page-subscription .contact-support-plans { gap:8px; }
+.fire-main .simple-page-subscription .contact-support-plans span { font-size:12px; line-height:1.5; }
+.fire-main .simple-page-subscription .contact-qr-frame { flex-basis:168px; width:min(100%,168px); }
+.fire-main .simple-page-subscription .product-row { min-height:0; padding-block:14px; }
+.fire-main .simple-page-subscription .product-row:first-child { padding-top:0; }
+.fire-main .simple-page-subscription .product-row:last-child { padding-bottom:0; border-bottom:0; }
+.fire-main .simple-page-subscription .support-inline-link { margin-top:16px; font-size:13px; line-height:1.6; }
+
+/* Queue counts read as one supporting summary, leaving the server chart prominent. */
+.fire-main .metric-grid.admin-queue-metrics {
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:0;
+  margin:0 0 24px;
+  padding:4px;
+  border:1px solid var(--hairline);
+  border-radius:var(--radius-card,18px);
+  background:var(--paper);
+}
+.fire-main .admin-queue-metrics > .card.metric {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:"label value" "detail detail";
+  align-content:center;
+  align-items:center;
+  gap:6px 12px;
+  min-width:0;
+  min-height:0;
+  padding:14px 18px;
+  margin:0;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  background:transparent;
+}
+.fire-main .admin-queue-metrics > .metric + .metric { border-inline-start:1px solid var(--hairline); }
+.fire-main .admin-queue-metrics > .metric::before,
+.fire-main .admin-queue-metrics > .metric::after { display:none; }
+.fire-main .admin-queue-metrics > .metric > span { grid-area:label; font-size:13px; line-height:1.5; }
+.fire-main .admin-queue-metrics > .metric > strong { grid-area:value; font-size:26px; line-height:1.2; letter-spacing:-.03em; }
+.fire-main .admin-queue-metrics > .metric > small { grid-area:detail; margin:0; font-size:12px; line-height:1.5; color:var(--ink-muted); }
+
+/* Email and verification actions align with their inputs, not the entire form. */
+.fire-main .notification-event-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 12px; }
+.fire-main .notification-email-field,
+.fire-main .notification-verify-row {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:end;
+  gap:10px;
+  min-width:0;
+  margin:0;
+}
+.fire-main .notification-email-field > label,
+.fire-main .notification-code-field {
+  display:grid;
+  gap:8px;
+  min-width:0;
+  color:var(--ink-soft);
+  font-size:13px;
+  line-height:1.55;
+}
+.fire-main .notification-email-field .input,
+.fire-main .notification-code-field .input { width:100%; min-width:0; }
+.fire-main .notification-email-field > .button,
+.fire-main .notification-verify-row > .button {
+  align-self:end;
+  min-height:44px;
+  height:auto;
+  padding-block:11px;
+  margin:0;
+  white-space:nowrap;
+}
+
+@media(max-width:1000px) {
+  .fire-main .admin-queue-metrics > .card.metric { padding-inline:12px; gap:5px 8px; }
+  .fire-main .notification-email-field,
+  .fire-main .notification-verify-row { grid-template-columns:minmax(0,1fr); }
+  .fire-main .notification-email-field > .button,
+  .fire-main .notification-verify-row > .button { justify-self:start; }
+}
+@media(max-width:700px) {
+  .fire-main .simple-grid,
+  .fire-main .simple-page-subscription { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .fire-main .simple-grid > .card > h2 { font-size:19px; }
+  .fire-main .simple-page-subscription > .contact-support-card { padding:20px; gap:18px; }
+  .fire-main .simple-page-subscription .contact-qr-frame { flex-basis:auto; align-self:center; }
+  .fire-main .simple-page-subscription .contact-support-plans { display:flex; }
+  .fire-main .metric-grid.admin-queue-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); margin-bottom:20px; }
+  .fire-main .admin-queue-metrics > .card.metric { padding:12px; }
+  .fire-main .admin-queue-metrics > .metric:nth-child(odd) { border-inline-start:0; }
+  .fire-main .admin-queue-metrics > .metric:nth-child(n+3) { border-top:1px solid var(--hairline); }
+  .fire-main .admin-queue-metrics > .metric > strong { font-size:24px; }
+  .fire-main .notification-email-field,
+  .fire-main .notification-verify-row { grid-template-columns:minmax(0,1fr) auto; }
+  .fire-main .notification-email-field > .button,
+  .fire-main .notification-verify-row > .button { justify-self:stretch; padding-inline:12px; }
+
+  /* Full codes remain readable and copyable without an 820px horizontal canvas. */
+  .fire-main .redemption-table { display:grid; gap:12px; overflow:visible; }
+  .fire-main .redemption-table > .table-head { display:none; }
+  .fire-main .redemption-table .admin-row.redemption-record-row {
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    grid-template-areas:none;
+    gap:16px 18px;
+    width:100%;
+    min-width:0;
+    padding:16px;
+    margin:0;
+    border:1px solid var(--hairline);
+    border-radius:14px;
+    background:var(--surface-soft);
+    box-sizing:border-box;
+  }
+  .fire-main .redemption-record-row > [data-label] {
+    grid-area:auto;
+    justify-self:stretch;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:6px;
+    min-width:0;
+    color:var(--ink-dark);
+    font-size:13px;
+    line-height:1.6;
+    overflow-wrap:anywhere;
+  }
+  .fire-main .redemption-record-row > [data-label]::before {
+    content:attr(data-label);
+    color:var(--ink-muted);
+    font-size:12px;
+    line-height:1.5;
+  }
+  .fire-main .redemption-record-row > .redemption-code-cell {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-column:1 / -1;
+    align-items:center;
+    gap:7px 12px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--hairline);
+  }
+  .fire-main .redemption-record-row > .redemption-code-cell::before { grid-column:1 / -1; }
+  .fire-main .redemption-code-cell > code { min-width:0; font-size:13px; line-height:1.7; overflow-wrap:anywhere; word-break:break-all; }
+  .fire-main .redemption-code-cell > .button { flex-shrink:0; min-height:40px; padding-inline:12px; }
+  .fire-main .redemption-record-row > [data-label] > small { display:block; margin:0; color:var(--ink-soft); font-size:12px; line-height:1.6; }
+}
+@media(max-width:380px) {
+  .fire-main .notification-email-field,
+  .fire-main .notification-verify-row { grid-template-columns:minmax(0,1fr); }
+  .fire-main .notification-email-field > .button,
+  .fire-main .notification-verify-row > .button { justify-self:stretch; }
+  .fire-main .admin-queue-metrics > .card.metric { padding:10px; }
+}

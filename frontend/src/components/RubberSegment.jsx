@@ -66,6 +66,8 @@ export default function RubberSegment({
   const list = items.map(item => (typeof item === 'string' ? { value: item, label: item } : item));
   const [inner, setInner] = useState(defaultValue ?? list[0]?.value);
   const current = value !== undefined ? value : inner;
+  // Explicit null means the current page is outside this navigation group.
+  const hasSelection = current !== null;
   const index = Math.max(
     0,
     list.findIndex(item => item.value === current)
@@ -143,7 +145,7 @@ export default function RubberSegment({
 
   const commit = i => {
     committed.current = i;
-    if (i === index) return;
+    if (i === index && hasSelection) return;
     if (value === undefined) setInner(list[i].value);
     onChange?.(list[i].value, i);
   };
@@ -197,7 +199,7 @@ export default function RubberSegment({
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {}
     const x = localX(e);
-    const onThumb = draggable && x >= edgeL.get() && x <= edgeR.get();
+    const onThumb = draggable && hasSelection && x >= edgeL.get() && x <= edgeR.get();
     drag.current = { id: e.pointerId, x0: x, slot: i, onThumb, live: false, offset: 0, w: 0, hist: [[e.timeStamp, x]] };
     if (onThumb) {
       clearTimeout(handoff.current);
@@ -256,7 +258,7 @@ export default function RubberSegment({
     release();
     const x = localX(e);
     if (!d.live) {
-      if (Math.abs(x - d.x0) <= SLOP && d.slot !== committed.current) {
+      if (Math.abs(x - d.x0) <= SLOP && (d.slot !== committed.current || !hasSelection)) {
         const from = committed.current;
         commit(d.slot);
         travel(from, d.slot);
@@ -291,7 +293,7 @@ export default function RubberSegment({
     else if (e.key === 'End') next = last;
     if (next === null) return;
     e.preventDefault();
-    if (next === index) return;
+    if (next === index && hasSelection) return;
     commit(next);
     jumpTo(next);
     itemRefs.current[next]?.focus();
@@ -334,12 +336,20 @@ export default function RubberSegment({
           }}
           type="button"
           role="radio"
-          aria-checked={i === index}
+          aria-checked={hasSelection && i === index}
           tabIndex={i === index ? 0 : -1}
           disabled={disabled}
           className="rubber-segment__item"
           onPointerDown={e => handlePointerDown(e, i)}
           onKeyDown={handleKeyDown}
+          onClick={e => {
+            // Pointer selection is handled on release; zero-detail clicks
+            // retain native Enter/Space and assistive-technology activation.
+            if (e.detail !== 0 || disabled) return;
+            const from = committed.current;
+            commit(i);
+            travel(from, i);
+          }}
         >
           <span className="rubber-segment__content">
             {item.icon}
@@ -347,7 +357,7 @@ export default function RubberSegment({
           </span>
         </button>
       ))}
-      <motion.div className="rubber-segment__thumb" aria-hidden="true" style={{ clipPath }}>
+      <motion.div className="rubber-segment__thumb" aria-hidden="true" style={{ clipPath, opacity:hasSelection ? 1 : 0 }}>
         {list.map(item => (
           <span key={item.value} className="rubber-segment__item rubber-segment__copy">
             <span className="rubber-segment__content">

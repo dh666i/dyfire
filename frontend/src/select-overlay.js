@@ -6,7 +6,10 @@ export function installSelectOverlay(windowObject=window) {
   let active=null, menu=null, activeIndex=-1, sequence=0;
   const close=({restoreFocus=false}={})=>{
     const select=active;
-    menu?.remove(); menu=null; active=null; activeIndex=-1;
+    if(menu){const exiting=menu;exiting.classList.add('is-closing');exiting.setAttribute('aria-hidden','true');exiting.inert=true;
+      if(!windowObject.matchMedia || windowObject.matchMedia('(prefers-reduced-motion: reduce)').matches)exiting.remove();
+      else windowObject.setTimeout(()=>exiting.remove(),140);
+    } menu=null; active=null; activeIndex=-1;
     if(select){
       select.removeAttribute('aria-expanded'); select.removeAttribute('aria-controls');
       select.removeAttribute('aria-activedescendant');
@@ -72,7 +75,7 @@ export function installSelectOverlay(windowObject=window) {
     const select=event.target.closest?.('select');
     if(!select||select.disabled||select.multiple||select.size>1)return;
     if(event.key==='Tab'){close();return}
-    if(event.key==='Escape'){if(menu){event.preventDefault();close({restoreFocus:true})}return}
+    if(event.key==='Escape'){if(menu){event.preventDefault();event.stopImmediatePropagation();close({restoreFocus:true})}return}
     if(!['Enter',' ','ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
     event.preventDefault();
     if(!menu||active!==select){open(select);if(['Enter',' '].includes(event.key))return}

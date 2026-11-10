@@ -1,3 +1,4 @@
+import {AnimatedDetails} from './ui-motion.jsx';
 import React,{useState} from 'react';
 
 export default function AccountLifecycle({account,csrf,api,confirmModal,onRefresh}) {
@@ -11,5 +12,5 @@ export default function AccountLifecycle({account,csrf,api,confirmModal,onRefres
       setNotice(value.message);await onRefresh?.();
     }catch(error){setNotice(error.message)}finally{setBusy(false)}
   };
-  return <div className="account-lifecycle"><details><summary>管理托管</summary><div><button type="button" disabled={busy} onClick={()=>perform(false)}>停止托管</button><button type="button" className="danger-text" disabled={busy} onClick={()=>perform(true)}>解除绑定</button></div></details>{notice&&<small role="status">{notice}</small>}</div>;
+  return <div className="account-lifecycle"><AnimatedDetails><summary>管理托管</summary><div><button type="button" disabled={busy} onClick={()=>perform(false)}>停止托管</button><button type="button" className="danger-text" disabled={busy} onClick={()=>perform(true)}>解除绑定</button></div></AnimatedDetails>{notice&&<small role="status">{notice}</small>}</div>;
 }

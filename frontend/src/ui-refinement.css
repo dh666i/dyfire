@@ -1,0 +1,216 @@
+/* Functional pages share a quieter surface and a consistent reading scale.
+   Load after ui-motion.css. Homepage compositions and navigation geometry
+   remain owned by their dedicated stylesheets. */
+:root {
+  --ui-font: Inter,"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --ui-surface: #1d171b;
+  --ui-surface-inset: #171216;
+  --ui-surface-raised: #261f23;
+  --ui-surface-border: rgba(255,230,213,.075);
+  --ui-divider: rgba(255,230,213,.085);
+  --ui-field-border: rgba(255,230,213,.4);
+  --ui-row-hover: rgba(255,149,87,.055);
+  --ui-row-selected: rgba(255,132,64,.085);
+  --ui-surface-shadow: 0 2px 3px rgba(0,0,0,.04),0 12px 32px rgba(0,0,0,.12);
+  --ui-heading-tracking: -.025em;
+}
+html[data-theme="light"] {
+  --ui-surface: #fffdf9;
+  --ui-surface-inset: #f6f2ed;
+  --ui-surface-raised: #ffffff;
+  --ui-surface-border: rgba(83,58,43,.07);
+  --ui-divider: rgba(83,58,43,.095);
+  --ui-field-border: rgba(83,58,43,.6);
+  --ui-row-hover: rgba(231,105,43,.055);
+  --ui-row-selected: rgba(231,105,43,.085);
+  --ui-surface-shadow: 0 2px 3px rgba(73,45,28,.025),0 10px 28px rgba(73,45,28,.045);
+}
+
+/* Weight, spacing and tabular figures do more work than decorative labels. */
+html .fire-main .section-head h2,
+html .fire-main .simple-grid > .card > h2 { font:500 20px/1.45 var(--ui-font); letter-spacing:-.018em; color:var(--ink-dark); }
+html .fire-main .section-head { align-items:center; gap:12px 20px; margin-bottom:20px; }
+html .fire-main .section-head .muted-copy { margin:5px 0 0; }
+html .fire-main .section-head > :is(a,.muted-copy,.eyebrow) { font:400 12px/1.6 var(--ui-font); color:var(--ink-soft); letter-spacing:0; }
+html .fire-main :is(.table-head,.runs-count,.admin-pagination,.today-board-date) { font-family:var(--ui-font); font-size:12px; letter-spacing:0; text-transform:none; }
+html .fire-main :is(.task-row time,.admin-row time,.metric strong,.account-card-meta strong,.runs-summary-item b,.update-version-grid strong,.resource-series b) { font-family:var(--ui-font); font-variant-numeric:tabular-nums lining-nums; }
+html .fire-main :is(.person-cell b,.run-row b,.admin-row .row-primary b,.admin-run-title > b) { font-size:14px; font-weight:500; line-height:1.55; letter-spacing:0; }
+html .fire-main :is(.task-row,.run-row,.admin-row) small { font-size:12px; line-height:1.6; }
+html .fire-main :is(.person-cell small,.task-row time small,.admin-row > .row-secondary,.admin-row time,.run-row small,.run-guidance-copy) { color:var(--ink-soft); }
+html :is(.fire-main,.drawer,.modal-overlay) .badge { font:500 12px/1.5 var(--ui-font); font-variant-numeric:tabular-nums; gap:6px; }
+html :is(.fire-main,.drawer,.modal-overlay) .badge i { width:6px; height:6px; flex:0 0 6px; }
+
+/* Single, readable surfaces; only top navigation and the dock use glass. */
+html .fire-main .route-view > .card,
+html .fire-main :is(.studio-layout,.account-grid,.simple-grid,.admin-insights-grid,.mail-settings-grid,.admin-business-grid) > .card {
+  border:1px solid var(--ui-surface-border);
+  border-radius:var(--radius-card,18px);
+  background:var(--ui-surface);
+  color:var(--ink-dark);
+  box-shadow:var(--ui-surface-shadow);
+}
+html .fire-main .studio-layout .composer-card { background:var(--ui-surface); border-color:var(--ui-surface-border); border-radius:var(--radius-card,18px); box-shadow:var(--ui-surface-shadow); }
+html .fire-main .metric-grid:not(.admin-queue-metrics) > .metric {
+  min-width:0;
+  min-height:120px;
+  align-content:start;
+  gap:10px;
+  padding:20px 22px;
+  border:1px solid var(--ui-surface-border);
+  border-radius:var(--radius-card,18px);
+  background:var(--ui-surface);
+  box-shadow:var(--ui-surface-shadow);
+}
+html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > span { font-size:13px; line-height:1.5; }
+html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > strong { font-size:32px; line-height:1.15; font-weight:500; letter-spacing:-.04em; }
+html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > strong.metric-value-text { font-size:24px; letter-spacing:-.02em; }
+html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > small { font-size:12px; line-height:1.55; color:var(--ink-soft); }
+html .fire-main .metric-grid:not(.admin-queue-metrics) { gap:14px; margin-bottom:22px; }
+html .fire-main .admin-queue-metrics { background:var(--ui-surface-inset); border-color:transparent; }
+html .fire-main :is(.admin-insights-grid,.account-grid,.mail-settings-grid,.admin-business-grid) { gap:20px; }
+html .fire-main :is(.composer-preview-section,.composer-summary,.schedule-preview,.message-preview,.subscription-preview,.admin-change-preview) {
+  border:0;
+  border-radius:12px;
+  background:var(--ui-surface-inset);
+  box-shadow:none;
+}
+
+/* Inputs and actions align on the same 44px baseline. */
+html :is(.fire-main,.drawer,.modal-overlay) .input {
+  min-height:44px;
+  border-radius:var(--radius-control,12px);
+  border-color:var(--ui-field-border);
+  background-color:var(--ui-surface-inset);
+  color:var(--ink-dark);
+  font-family:var(--ui-font);
+  font-size:14px;
+  line-height:1.5;
+}
+html :is(.fire-main,.drawer,.modal-overlay) .input::placeholder { color:var(--ink-muted); opacity:1; }
+html :is(.fire-main,.drawer,.modal-overlay) .input:focus { border-color:var(--orange); box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 12%,transparent); }
+html :is(.fire-main,.drawer,.modal-overlay) .input:disabled { color:var(--control-disabled-ink); border-color:var(--ui-divider); background-color:var(--control-disabled-surface); opacity:1; }
+html :is(.fire-main,.drawer,.modal-overlay) .quality-button { min-height:44px; padding-inline:16px; border-radius:var(--radius-control,12px); font:500 13px/1.5 var(--ui-font); }
+html :is(.fire-main,.drawer,.modal-overlay) .quality-button.quiet:not(:disabled) { border-color:var(--ui-divider); background:var(--ui-surface-inset); color:var(--ink-dark); box-shadow:none; }
+html .fire-main .toolbar { gap:12px; margin-bottom:18px; }
+html .fire-main .toolbar .input { margin:0; }
+html .fire-main .admin-toolbar .muted-copy { font-size:12px; color:var(--ink-soft); }
+html .fire-main .admin-code-form { gap:16px; }
+html .fire-main :is(.composer-field-label,.composer-field-inline > span,.composer-text-label) { font-size:13px; line-height:1.6; }
+html .fire-main :is(.composer-quota-hint,.composer-preview-loading,.composer-account-link) { font-size:12px; line-height:1.6; color:var(--ink-soft); }
+
+/* A list is one surface. Soft row separators replace multiple outlined boxes. */
+html .fire-main .task-table { border:1px solid var(--ui-surface-border); border-radius:var(--radius-card,18px); background:var(--ui-surface); box-shadow:var(--ui-surface-shadow); }
+html .fire-main .table-head { padding:12px 16px; color:var(--ink-soft); background:var(--ui-surface-inset); font-weight:500; line-height:1.6; border:0; }
+html .fire-main .admin-table > .table-head { border-radius:10px; }
+html .fire-main :is(.task-row,.admin-row) { border-color:var(--ui-divider); background:transparent; }
+html .fire-main .task-row { min-height:78px; padding:14px 16px; }
+html .fire-main .task-row .person-cell { gap:12px; }
+html .fire-main .task-row .person-cell > span:last-child { gap:3px; }
+html .fire-main .task-row time { font-size:14px; font-weight:500; line-height:1.5; }
+html .fire-main .task-row time small { margin-top:3px; font-weight:400; }
+html .fire-main .task-row > .row-actions .icon-action { width:44px; min-width:44px; height:44px; min-height:44px; flex:0 0 44px; padding:0; border-radius:10px; }
+html .fire-main .task-row > .row-actions .icon-action.quiet:not(:disabled) { background:color-mix(in srgb,var(--orange) 7%,var(--ui-surface)); border-color:transparent; color:var(--orange-soft); }
+html .fire-main .admin-row { padding:16px; font-size:13px; line-height:1.6; }
+html .fire-main .admin-row time { font-size:12px; line-height:1.6; }
+html .fire-main .admin-row small { margin-top:4px; }
+html .fire-main .admin-row .row-action-cell { gap:6px; }
+html .fire-main .admin-row .row-action-cell .quality-button { min-height:36px; padding-inline:10px; font-size:12px; border-radius:9px; }
+html .fire-main .admin-row .row-action-cell .quality-button.quiet:not(:disabled) { background:transparent; border-color:transparent; }
+html .fire-main .admin-row .row-primary small { color:var(--ink-soft); }
+html .fire-main .admin-cell-button { color:var(--ink-dark); font-weight:500; }
+html .fire-main .admin-cell-button small { font-weight:400; }
+html .fire-main .admin-table > .admin-row:first-of-type,
+html .fire-main .admin-users-motion-list > .admin-row:first-child,
+html .fire-main .task-motion-list > .task-row:first-child { border-top-color:transparent; }
+html .fire-main .admin-pagination { margin-top:8px; padding-top:18px; border-top:1px solid var(--ui-divider); color:var(--ink-soft); }
+html .fire-main .admin-pagination .quality-button { min-height:38px; font-size:12px; padding-inline:14px; }
+html .fire-main .runs-card { padding:4px 0; }
+html .fire-main .runs-card > .section-head { padding:16px 20px 0; }
+html .fire-main .run-row { padding:18px 20px; border-color:var(--ui-divider); gap:14px; }
+html .fire-main .run-row .grow { min-width:0; gap:4px; }
+html .fire-main .run-row > .run-error { font-size:12px; line-height:1.65; color:var(--ink-soft); }
+html .fire-main .run-row.is-expanded { background:var(--ui-row-selected); }
+html .fire-main .runs-summary { gap:24px; padding:0 0 20px; border:0; margin:0; }
+html .fire-main .runs-summary-item { font:400 13px/1.5 var(--ui-font); color:var(--ink-soft); gap:8px; }
+html .fire-main .runs-summary-item b { font-size:23px; font-weight:500; letter-spacing:-.025em; }
+html .fire-main .admin-run-meta { gap:5px 14px; font-size:12px; color:var(--ink-soft); }
+html .fire-main :is(.admin-alert-row,.product-row,.announcement-row) { border-color:var(--ui-divider); }
+html .fire-main .admin-alert-row b { font-size:13px; line-height:1.55; }
+html .fire-main .admin-alert-row small { font-size:12px; line-height:1.6; color:var(--ink-soft); }
+
+/* Account identity, data and actions form three clear bands without extra rules. */
+html .fire-main .account-card { padding:24px; }
+html .fire-main .account-card-head { align-items:center; gap:14px; }
+html .fire-main .account-card-head h2 { margin:0 0 5px; font:500 21px/1.4 var(--ui-font); color:var(--ink-dark); }
+html .fire-main .account-card-head small { font-size:12px; line-height:1.5; color:var(--ink-soft); }
+html .fire-main .account-card .account-card-meta { gap:32px; padding:20px 0; margin-top:auto; border:0; }
+html .fire-main .account-card-meta span { gap:5px; color:var(--ink-soft); font-size:12px; opacity:1; }
+html .fire-main .account-card-meta strong { font-size:15px; font-weight:500; color:var(--ink-dark); }
+html .fire-main .account-card-actions { padding:0; gap:10px; border:0; flex-wrap:wrap; }
+html .fire-main .account-card .account-secondary { margin-top:16px; padding-top:0; border-top:0; gap:4px 16px; }
+html .fire-main .account-health-note { margin-top:16px; color:var(--ink-soft); }
+html .fire-main .product-row { min-height:0; padding-block:16px; }
+html .fire-main .product-row p { margin:5px 0 0; font-size:13px; line-height:1.7; }
+html .fire-main .product-row b { font-size:14px; line-height:1.6; }
+
+@media(hover:hover) and (pointer:fine) {
+  html .fire-main :is(.task-row,.admin-row,.run-row,.admin-alert-row):hover { background:var(--ui-row-hover); }
+  html .fire-main .admin-row:has(> .row-check:checked):hover,
+  html .fire-main .run-row.is-expanded:hover { background:var(--ui-row-selected); }
+  html .fire-main .admin-row .row-action-cell .quality-button.quiet:not(:disabled):hover { color:var(--orange-soft); background:var(--ui-row-selected); }
+  html :is(.fire-main,.drawer,.modal-overlay) .input:not(:disabled):not(:focus):hover { border-color:color-mix(in srgb,var(--ink-soft) 45%,var(--ui-field-border)); }
+}
+@media(min-width:701px) and (max-width:1199px) {
+  html .fire-main .admin-row.user-workbench-row {
+    grid-template-columns:24px minmax(0,1.2fr) minmax(0,1fr);
+    grid-template-areas:"check primary status" ". secondary health" ". actions actions";
+    gap:12px 18px;
+    padding:20px 12px;
+  }
+  html .fire-main .admin-row.user-workbench-row > .row-status { justify-self:end; text-align:right; }
+  html .fire-main .admin-row.user-workbench-row > .admin-user-health { justify-self:end; text-align:right; }
+  html .fire-main .admin-row.user-workbench-row > .row-action-cell { padding-top:2px; }
+}
+@media(max-width:700px) {
+  html .fire-main .section-head { gap:10px; margin-bottom:18px; }
+  html .fire-main .section-head h2,
+  html .fire-main .simple-grid > .card > h2 { font-size:18px; }
+  html .fire-main :is(.admin-insights-grid,.account-grid,.mail-settings-grid,.admin-business-grid) { gap:16px; }
+  html .fire-main .metric-grid:not(.admin-queue-metrics) { gap:10px; margin-bottom:18px; }
+  html .fire-main .metric-grid:not(.admin-queue-metrics) > .metric { padding:16px; min-height:112px; gap:9px; border-radius:16px; }
+  html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > strong { font-size:28px; }
+  html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > strong.metric-value-text { font-size:21px; }
+  html .fire-main .table-head { display:none; }
+  html .fire-main .task-row { padding:16px 14px; min-height:0; row-gap:9px; }
+  html .fire-main .task-row > .row-actions .icon-action { width:44px; min-width:44px; height:44px; min-height:44px; flex-basis:44px; }
+  html .fire-main .admin-row:not(.redemption-record-row) { padding:18px 4px; }
+  html .fire-main .admin-row.user-workbench-row { padding:18px 2px; row-gap:8px; }
+  html .fire-main .user-workbench-row > :is(.row-status,.row-secondary,.admin-user-health) { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+  html .fire-main .user-workbench-row > :is(.row-status,.row-secondary,.admin-user-health) small { margin:0; }
+  html .fire-main .admin-row .row-action-cell .quality-button { min-height:44px; padding-inline:12px; }
+  html .fire-main .admin-row .row-action-cell .quality-button.quiet:not(:disabled) { background:var(--ui-surface-inset); }
+  html .fire-main .admin-row.audit-row time { display:block; font-size:12px; }
+  html .fire-main .admin-pagination { gap:14px; }
+  html .fire-main .admin-pagination > div { width:100%; gap:10px; }
+  html .fire-main .admin-pagination .quality-button { flex:1; min-height:44px; }
+  html .fire-main .run-row { padding:16px 14px; gap:7px 10px; }
+  html .fire-main .runs-summary { gap:16px; flex-wrap:wrap; padding-bottom:18px; }
+  html .fire-main .runs-summary-item { font-size:12px; gap:6px; }
+  html .fire-main .runs-summary-item b { font-size:21px; }
+  html .fire-main .account-card { padding:20px; }
+  html .fire-main .account-card-head { gap:12px; }
+  html .fire-main .account-card-head h2 { font-size:19px; }
+  html .fire-main .account-card .account-card-meta { gap:24px; padding:18px 0; }
+  html .fire-main .account-card-actions > .button { flex:1; min-width:0; }
+}
+@media(pointer:coarse) {
+  html :is(.fire-main,.drawer,.modal-overlay) :is(input.input,textarea.input,select.input,.site-select) { font-size:16px; }
+  html .fire-main :is(.admin-pagination,.admin-bulk-bar,.row-action-cell) .quality-button { min-height:44px; }
+  html .fire-main .task-row > .row-actions .icon-action { width:44px; min-width:44px; height:44px; min-height:44px; flex-basis:44px; }
+}
+@media(forced-colors:active) {
+  html .fire-main .task-table,
+  html .fire-main .route-view > .card,
+  html .fire-main :is(.studio-layout,.account-grid,.simple-grid,.admin-insights-grid,.mail-settings-grid,.admin-business-grid) > .card { border-color:CanvasText; box-shadow:none; }
+  html :is(.fire-main,.drawer,.modal-overlay) :is(.input,.quality-button) { border-color:ButtonText; }
+}

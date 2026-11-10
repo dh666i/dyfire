@@ -1,0 +1,219 @@
+/* Administrator pages share the homepage's open, warm surface hierarchy.
+   Column definitions, chart marks and form/focus outlines stay with their owners. */
+html .fire-main .route-view[data-page^="/admin/"] {
+  --admin-surface:var(--paper);
+  --admin-soft:color-mix(in srgb,var(--orange) 3%,var(--admin-surface));
+  --admin-hover:color-mix(in srgb,var(--orange) 7%,var(--admin-surface));
+  --admin-selected:color-mix(in srgb,var(--orange) 11%,var(--admin-surface));
+}
+
+/* One quiet container per section, without nested outlines or heavy shadows. */
+html .fire-main .route-view[data-page^="/admin/"] > .card,
+html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) > .card {
+  border:0;
+  border-radius:22px;
+  background:var(--admin-surface);
+  color:var(--ink-dark);
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .card::before,
+html .fire-main .route-view[data-page^="/admin/"] .card::after { display:none; }
+html .fire-main .route-view[data-page^="/admin/"] > .card + .card { margin-top:24px; }
+html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) { gap:24px; }
+html .fire-main .route-view[data-page^="/admin/"] .section-head { margin-bottom:22px; }
+html .fire-main .route-view[data-page^="/admin/"] .section-head .eyebrow { color:var(--ink-soft); }
+
+/* Counts are one summary, rather than four competing boxes. */
+html .fire-main .route-view[data-page^="/admin/"] .metric-grid {
+  gap:0;
+  padding:4px;
+  margin-bottom:24px;
+  border:0;
+  border-radius:22px;
+  background:var(--admin-surface);
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .metric-grid > .card.metric {
+  margin:0;
+  border:0;
+  border-radius:18px;
+  background:transparent;
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .metric-grid > .metric::before,
+html .fire-main .route-view[data-page^="/admin/"] .metric-grid > .metric::after { display:none; }
+html .fire-main .route-view[data-page^="/admin/"] .metric-grid .metric > span { color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .metric-grid .metric > small { color:var(--ink-soft); line-height:1.6; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-queue-metrics { background:var(--admin-soft); }
+
+/* Preserve the established column geometry. Spacing and selection carry rows. */
+html .fire-main .route-view[data-page^="/admin/"] :is(.admin-table,.admin-runs-ledger) {
+  border:0;
+  background:transparent;
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .admin-table > .table-head {
+  padding-block:10px;
+  border:0;
+  background:transparent;
+  color:var(--ink-soft);
+  font-weight:500;
+}
+html .fire-main .route-view[data-page^="/admin/"] :is(.admin-row,.admin-run-record,.run-row,.admin-alert-row,.announcement-row) {
+  border:0;
+  border-radius:14px;
+  background:transparent;
+  box-shadow:none;
+  transition:background-color 160ms ease;
+}
+html .fire-main .route-view[data-page^="/admin/"] .admin-table .admin-row { margin-block:4px; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-row:has(> .row-check:checked) { background:var(--admin-selected); }
+html .fire-main .route-view[data-page^="/admin/"] .admin-run-record { margin-block:6px; padding:18px 14px; }
+html .fire-main .route-view[data-page^="/admin/"] .run-row { margin-block:4px; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-alert-row { padding:14px 12px; margin-block:4px; gap:12px; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-alert-clear { padding:20px 12px; color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .run-row.is-expanded { background:var(--admin-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .admin-run-attempts { margin-top:12px; color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .admin-run-attempts > div {
+  padding:10px 12px;
+  margin-top:4px;
+  border:0;
+  border-radius:10px;
+  background:var(--admin-soft);
+  line-height:1.65;
+}
+html .fire-main .route-view[data-page^="/admin/"] .today-board-account {
+  border:0;
+  border-radius:16px;
+  background:var(--admin-soft);
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .today-board-account small { color:var(--ink-soft); font-size:12px; line-height:1.65; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-bulk-bar { padding:12px 14px; background:var(--admin-selected); border:0; border-radius:14px; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-bulk-bar > span { color:var(--ink-dark); font-size:13px; }
+html .fire-main .route-view[data-page^="/admin/"] .redemption-generated-row { padding:12px; border:0; border-radius:12px; background:var(--admin-soft); }
+html .fire-main .route-view[data-page^="/admin/"] :is(.redemption-generated-row,.redemption-code-cell) code { line-height:1.7; }
+
+/* Filters remain secondary to page titles and primary actions. */
+html .fire-main .route-view[data-page^="/admin/"] .admin-segment-wrap { margin:0 0 24px; padding:0; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-segment {
+  background:var(--admin-soft);
+  border-color:transparent;
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .admin-subview-tabs {
+  margin:0 0 24px;
+  padding:5px;
+  border:0;
+  border-radius:16px;
+  background:var(--admin-soft);
+}
+html .fire-main .route-view[data-page^="/admin/"] .admin-subview-tabs button { color:var(--ink-soft); min-height:40px; border-radius:12px; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-subview-tabs button.active { color:var(--ink-dark); background:var(--admin-selected); box-shadow:none; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-pagination {
+  margin-top:16px;
+  padding-top:12px;
+  padding-bottom:0;
+  border:0;
+  color:var(--ink-soft);
+  font-size:12px;
+  line-height:1.7;
+}
+html .fire-main .route-view[data-page^="/admin/"] .admin-pagination .quality-button.quiet:not(:disabled) { background:var(--admin-soft); border-color:transparent; }
+
+/* Monitoring controls use light surfaces; chart geometry and axes are untouched. */
+html .fire-main .route-view[data-page^="/admin/"] .resource-series { gap:10px; }
+html .fire-main .route-view[data-page^="/admin/"] .resource-series button { border-color:transparent; border-radius:16px; background:var(--admin-soft); box-shadow:none; }
+html .fire-main .route-view[data-page^="/admin/"] .resource-series button[aria-pressed="true"] { border-color:transparent; background:var(--admin-selected); box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--orange) 32%,transparent); }
+html .fire-main .route-view[data-page^="/admin/"] .resource-series :is(small,span) { line-height:1.65; }
+html .fire-main .route-view[data-page^="/admin/"] .resource-series small,
+html .fire-main .route-view[data-page^="/admin/"] :is(.resource-footnote,.resource-x-axis,.resource-y-axis) { color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .resource-footnote { line-height:1.75; }
+
+/* Version, mail and business settings use spacing between meaningful groups. */
+html .fire-main .route-view[data-page^="/admin/"] .update-version-grid {
+  padding:4px 0 20px;
+  border:0;
+  gap:16px;
+  background:transparent;
+}
+html .fire-main .route-view[data-page^="/admin/"] .update-version-grid > div {
+  padding:16px;
+  border:0;
+  border-radius:14px;
+  background:var(--admin-soft);
+  box-shadow:none;
+}
+html .fire-main .route-view[data-page^="/admin/"] .update-version-grid strong { font-size:24px; line-height:1.4; letter-spacing:-.025em; overflow-wrap:anywhere; }
+html .fire-main .route-view[data-page^="/admin/"] .update-version-grid small { font-size:12px; color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .update-release-notes { border:0; padding:4px 14px; border-radius:14px; background:var(--admin-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .update-release-notes pre { font-size:12px; color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .update-rollback { margin-top:24px; padding:0; border:0; }
+html .fire-main .route-view[data-page^="/admin/"] .update-rollback label { font-size:13px; line-height:1.6; color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .update-progress { border:0; padding:14px 16px; border-radius:14px; background:var(--admin-selected); color:var(--ink-dark); }
+html .fire-main .route-view[data-page^="/admin/"] .admin-business-list { margin-top:24px; }
+html .fire-main .route-view[data-page^="/admin/"] .announcement-row { padding:16px 12px; margin-block:6px; }
+html .fire-main .route-view[data-page^="/admin/"] :is(.recorded-income,.cost-estimate-result) { border:0; padding:16px; border-radius:14px; background:var(--admin-soft); color:var(--ink-soft); }
+html .fire-main .route-view[data-page^="/admin/"] .recorded-income { margin-top:20px; gap:12px; }
+html .fire-main .route-view[data-page^="/admin/"] :is(.recorded-income,.cost-estimate-result) b { color:var(--ink-dark); }
+html .fire-main .route-view[data-page^="/admin/"] .cost-estimate-result small { color:var(--ink-soft); line-height:1.7; }
+html .fire-main .route-view[data-page^="/admin/"] .form-actions > span { color:var(--ink-soft); font-size:12px; line-height:1.7; }
+html .fire-main .route-view[data-page^="/admin/"] .quick-links a {
+  min-height:44px;
+  padding:12px;
+  border:0;
+  border-radius:12px;
+  background:transparent;
+  color:var(--ink-dark);
+  transform:none;
+}
+
+@media(hover:hover) and (pointer:fine) {
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-row,.admin-run-record,.run-row,.admin-alert-row,.announcement-row):hover { background:var(--admin-hover); }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-row:has(> .row-check:checked):hover,
+  html .fire-main .route-view[data-page^="/admin/"] .run-row.is-expanded:hover { background:var(--admin-selected); }
+  html .fire-main .route-view[data-page^="/admin/"] .resource-series button:not([aria-pressed="true"]):hover { background:var(--admin-hover); }
+  html .fire-main .route-view[data-page^="/admin/"] .quick-links a:hover { background:var(--admin-hover); transform:none; }
+}
+
+@media(max-width:700px) {
+  html .fire-main .route-view[data-page^="/admin/"] > .card,
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) > .card { border-radius:18px; }
+  html .fire-main .route-view[data-page^="/admin/"] > .card + .card { margin-top:20px; }
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) { gap:20px; }
+  html .fire-main .route-view[data-page^="/admin/"] .metric-grid { padding:2px; margin-bottom:20px; border-radius:18px; }
+  html .fire-main .route-view[data-page^="/admin/"] .metric-grid > .card.metric { border:0; padding-inline:14px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-queue-metrics > .card.metric { padding-inline:10px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-row:not(.redemption-record-row) { padding-inline:10px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-row.redemption-record-row { margin:0; border:0; border-radius:14px; background:var(--admin-soft); }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-run-record { padding-inline:10px; }
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-alert-row,.announcement-row) { padding-inline:10px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-segment-wrap { margin-bottom:20px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-subview-tabs { margin-bottom:20px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-subview-tabs button { min-height:44px; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-pagination { margin-top:12px; }
+  html .fire-main .route-view[data-page^="/admin/"] .resource-series { gap:6px; }
+  html .fire-main .route-view[data-page^="/admin/"] .resource-series button { padding:12px 9px; border-radius:12px; }
+  html .fire-main .route-view[data-page^="/admin/"] .update-version-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  html .fire-main .route-view[data-page^="/admin/"] .update-version-grid > div { padding:14px; border:0; }
+  html .fire-main .route-view[data-page^="/admin/"] .update-version-grid > div:last-child { grid-column:1/-1; }
+  html .fire-main .route-view[data-page^="/admin/"] .update-version-grid strong { font-size:21px; }
+}
+
+@media(hover:none) {
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-row,.admin-run-record,.run-row,.admin-alert-row,.announcement-row):hover { background:transparent; }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-row.redemption-record-row:hover,
+  html .fire-main .route-view[data-page^="/admin/"] .run-row.is-expanded:hover { background:var(--admin-soft); }
+  html .fire-main .route-view[data-page^="/admin/"] .admin-row:has(> .row-check:checked):hover { background:var(--admin-selected); }
+  html .fire-main .route-view[data-page^="/admin/"] :is(button.admin-alert-row,button.audit-row):active { background:var(--admin-hover); }
+  html .fire-main .route-view[data-page^="/admin/"] .quick-links a:hover { background:transparent; transform:none; }
+}
+
+@media(prefers-reduced-motion:reduce) {
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-row,.admin-run-record,.run-row,.admin-alert-row,.announcement-row) { transition:none; }
+}
+
+@media(forced-colors:active) {
+  html .fire-main .route-view[data-page^="/admin/"] .admin-row:has(> .row-check:checked) { outline:1px solid Highlight; outline-offset:-1px; }
+  html .fire-main .route-view[data-page^="/admin/"] .resource-series button[aria-pressed="true"] { outline:2px solid Highlight; outline-offset:2px; }
+}

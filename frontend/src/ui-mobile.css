@@ -1,0 +1,54 @@
+/* Mobile geometry only. Colors, surfaces and motion remain owned by the
+   shared design system; these rules keep reading and touch controls usable. */
+@media (max-width:1100px) {
+  html { scroll-padding-bottom:calc(100px + env(safe-area-inset-bottom,0px)); }
+  body:has(.drawer[aria-modal="true"],.modal-overlay) .mobile-dock {
+    visibility:hidden;
+    pointer-events:none;
+  }
+  .fire-main .main-inner :is(input,textarea,select,button,a,[role="radio"]) {
+    scroll-margin-block:16px calc(100px + env(safe-area-inset-bottom,0px));
+  }
+}
+
+@media (pointer:coarse) and (max-width:1100px) {
+  /* Release the bottom edge while typing, including browsers that resize
+     only visualViewport. Mouse-only desktop layouts are unaffected. */
+  .fire-shell:has(.main-inner :is(textarea:focus,[contenteditable="true"]:focus,
+    input:focus:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]))) .mobile-dock {
+    visibility:hidden;
+    pointer-events:none;
+  }
+}
+
+@media (max-width:700px), (pointer:coarse) and (max-width:1100px) {
+  /* The library's small preset is appropriate for mouse input. Retain its
+     inset slider and equal geometry while giving every choice 44px to tap. */
+  .fire-main .admin-segment { --rs-h:50px !important; min-height:50px; }
+  .fire-main .admin-segment .rubber-segment__item { height:44px; min-height:44px; }
+  .fire-main .admin-segment .rubber-segment__content { line-height:1.25; }
+  .fire-main .runs-toolbar>.admin-segment { width:100%; }
+  .fire-main .runs-toolbar>.admin-segment .rubber-segment__item { min-width:44px; padding-inline:6px; }
+  .drawer .workspace-tabs button { min-height:44px; }
+  .drawer .drawer-head>div { min-width:0; flex:1; }
+  .drawer .drawer-head h2 { min-width:0; overflow-wrap:anywhere; }
+  .drawer-backdrop .drawer:not(.drawer-customer):not(.drawer-fullscreen) { max-height:calc(var(--visible-height,100dvh) - 24px); }
+  .drawer-backdrop .drawer.drawer-fullscreen { height:var(--visible-height,100dvh); max-height:var(--visible-height,100dvh); }
+  .drawer :is(.drawer-content,.scan-panel,.cloud-fullscreen-content) { min-height:0; overscroll-behavior:contain; }
+  .drawer :is(input,textarea,select) { scroll-margin-block:12px; }
+  .drawer :is(.edit-target>div,.contact-row>.grow) { min-width:0; }
+  .drawer :is(.edit-target b,.edit-target small,.contact-row b,.contact-row small) { overflow-wrap:anywhere; white-space:normal; }
+  .drawer .edit-target>.avatar { flex-shrink:0; }
+  .fire-main .account-card-head>.grow { min-width:0; }
+  .fire-main .account-card-head :is(h2,small) { overflow-wrap:anywhere; }
+  .fire-main .task-row .person-cell>span:last-child { min-width:0; }
+  .fire-main .task-row .person-cell b { overflow-wrap:anywhere; white-space:normal; }
+  .fire-main .task-context>div { min-width:0; }
+  .fire-main .task-context b { overflow-wrap:anywhere; }
+  .site-select-option>span { min-width:0; overflow-wrap:anywhere; }
+  .site-select-option svg { flex-shrink:0; }
+  .site-select-option,html .drawer .drawer-tools button { min-height:44px; }
+  .drawer.quality-sheet[data-short-viewport] .contact-picker-coverage small { display:none; }
+  .drawer.quality-sheet[data-short-viewport] .contact-picker-footer { gap:6px; padding:10px 18px max(10px,env(safe-area-inset-bottom,0px)); }
+  .drawer.quality-sheet[data-short-viewport] .contact-picker-actions { gap:6px; }
+}

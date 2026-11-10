@@ -1,0 +1,155 @@
+/* Dialogs use the same quiet surfaces as the daily workspace.
+   This layer owns appearance, not viewport geometry, focus or motion. */
+html .drawer,
+html[data-theme="light"] .drawer,
+html .modal-dialog,
+html[data-theme="light"] .modal-dialog {
+  background:var(--ui-surface);
+  color:var(--ink-dark);
+  border-color:var(--ui-surface-border);
+  background-image:none;
+  box-shadow:0 20px 64px rgba(0,0,0,.2);
+}
+html[data-theme="light"] :is(.drawer,.modal-dialog) { box-shadow:0 20px 64px rgba(58,38,26,.14); }
+html .drawer .drawer-head,
+html[data-theme="light"] .drawer .drawer-head {
+  border-bottom:0;
+  background:var(--ui-surface);
+}
+html .drawer:not(.drawer-customer):not(.quality-sheet) .drawer-head { padding:24px 26px 16px; }
+html .drawer .drawer-head h2 { font:500 22px/1.4 var(--ui-font); letter-spacing:-.025em; }
+html .drawer:not(.drawer-customer):not(.quality-sheet) > .drawer-content { padding:8px 26px 26px; }
+html .drawer .drawer-foot {
+  border-top:0;
+  background:var(--ui-surface);
+  box-shadow:0 -10px 24px -16px rgba(0,0,0,.28);
+}
+html .drawer :is(.form-stack,.admin-editor-form) { gap:22px; }
+html .drawer :is(.form-stack,.form-grid,.admin-form-section)>label { font-size:13px; line-height:1.6; gap:8px; color:var(--ink-soft); }
+html .drawer :is(.input,.textarea),
+html .modal-dialog .input {
+  border-width:1px;
+  border-style:solid;
+}
+html .drawer .edit-target,
+html .drawer .admin-editor-form .edit-target {
+  padding:0 0 4px;
+  border:0;
+  background:transparent;
+  gap:14px;
+}
+html .drawer .edit-target>div { min-width:0; }
+html .drawer .edit-target b { font-size:16px; line-height:1.5; font-weight:500; overflow-wrap:anywhere; }
+html .drawer .edit-target small { font-size:12px; line-height:1.6; color:var(--ink-soft); }
+html .drawer .admin-form-section { border:0; padding:0; gap:20px; }
+html .drawer .admin-locked-target { border:0; padding:14px 16px; gap:5px; border-radius:12px; background:var(--ui-surface-inset); font-size:12px; color:var(--ink-soft); }
+html .drawer .admin-locked-target small { font-size:12px; line-height:1.6; }
+html .drawer .admin-editor-form .setting-actions {
+  border-top:0;
+  padding-top:16px;
+  background:var(--ui-surface);
+  box-shadow:0 -10px 20px -16px rgba(0,0,0,.24);
+}
+html .drawer :is(.admin-change-preview,.inline-feedback) { border:0; border-radius:12px; padding:14px 16px; font-size:13px; line-height:1.65; }
+html .drawer .admin-change-preview { background:var(--ui-surface-inset); color:var(--ink-soft); }
+html .drawer .inline-feedback { background:color-mix(in srgb,var(--orange) 7%,var(--ui-surface)); color:var(--ink-soft); }
+html .drawer .inline-feedback.danger-text { background:color-mix(in srgb,var(--state-danger) 8%,var(--ui-surface)); color:var(--state-danger); }
+
+/* Friend search, results and selection actions remain one continuous panel. */
+html .drawer .contact-picker-content .search-input { margin-bottom:10px; }
+html .drawer .drawer-tools { align-items:center; flex-wrap:wrap; gap:4px 12px; padding-bottom:12px; font-size:12px; line-height:1.6; }
+html .drawer .drawer-tools button { min-height:40px; padding:6px 0; font-size:12px; color:var(--orange-soft); }
+html .drawer .drawer-tools button:disabled { color:var(--control-disabled-ink); cursor:not-allowed; }
+html .drawer .contact-picker-content .contact-row { padding:12px 10px; margin-bottom:4px; border-color:transparent; border-radius:14px; background:transparent; }
+html .drawer .contact-picker-content .contact-row.is-selected { background:var(--ui-row-selected); border-color:color-mix(in srgb,var(--orange) 32%,transparent); }
+html .drawer .contact-row b { font-size:14px; font-weight:500; line-height:1.55; color:var(--ink-dark); overflow-wrap:anywhere; }
+html .drawer .contact-row small { margin-top:4px; font-size:12px; line-height:1.5; color:var(--ink-soft); }
+html .drawer .contact-row.disabled { opacity:1; color:var(--ink-muted); }
+html .drawer .contact-row.disabled :is(b,small) { color:var(--ink-muted); }
+html .drawer .contact-row.disabled .avatar { opacity:.6; }
+html .drawer .contact-picker-footer { gap:12px; }
+html .drawer .contact-picker-coverage { gap:4px; }
+html .drawer .contact-picker-coverage b { font-size:12px; line-height:1.5; }
+html .drawer .contact-picker-coverage small { font-size:12px; line-height:1.65; color:var(--ink-soft); }
+html .drawer .contact-picker-actions>span { font-size:12px; color:var(--ink-soft); }
+html .drawer .contact-picker-error { padding:10px 12px; font-size:12px; border-radius:12px; color:var(--state-danger); background:color-mix(in srgb,var(--state-danger) 7%,var(--ui-surface)); }
+html .drawer .contact-picker-loading { border:0; min-height:38px; margin:0 0 8px; background:var(--ui-surface-inset); color:var(--ink-soft); font-size:12px; }
+
+/* Binding keeps the full remote image untouched. Only its surrounding UI is
+   restyled; aspect ratio, pointer coordinates and expand controls stay owned
+   by the binding components. */
+/* Intrinsic grid rows can collapse under an aspect-ratio remote frame inside
+   a capped scroll region. Keep each section at its full height and scroll. */
+html .drawer .scan-panel { display:flex; flex-direction:column; align-items:center; row-gap:16px; }
+html .drawer .scan-panel > * { flex-shrink:0; }
+html .drawer .scan-panel h3 { font:500 17px/1.55 var(--ui-font); letter-spacing:-.015em; text-transform:none; color:var(--ink-dark); }
+html .drawer .scan-panel>p { max-width:60ch; font-size:13px; line-height:1.75; color:var(--ink-soft); }
+html .drawer :is(.scan-stage,.binding-preview) { border-color:var(--ui-surface-border); border-radius:16px; box-shadow:none; }
+html .drawer .binding-preview { background:var(--ui-surface-inset); color:var(--ink-dark); }
+html .drawer .scan-progress-four { gap:8px; margin:0 auto 8px; }
+html .drawer .scan-progress-step { min-width:0; flex-shrink:0; gap:8px; font-size:12px; line-height:1.5; color:var(--ink-soft); }
+html .drawer .scan-progress-step.active { color:var(--orange-soft); }
+html .drawer .scan-progress-step.complete { color:var(--green-bright); }
+html .drawer .scan-progress-step.complete .scan-progress-dot { background:var(--green-bright); border-color:var(--green-bright); }
+html .drawer .scan-progress-four .scan-progress-line { background:var(--ui-divider); }
+html .drawer .scan-progress-four .scan-progress-line.complete { background:var(--green-bright); }
+html .drawer .scan-loading-overlay,
+html .drawer .scan-stage.scan-frame-error .scan-loading-overlay { background:var(--ui-surface-inset); color:var(--ink-dark); }
+html .drawer .scan-loading-overlay b { font:500 14px/1.6 var(--ui-font); }
+html .drawer .scan-loading-overlay small { color:var(--ink-soft); font-size:12px; line-height:1.65; }
+html .drawer .scan-loading-overlay .button { min-height:44px; font-size:12px; }
+html .drawer .scan-loading-spinner { border-color:color-mix(in srgb,var(--orange) 18%,transparent); border-top-color:var(--orange); }
+html .drawer .verification-panel { gap:16px; border:0; border-radius:16px; padding:20px; background:var(--ui-surface-inset); }
+html .drawer .verification-icon { flex-shrink:0; width:32px; height:32px; border:0; border-radius:10px; background:color-mix(in srgb,var(--orange) 10%,transparent); color:var(--orange-soft); }
+html .drawer .verification-icon svg { width:19px; height:19px; }
+html .drawer .verification-title b { font-size:14px; font-weight:500; color:var(--ink-dark); }
+html .drawer :is(.verification-title small,.verification-field,.verification-hint) { font-size:12px; line-height:1.6; color:var(--ink-soft); }
+html .drawer .verification-actions { flex-wrap:wrap; gap:10px 14px; }
+html .drawer :is(.cloud-tools,.binding-help) { margin:0; border:0; background:transparent; }
+html .drawer :is(.cloud-tools,.binding-help)>summary { min-height:44px; color:var(--ink-soft); font-size:13px; }
+html .drawer .cloud-interaction { border:0; gap:12px; background:transparent; padding:8px 0 4px; }
+html .drawer .cloud-interaction-copy { flex-wrap:wrap; gap:6px 10px; font-size:12px; line-height:1.65; }
+html .drawer .cloud-interaction-copy .eyebrow { font:500 10px/1.5 var(--ui-font); letter-spacing:.04em; color:var(--ink-muted); }
+html .drawer .cloud-interaction-status { font-size:12px; line-height:1.65; }
+html .drawer .cloud-frame-controls { gap:8px; }
+html .drawer .cloud-frame-controls>span,
+html .drawer .cloud-frame-controls>small { color:var(--ink-soft); font-size:12px; line-height:1.6; }
+html .drawer .cloud-frame-controls .button { min-height:44px; font-size:12px; padding-inline:12px; }
+html .drawer.drawer-centered>.scan-panel>.button:last-child { position:static; background:var(--ui-surface); box-shadow:none; }
+
+html .modal-dialog { border-radius:22px; }
+html .modal-dialog .modal-dialog-head { padding:24px 24px 12px; border-bottom:0; }
+html .modal-dialog .modal-dialog-head h2 { color:var(--ink-dark); font:500 20px/1.45 var(--ui-font); letter-spacing:-.02em; text-transform:none; }
+html .modal-dialog .modal-dialog-head .eyebrow { color:var(--ink-soft); font:500 10px/1.5 var(--ui-font); letter-spacing:.04em; }
+html .modal-dialog .modal-dialog-body { padding:4px 24px 24px; gap:20px; }
+html .modal-dialog .modal-host-message { max-width:none; font-size:13px; line-height:1.8; color:var(--ink-soft); }
+html .modal-dialog .modal-host-field { font-size:13px; color:var(--ink-soft); }
+html .modal-dialog .modal-host-actions { padding-top:8px; background:var(--ui-surface); }
+
+@media(hover:hover) and (pointer:fine) {
+  html .drawer .contact-picker-content .contact-row:not(.disabled):not(.is-selected):hover { background:var(--ui-row-hover); }
+}
+@media(max-width:700px) {
+  html .drawer:not(.drawer-customer):not(.quality-sheet) .drawer-head { padding:20px 20px 14px; }
+  html .drawer .drawer-head h2 { font-size:21px; }
+  html .drawer:not(.drawer-customer):not(.quality-sheet)>.drawer-content { padding:4px 20px calc(22px + env(safe-area-inset-bottom)); }
+  html .drawer.quality-sheet .drawer-head { padding:6px 20px 14px; }
+  html .drawer.quality-sheet .contact-picker-content { padding:4px 18px 12px; }
+  html .drawer .contact-picker-footer { padding:14px 18px calc(16px + env(safe-area-inset-bottom)); }
+  html .drawer .drawer-tools { gap:4px 10px; }
+  html .drawer .drawer-tools>span { flex-basis:100%; }
+  html .drawer .contact-picker-content .contact-row { padding:12px 8px; }
+  html .drawer .scan-progress-four { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+  html .drawer .scan-progress-four .scan-progress-line { display:none; }
+  html .drawer .scan-progress-step { font-size:11px; gap:7px; }
+  html .drawer .verification-panel { padding:16px; }
+  html .drawer .admin-editor-form .edit-target { flex-wrap:wrap; }
+  html .drawer .admin-editor-form .setting-actions { padding-bottom:2px; }
+  html .modal-dialog .modal-dialog-head { padding:22px 20px 12px; }
+  html .modal-dialog .modal-dialog-body { padding:4px 20px calc(20px + env(safe-area-inset-bottom)); }
+}
+@media(forced-colors:active) {
+  html :is(.drawer,.modal-dialog) { border:1px solid CanvasText; }
+  html .drawer :is(.input,.textarea),html .modal-dialog .input { border-color:ButtonText; }
+  html .drawer .contact-picker-content .contact-row.is-selected { border-color:Highlight; }
+}

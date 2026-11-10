@@ -1,0 +1,58 @@
+/* Resource-specific composition. Shared card, field and navigation styles stay untouched. */
+html .fire-main .resource-history.resource-history-chart .resource-history-heading { flex-wrap:wrap; align-items:flex-start; gap:16px; }
+html .fire-main .resource-history.resource-history-chart .resource-history-heading small { display:block; margin-top:6px; font-size:12px; line-height:1.6; color:var(--ink-soft); }
+.resource-header-controls { display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; }
+.resource-range { display:inline-flex; gap:3px; padding:4px; border-radius:12px; background:var(--ui-surface-inset); }
+.resource-range button { min-height:36px; padding:8px 11px; border:0; border-radius:9px; color:var(--ink-soft); background:transparent; font:500 12px/1.5 var(--ui-font); white-space:nowrap; cursor:pointer; }
+.resource-range button[aria-pressed="true"] { background:var(--paper-strong); color:var(--ink-dark); box-shadow:0 2px 6px rgba(0,0,0,.06); }
+.resource-state { display:inline-flex; align-items:center; gap:6px; color:var(--ink-soft); font-size:12px; line-height:1.6; white-space:nowrap; }
+.resource-state>i { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.resource-state.is-fresh { color:var(--green-bright); }
+.resource-state:is(.is-stale,.is-partial,.is-missing) { color:var(--state-warning); }
+.resource-state.is-error { color:var(--state-danger); }
+html .fire-main .resource-history.resource-history-chart .resource-series button { min-width:0; }
+html .fire-main .resource-history.resource-history-chart .resource-series small { line-height:1.7; }
+.resource-state-note { margin:16px 0 0; font-size:12px; line-height:1.7; color:var(--state-warning); }
+.resource-state-note.is-error { color:var(--state-danger); }
+.resource-chart-description { display:flex; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; margin:22px 0 16px; font-size:12px; line-height:1.6; color:var(--ink-soft); }
+html .fire-main .resource-history.resource-history-chart .resource-plot { height:214px; gap:10px; }
+html .fire-main .resource-history.resource-history-chart .resource-chart-surface { position:relative; height:100%; min-width:0; flex:1; touch-action:pan-y; cursor:crosshair; border-radius:4px; }
+html .fire-main .resource-history.resource-history-chart .resource-chart-surface:focus-visible { outline:2px solid var(--orange-soft); outline-offset:5px; }
+html .fire-main .resource-history.resource-history-chart .resource-chart-surface svg { display:block; width:100%; height:100%; overflow:visible; }
+html .fire-main .resource-history.resource-history-chart .resource-grid-line { stroke:var(--ui-divider); }
+.resource-point { position:absolute; display:block; width:6px; height:6px; transform:translate(-50%,-50%); border-radius:50%; background:var(--resource-color); pointer-events:none; }
+.resource-point.is-active { width:8px; height:8px; box-shadow:0 0 0 3px var(--paper); }
+.resource-tooltip { position:absolute; top:12px; left:clamp(0px,calc(var(--inspection-position) - 110px),max(0px,calc(100% - 220px))); width:min(220px,100%); display:grid; gap:7px; padding:13px 15px; border:1px solid var(--hairline); border-radius:14px; color:var(--ink-dark); background:var(--ui-surface-raised); box-shadow:var(--ui-float-shadow); pointer-events:none; z-index:2; }
+.resource-tooltip small,.resource-tooltip>span { color:var(--ink-soft); font-size:11px; line-height:1.6; }
+.resource-tooltip strong { display:flex; justify-content:space-between; gap:12px; font-size:13px; font-weight:500; }
+.resource-tooltip b { font-size:16px; font-weight:500; font-variant-numeric:tabular-nums; }
+.resource-chart-help { min-height:40px; display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; margin-top:12px; color:var(--ink-soft); font-size:12px; line-height:1.7; }
+.resource-chart-help>button { min-height:36px; padding:8px 10px; border:0; border-radius:9px; background:var(--ui-row-selected); color:var(--orange-soft); font:500 12px/1.5 var(--ui-font); cursor:pointer; }
+.resource-empty { display:grid; justify-items:center; align-content:center; gap:12px; min-height:264px; padding:36px 20px; text-align:center; }
+.resource-empty-mark { display:grid; place-items:center; width:42px; height:42px; border-radius:14px; color:var(--ink-soft); background:var(--ui-surface-inset); }
+.resource-empty-mark>svg { width:22px; height:22px; }
+.resource-empty-mark>i { width:20px; height:20px; border:2px solid var(--ui-divider); border-top-color:var(--orange-soft); border-radius:50%; animation:resource-loading 800ms linear infinite; }
+.resource-empty>b { color:var(--ink-dark); font-size:14px; font-weight:500; line-height:1.6; }
+.resource-empty>p { max-width:40ch; margin:0; color:var(--ink-soft); font-size:12px; line-height:1.8; }
+.resource-empty.is-error .resource-empty-mark { color:var(--state-danger); }
+html .fire-main .resource-history.resource-history-chart .resource-footnote { margin-top:14px; line-height:1.75; }
+html .fire-main .resource-history.resource-history-chart .resource-snapshot-note { margin-top:5px; }
+.resource-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+@keyframes resource-loading { to { transform:rotate(360deg); } }
+@media(hover:hover) and (pointer:fine) { .resource-range button:not([aria-pressed="true"]):hover,.resource-chart-help>button:hover { background:var(--ui-row-hover); color:var(--ink-dark); } }
+@media(max-width:700px) {
+  .resource-header-controls { width:100%; justify-content:space-between; }
+  .resource-range button { min-height:40px; padding-inline:10px; }
+  html .fire-main .resource-history.resource-history-chart .resource-plot { height:188px; }
+  .resource-chart-description { margin-top:18px; gap:4px; font-size:11px; }
+  .resource-chart-help { font-size:11px; }
+  .resource-chart-help>button { min-height:44px; }
+  .resource-empty { min-height:238px; padding-inline:12px; }
+}
+@media(pointer:coarse) { .resource-range button { min-height:44px; } }
+@media(prefers-reduced-motion:reduce) { .resource-empty-mark>i { animation:none; } }
+@media(forced-colors:active) {
+  .resource-range button[aria-pressed="true"] { outline:1px solid Highlight; outline-offset:-1px; }
+  .resource-point { background:CanvasText; }
+  .resource-tooltip { border-color:CanvasText; background:Canvas; color:CanvasText; }
+}

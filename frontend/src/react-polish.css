@@ -56,35 +56,26 @@
 .workspace-task-row .row-action-cell { justify-self: end; }
 
 @media (max-width: 700px) {
-  /* Semantic areas override the historical nth-child rules without changing
-     the DOM order used by screen readers and keyboard navigation. */
-  .admin-row.user-workbench-row,
   .admin-row.subscription-workbench-row,
-  .admin-row.task-detail-row {
+.admin-row.task-detail-row {
     grid-template-columns: 24px minmax(0,1fr) auto;
     grid-template-areas: "check primary status" "check secondary actions";
     column-gap: 9px;
     row-gap: 7px;
     padding: 14px 0;
   }
-  .admin-row.user-workbench-row > .row-check,
   .admin-row.subscription-workbench-row > .row-check,
-  .admin-row.task-detail-row > .row-check { grid-area: check; justify-self: start; width: 18px; height: 18px; margin-top: 4px; }
-  .admin-row.user-workbench-row > .row-primary,
+.admin-row.task-detail-row > .row-check { grid-area: check; justify-self: start; width: 18px; height: 18px; margin-top: 4px; }
   .admin-row.subscription-workbench-row > .row-primary,
-  .admin-row.task-detail-row > .row-primary { grid-area: primary; }
-  .admin-row.user-workbench-row > .row-secondary,
+.admin-row.task-detail-row > .row-primary { grid-area: primary; }
   .admin-row.subscription-workbench-row > .row-secondary,
-  .admin-row.task-detail-row > .row-secondary { grid-area: secondary; }
-  .admin-row.user-workbench-row > .row-status,
+.admin-row.task-detail-row > .row-secondary { grid-area: secondary; }
   .admin-row.subscription-workbench-row > .row-status,
-  .admin-row.task-detail-row > .row-status { grid-area: status; justify-self: end; text-align: right; }
-  .admin-row.user-workbench-row > .row-action-cell,
+.admin-row.task-detail-row > .row-status { grid-area: status; justify-self: end; text-align: right; }
   .admin-row.subscription-workbench-row > .row-action-cell,
-  .admin-row.task-detail-row > .row-action-cell { grid-area: actions; justify-self: end; }
-  .admin-row.user-workbench-row .row-status,
+.admin-row.task-detail-row > .row-action-cell { grid-area: actions; justify-self: end; }
   .admin-row.subscription-workbench-row .row-status,
-  .admin-row.task-detail-row .row-status { max-width: 12em; white-space: normal; line-height: 1.35; }
+.admin-row.task-detail-row .row-status { max-width: 12em; white-space: normal; line-height: 1.35; }
   .admin-row .row-primary b { font-size: 12px; }
   .admin-row .row-primary small,
   .admin-row .row-secondary small,
@@ -1011,17 +1002,6 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .admin-insights-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr); gap:12px; margin-bottom:16px; }
 .admin-trend-card, .admin-alert-card { min-width:0; }
 .admin-trend-card .section-head h2, .admin-alert-card .section-head h2 { margin-top:5px; }
-.admin-trend-bars { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); align-items:end; gap:10px; min-height:150px; padding:12px 4px 0; border-bottom:1px solid var(--line); }
-.admin-trend-day { display:grid; align-items:end; justify-items:center; gap:8px; height:100%; min-width:0; }
-.admin-trend-track { width:min(28px,70%); height:108px; display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden; background:color-mix(in srgb,var(--line) 55%,transparent); }
-.admin-trend-track i { display:block; min-height:0; background:#438b65; }
-.admin-trend-track b { display:block; min-height:0; background:#c75f4e; }
-.admin-trend-day small { color:var(--muted); font:500 9px var(--mono); white-space:nowrap; }
-.admin-trend-legend { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding-top:12px; color:var(--muted); font-size:10px; }
-.admin-trend-legend span { display:inline-flex; align-items:center; gap:5px; }
-.admin-trend-legend i { width:7px; height:7px; background:#438b65; }
-.admin-trend-legend .trend-failed { background:#c75f4e; }
-.admin-trend-legend small { margin-left:auto; font-size:9px; }
 .admin-alert-list { display:grid; }
 .admin-alert-row { width:100%; display:grid; grid-template-columns:8px minmax(0,1fr) auto; align-items:center; gap:10px; padding:12px 0; border:0; border-top:1px solid var(--line); background:transparent; color:inherit; text-align:left; cursor:pointer; }
 .admin-alert-row > span:nth-child(2) { display:grid; gap:4px; min-width:0; }
@@ -1079,11 +1059,13 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 .admin-bulk-bar .button { min-height:32px; padding:0 10px; font-size:10px; }
 .admin-toolbar { justify-content:flex-start; flex-wrap:wrap; }
 .admin-toolbar .muted-copy { margin-left:auto; }
-.user-workbench-head, .user-workbench-row { grid-template-columns:36px minmax(160px,1.25fr) minmax(135px,.95fr) minmax(150px,1fr) minmax(130px,.85fr) auto; }
+.user-workbench-head, .user-workbench-row { grid-template-columns:28px minmax(160px,1.25fr) minmax(125px,.95fr) minmax(140px,1fr) minmax(130px,.85fr) 224px; }
+.user-workbench-row { font-size:13px; }
+.user-workbench-row small { font-size:12px; line-height:1.5; }
 .subscription-workbench-head, .subscription-workbench-row { grid-template-columns:36px minmax(150px,1.2fr) minmax(90px,.8fr) minmax(180px,1.1fr) auto; }
 .task-group-head, .task-group-row { grid-template-columns:minmax(180px,1.5fr) 70px 70px 100px auto; }
-.task-detail-head, .task-detail-row { grid-template-columns:30px minmax(150px,1.3fr) 90px 90px auto; }
-.user-workbench-row > input, .subscription-workbench-row > input, .task-detail-row > input { justify-self:center; accent-color:var(--accent); }
+.task-detail-head, .task-detail-row { grid-template-columns:30px minmax(150px,1.3fr) 90px 90px auto; }.subscription-workbench-row > input,
+.task-detail-row > input { justify-self:center; accent-color:var(--accent); }
 .audit-table-head, .audit-row { grid-template-columns:minmax(140px,1.2fr) minmax(100px,.8fr) minmax(140px,1fr) minmax(155px,1fr); }
 @media (max-width: 700px) {
   .drawer-centered-backdrop { align-items: flex-end; padding: 0; }
@@ -1101,9 +1083,6 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .drawer .workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .drawer .workspace-metrics .metric { min-height: 92px; }
   .admin-insights-grid { grid-template-columns:minmax(0,1fr); }
-  .admin-trend-bars { gap:5px; min-height:128px; }
-  .admin-trend-track { height:86px; width:min(24px,80%); }
-  .admin-trend-legend small { flex-basis:100%; margin-left:0; }
   .admin-toolbar { display:flex; }
   .admin-toolbar .input { flex:1 1 140px; max-width:none; }
   .admin-toolbar .muted-copy { flex:1 0 100%; margin-left:0; text-align:right; }
@@ -1114,54 +1093,25 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
   .workspace-plan-summary small { grid-column:1 / -1; }
   .admin-pagination { align-items:flex-start; flex-direction:column; }
   .user-workbench-head, .subscription-workbench-head, .task-group-head, .task-detail-head, .audit-table-head { display:none; }
-  .user-workbench-row, .subscription-workbench-row, .task-group-row, .task-detail-row, .audit-row { grid-template-columns:24px minmax(0,1fr) auto; grid-template-areas:"check primary status" ". secondary actions"; gap:6px 8px; padding:12px 0; }
-  /* Keep selection controls in the dedicated first grid area.  The generic
-     `.admin-row > :nth-child(1)` mobile rule is intentionally broad, so this
-     same-specificity override must target the first child rather than the
-     input element type alone. */
-  .user-workbench-row > :nth-child(1),
-  .subscription-workbench-row > :nth-child(1),
-  .task-detail-row > :nth-child(1) { grid-area:check; align-self:start; justify-self:start; margin-top:5px; }
-  .user-workbench-row > :nth-child(2), .subscription-workbench-row > :nth-child(2), .task-group-row > :nth-child(1), .task-detail-row > :nth-child(2), .audit-row > :nth-child(1) { grid-area:primary; }
-  .user-workbench-row > :nth-child(3), .subscription-workbench-row > :nth-child(4), .task-group-row > :nth-child(2), .task-detail-row > :nth-child(3), .audit-row > :nth-child(2) { grid-area:secondary; justify-self:start; }
-  .user-workbench-row > :nth-child(4), .subscription-workbench-row > :nth-child(3), .task-group-row > :nth-child(4), .task-detail-row > :nth-child(4) { grid-area:status; justify-self:end; }
-  .user-workbench-row > :nth-child(5), .subscription-workbench-row > :nth-child(5), .task-group-row > :nth-child(5), .task-detail-row > :nth-child(5), .audit-row > :nth-child(4) { grid-area:actions; justify-self:end; }
+  .subscription-workbench-row,
+.task-group-row,
+.task-detail-row,
+.audit-row { grid-template-columns:24px minmax(0,1fr) auto; grid-template-areas:"check primary status" ". secondary actions"; gap:6px 8px; padding:12px 0; }/* Keep selection controls in the dedicated first grid area.  The generic
+     `.admin-row > :nth-child(1)` mobile rule is intentionally broad,
+.subscription-workbench-row > :nth-child(1),
+.task-detail-row > :nth-child(1) { grid-area:check; align-self:start; justify-self:start; margin-top:5px; }.subscription-workbench-row > :nth-child(2),
+.task-group-row > :nth-child(1),
+.task-detail-row > :nth-child(2),
+.audit-row > :nth-child(1) { grid-area:primary; }.subscription-workbench-row > :nth-child(4),
+.task-group-row > :nth-child(2),
+.task-detail-row > :nth-child(3),
+.audit-row > :nth-child(2) { grid-area:secondary; justify-self:start; }.subscription-workbench-row > :nth-child(3),
+.task-group-row > :nth-child(4),
+.task-detail-row > :nth-child(4) { grid-area:status; justify-self:end; }.subscription-workbench-row > :nth-child(5),
+.task-group-row > :nth-child(5),
+.task-detail-row > :nth-child(5),
+.audit-row > :nth-child(4) { grid-area:actions; justify-self:end; }
   .audit-row > :nth-child(3) { grid-area:secondary; }
-
-  /* User workbench rows have a leading checkbox. Keep it in its own column
-     so the username, health state, and actions cannot collide on phones. */
-  .user-workbench-row {
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    grid-template-areas: "check primary status" ". secondary secondary" ". tertiary actions";
-    column-gap: 9px;
-    row-gap: 7px;
-    padding: 14px 0;
-  }
-  /* `.admin-row > :nth-child(1)` above is more specific than a single-class
-     selector, so keep the row class in this override. Without it the
-     checkbox falls into the identity column and appears beside the username
-     on narrow screens (the issue visible in the mobile customer screenshot).
-     The same specificity fix applies to subscription and task rows. */
-  .admin-row.user-workbench-row > input,
-  .admin-row.subscription-workbench-row > input,
-  .admin-row.task-detail-row > input { grid-area: check; justify-self: start; width: 18px; height: 18px; margin-top: 4px; }
-  .user-workbench-row > :nth-child(2) { grid-area: primary; min-width: 0; }
-  .user-workbench-row > :nth-child(3) { grid-area: status; min-width: 0; justify-self: end; text-align: right; overflow-wrap: anywhere; }
-  .user-workbench-row > :nth-child(4) { grid-area: secondary; min-width: 0; justify-self: start; overflow-wrap: anywhere; }
-  .user-workbench-row > :nth-child(5) { grid-area: tertiary; min-width: 0; justify-self: start; overflow-wrap: anywhere; }
-  .user-workbench-row > :nth-child(6) { grid-area: actions; justify-self: end; min-width: 0; }
-  .user-workbench-row .admin-cell-button b,
-  .user-workbench-row .admin-cell-button small,
-  .user-workbench-row > :nth-child(3) small,
-  .user-workbench-row > :nth-child(3) small,
-  .user-workbench-row > :nth-child(4) small,
-  .user-workbench-row > :nth-child(5) small { overflow-wrap: anywhere; white-space: normal; line-height: 1.45; }
-  .user-workbench-row .row-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-  .user-workbench-row .row-actions .button { min-height: 36px; padding-inline: 10px; }
-  .user-workbench-row > :nth-child(3) .badge,
-  .subscription-workbench-row > :nth-child(3) .badge,
-  .task-group-row > :nth-child(4) .badge,
-  .task-detail-row > :nth-child(4) .badge { max-width: 100%; white-space: normal; text-align: right; }
 
   .subscription-workbench-row > :nth-child(2),
   .subscription-workbench-row > :nth-child(4),
@@ -1275,5 +1225,22 @@ html[data-theme="light"] .toast { color:#1a1c1f; background:#fff; border-color:r
 }
 html[data-theme="light"] .modal-dialog { border-color: rgba(48,39,35,.14); box-shadow: 0 26px 70px rgba(56,45,38,.2); }
 
-/* Skips are visible in the recorded plan denominator. */
-.admin-trend-track .trend-skipped, .admin-trend-legend .trend-skipped { display:block; background:var(--orange); flex-shrink:0; }
+
+@media (max-width:1199px) {
+  .user-workbench-head { display:none; }
+  .admin-row.user-workbench-row {
+    grid-template-columns:24px minmax(0,1fr);
+    grid-template-areas:"check primary" ". status" ". secondary" ". health" ". actions";
+    gap:10px 12px; padding:18px 0; align-items:start;
+  }
+  .admin-row.user-workbench-row > .row-check { grid-area:check; width:20px; height:20px; margin:4px 0 0; justify-self:start; }
+  .admin-row.user-workbench-row > .row-primary { grid-area:primary; min-width:0; justify-self:stretch; }
+  .admin-row.user-workbench-row > .row-status { grid-area:status; max-width:none; text-align:left; justify-self:start; }
+  .admin-row.user-workbench-row > .row-secondary { grid-area:secondary; min-width:0; justify-self:stretch; }
+  .admin-row.user-workbench-row > .admin-user-health { grid-area:health; min-width:0; justify-self:start; }
+  .admin-row.user-workbench-row > .row-action-cell { grid-area:actions; min-width:0; justify-self:stretch; justify-content:flex-start; }
+  .user-workbench-row .admin-cell-button b { font-size:15px; }
+  .admin-row.user-workbench-row { font-size:13px; }
+  .admin-row.user-workbench-row small { font-size:12px; white-space:normal; overflow-wrap:anywhere; line-height:1.6; }
+  .admin-row.user-workbench-row .row-actions .button { min-height:44px; font-size:12px; }
+}

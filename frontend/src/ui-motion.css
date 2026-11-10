@@ -1,0 +1,36 @@
+/* Motion communicates navigation, selection and change using one vocabulary. */
+[data-reveal] { scroll-margin-block:24px; }
+.animated-details { overflow:clip; }
+.animated-details-body { min-height:0; }
+.animated-details[open]>.animated-details-body { animation:detail-content-enter 240ms var(--ui-ease); }
+.animated-details>summary[aria-expanded="false"]::after { transform:rotate(0deg); }
+.workspace-tabs { position:relative; isolation:isolate; }
+.drawer-customer .workspace-tabs::before { content:""; position:absolute; z-index:-1; top:4px; bottom:4px; left:4px; width:calc(50% - 6px); background:var(--paper-strong); border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.07),0 0 0 1px var(--hairline); transform:translateX(0); transition:transform 320ms cubic-bezier(.22,1,.36,1); }
+.drawer-customer .workspace-tabs[data-active="manage"]::before { transform:translateX(calc(100% + 4px)); }
+.drawer-customer .workspace-tabs button.active { background:transparent; box-shadow:none; }
+.drawer-customer .workspace-tabs button { transition:color 180ms ease; }
+.drawer-customer .customer-tab-content { animation:none; }
+.workspace-feedback { animation:feedback-enter 280ms var(--ui-ease); }
+.workspace-feedback>svg { animation:feedback-mark 320ms var(--ui-ease); }
+.customer-password,.workspace-diff { animation:detail-content-enter 240ms var(--ui-ease); }
+.quality-button,.site-select,.fire-theme,.task-row-menu-btn { transition:transform 180ms var(--ui-ease),background-color 180ms ease,border-color 180ms ease,box-shadow 180ms ease,color 180ms ease; }
+.quality-button>.button-progress { animation:detail-content-enter 160ms ease; }
+.input { transition:border-color 180ms ease,box-shadow 180ms ease,background-color 180ms ease; }
+.input:focus-visible { border-color:var(--orange); box-shadow:0 0 0 3px color-mix(in srgb,var(--orange) 12%,transparent); }
+.customer-list-row,.admin-row,.product-row { transition:background-color 180ms ease,border-color 180ms ease; }
+.fire-theme svg { transition:transform 260ms var(--ui-ease); }
+.fire-theme:active svg { transform:rotate(35deg) scale(.86); }
+@keyframes feedback-enter { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }
+@keyframes feedback-mark { from { opacity:0; transform:scale(.65); } to { opacity:1; transform:scale(1); } }
+@keyframes detail-content-enter { from { opacity:0; transform:translateY(-5px); } to { opacity:1; transform:none; } }
+@media(hover:hover) and (pointer:fine) {
+  .quality-button:not(:disabled):hover { transform:translateY(-2px); box-shadow:0 5px 12px rgba(0,0,0,.08); }
+  .quality-button:not(:disabled):active { transform:translateY(0) scale(.965); box-shadow:none; }
+  .quality-button.icon-action:not(:disabled):hover { transform:translateY(-1px); }
+  .customer-list-row:hover,.admin-row:not(.table-head):hover { background:var(--surface-soft); }
+}
+@media(prefers-reduced-motion:reduce) {
+  .drawer-customer .workspace-tabs::before,.drawer-customer .workspace-tabs button,.quality-button,.site-select,.fire-theme,.fire-theme svg,.task-row-menu-btn,.input,.customer-list-row,.admin-row,.product-row { transition:none; }
+  .animated-details[open]>.animated-details-body,.workspace-feedback,.workspace-feedback>svg,.customer-password,.workspace-diff,.quality-button>.button-progress { animation:none; }
+  .quality-button:not(:disabled):hover,.quality-button:not(:disabled):active,.quality-button.icon-action:not(:disabled):hover,.fire-theme:active svg { transform:none; }
+}

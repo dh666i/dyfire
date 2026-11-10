@@ -1,0 +1,26 @@
+/* Current UI entry point. Import after react.css, react-polish.css and
+   react-fire.css. Keep this order while those legacy primitives remain:
+   controls -> layout -> workspace -> motion -> tokens -> page compositions.
+
+   Ownership:
+   ui-refinement: theme tokens, shared typography, fields and baseline density.
+   ui-page-layouts: responsive grids and intrinsic content sizing.
+   ui-workspace: customer editor geometry, quota, note and security sections.
+   ui-page-surfaces: page headers, user pages and account lifecycle.
+   ui-admin-surfaces: administrator surfaces, version and server monitoring UI.
+   ui-dialog-surfaces: shared dialogs, friend picker and binding presentation.
+   Media and pointer rules stay beside their component's owner.
+
+   Do not use @layer for this partial migration: layered rules would lose to
+   the remaining unlayered legacy CSS regardless of selector specificity. */
+@import './ui-quality.css';
+@import './ui-page-layouts.css';
+@import './ui-workspace.css';
+@import './ui-motion.css';
+@import './ui-refinement.css';
+@import './daily-overview.css';
+@import './context-navigation.css';
+@import './ui-navigation.css';
+@import './ui-page-surfaces.css';
+@import './ui-admin-surfaces.css';
+@import './ui-dialog-surfaces.css';

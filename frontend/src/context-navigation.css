@@ -1,0 +1,20 @@
+::view-transition-group(account-avatar),::view-transition-group(account-title) { animation-duration:380ms; animation-timing-function:cubic-bezier(.22,1,.36,1); }
+::view-transition-old(account-avatar),::view-transition-new(account-avatar) { height:100%; border-radius:50%; overflow:hidden; }
+.row-menu-trigger { display:grid; place-items:center; width:38px; height:38px; flex:0 0 38px; padding:0; border:0; background:transparent; color:var(--ink-soft); border-radius:10px; cursor:pointer; transition:background-color 160ms ease,color 160ms ease; }
+.row-menu-trigger svg { width:18px; height:18px; }
+.row-menu-trigger[aria-busy="true"] svg { animation:ui-spin .7s linear infinite; }
+.row-menu-trigger:hover,.row-menu-trigger[data-popup-open] { background:var(--surface-soft); color:var(--ink-dark); }
+.row-menu-positioner { z-index:450; }
+.row-menu-popup { min-width:164px; padding:6px; border:1px solid var(--hairline); border-radius:14px; background:var(--ui-popup); color:var(--ink-dark); box-shadow:var(--ui-float-shadow); transform-origin:var(--transform-origin); transition:opacity 140ms ease,transform 180ms var(--ui-ease); }
+.row-menu-popup[data-starting-style],.row-menu-popup[data-ending-style] { opacity:0; transform:translateY(-3px) scale(.98); }
+.row-menu-item { display:flex; align-items:center; min-height:42px; padding:10px 12px; border-radius:9px; font:400 13px/1.5 var(--ui-font); outline:none; cursor:pointer; }
+.row-menu-item[data-highlighted] { background:var(--surface-soft); }.row-menu-item.is-danger { color:var(--state-danger); }.row-menu-item[data-disabled] { opacity:.5; cursor:not-allowed; }
+@media(min-width:1200px) { html .fire-main .user-workbench-head,html .fire-main .admin-user-row.user-workbench-row { grid-template-columns:24px minmax(150px,1.2fr) minmax(130px,1fr) minmax(130px,1fr) minmax(140px,1.1fr) 100px; } }
+@media(pointer:coarse),(max-width:700px) { .row-menu-trigger { width:44px; height:44px; flex-basis:44px; } }
+/* Nine administrator destinations need their own row on compact desktops. */
+@media(min-width:1101px) and (max-width:1399px) {
+  .fire-nav:has([aria-label="管理导航"]) { grid-template-columns:minmax(0,1fr) auto; gap:12px 20px; padding-block:10px; }
+  .fire-nav:has([aria-label="管理导航"]) .fire-nav-right { grid-column:2; grid-row:1; }
+  .fire-nav:has([aria-label="管理导航"]) .fire-nav-segment { grid-column:1/-1; grid-row:2; justify-self:center; width:max-content; max-width:100%; }
+}
+@media(prefers-reduced-motion:reduce) { ::view-transition-group(account-avatar),::view-transition-group(account-title) { animation-duration:0s; }.row-menu-popup,.row-menu-trigger { transition:none; } }
