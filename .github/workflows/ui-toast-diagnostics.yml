@@ -1,0 +1,35 @@
+name: Notification browser diagnostics
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  toast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      NODE_PATH: ${{ github.workspace }}/frontend/node_modules
+      DYFIRE_REQUIRE_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: pip install -r requirements.txt -r requirements-console.txt pytest
+      - run: python -m playwright install --with-deps chromium
+      - run: npm ci && npm run build
+        working-directory: frontend
+      - name: Exercise notification appearance and hover
+        run: |
+          for attempt in 1 2 3 4; do
+            python -m pytest tests/console/test_browser_acceptance.py -q -k task_editor_toast_and_nested_select_behavior --junitxml=toast-results.xml || exit 1
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notification-diagnostics
+          path: |
+            toast-results.xml
+            .artifacts/ui-toast-hover/
+          retention-days: 7

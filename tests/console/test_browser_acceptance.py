@@ -182,6 +182,7 @@ def test_task_editor_toast_and_nested_select_behavior(browser_site,width,theme):
     context=browser.new_context(viewport={'width':width,'height':900})
     context.add_init_script(f"localStorage.setItem('dyfire-theme','{theme}')")
     context.add_cookies([{'name':'spark_session','value':tokens['user'],'url':base}])
+    context.tracing.start(screenshots=True,snapshots=True)
     try:
         page=context.new_page();page.goto(base+'/studio',wait_until='networkidle')
         for button in page.locator('.task-row > .row-actions > button').all():
@@ -196,10 +197,46 @@ def test_task_editor_toast_and_nested_select_behavior(browser_site,width,theme):
         page.keyboard.press('Escape');expect(page.get_by_role('listbox')).to_have_count(0)
         expect(dialog).to_be_visible()
         dialog.locator('input[type=time]').fill('11:35')
+        # Diagnostics only: observe the original pointer/animation sequence
+        # without changing timing, hover positions, assertions or application.
+        page.evaluate("""() => {
+          const events = [];
+          let pointer = null;
+          const describe = element => element ? {
+            tag:element.tagName, className:String(element.className || ''),
+            role:element.getAttribute?.('role'), label:element.getAttribute?.('aria-label'),
+            toast:!!element.closest?.('[data-sonner-toast]')
+          } : null;
+          const snapshot = (kind,event) => {
+            if (event?.clientX !== undefined) pointer = {x:event.clientX,y:event.clientY};
+            const toasts = [...document.querySelectorAll('[data-sonner-toast]')].map(element => {
+              const r = element.getBoundingClientRect();
+              const style=getComputedStyle(element);
+              return {rect:{x:r.x,y:r.y,width:r.width,height:r.height},
+                hover:element.matches(':hover'), mounted:element.dataset.mounted,
+                removed:element.dataset.removed, expanded:element.dataset.expanded,
+                opacity:style.opacity,transform:style.transform,
+                paused:element.dataset.feedbackPaused,
+                active:element.contains(document.activeElement)};
+            });
+            events.push({kind,at:performance.now(),pointer,toasts,
+              target:describe(event?.target),relatedTarget:describe(event?.relatedTarget),
+              bodyOverflow:getComputedStyle(document.body).overflow,
+              activeElement:describe(document.activeElement),
+              elementsFromPoint:pointer?document.elementsFromPoint(pointer.x,pointer.y).slice(0,6).map(describe):[]});
+          };
+          for(const type of ['pointerover','pointerout','pointermove','focusin','focusout'])
+            document.addEventListener(type,event=>snapshot(type,event),true);
+          window.originalToastDiagnostics=events;
+          window.captureOriginalToastDiagnostic=snapshot;
+          snapshot('start');
+          setInterval(()=>snapshot('sample'),100);
+        }""")
         dialog.get_by_role('button',name='保存任务',exact=True).click()
         toast=page.locator('[data-sonner-toast]').filter(has_text='任务已保存')
         expect(toast).to_be_visible()
-        toast.hover();page.wait_for_timeout(4400);expect(toast).to_be_visible()
+        page.evaluate('() => captureOriginalToastDiagnostic("before-hover")')
+        toast.hover();page.evaluate('() => captureOriginalToastDiagnostic("after-hover")');page.wait_for_timeout(4400);expect(toast).to_be_visible()
         close=toast.get_by_role('button',name='关闭提示')
         expect(close).to_be_visible()
         toast_box=toast.bounding_box();close_box=close.bounding_box()
@@ -213,7 +250,16 @@ def test_task_editor_toast_and_nested_select_behavior(browser_site,width,theme):
         output=Path('.artifacts/ui-controls-refinement/screenshots');output.mkdir(parents=True,exist_ok=True)
         page.screenshot(path=str(output/f'toast-{theme}-{width}.png'))
         close.click();expect(toast).to_have_count(0)
-    finally:context.close()
+    finally:
+        output=Path('.artifacts/ui-toast-hover');output.mkdir(parents=True,exist_ok=True)
+        diagnostic_name=f'original-{theme}-{width}'
+        try:
+            (output/f'{diagnostic_name}.json').write_text(
+                page.evaluate('() => JSON.stringify(window.originalToastDiagnostics || [],null,2)'),encoding='utf-8')
+            page.screenshot(path=str(output/f'{diagnostic_name}.png'),timeout=5000)
+        finally:
+            try:context.tracing.stop(path=str(output/f'{diagnostic_name}.zip'))
+            finally:context.close()
 
 
 def test_heatmap_has_one_floating_tooltip_without_layout_shift(browser_site):
