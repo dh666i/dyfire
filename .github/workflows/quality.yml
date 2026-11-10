@@ -63,6 +63,16 @@ jobs:
         with:
           name: quality-evidence
           path: test-results.xml
+      - name: Preserve isolated browser failure evidence
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure-evidence
+          path: |
+            .artifacts/ui-toast-hover/
+            .artifacts/ui-controls-refinement/screenshots/
+            .artifacts/ui-site-unification/screenshots/
+          retention-days: 7
       - name: Weekly maintained runtime cache
         id: runtime
         shell: python
