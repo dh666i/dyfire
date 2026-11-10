@@ -171,6 +171,9 @@ html .mobile-dock a:not(.active) { color:var(--ink-soft); }
   animation:none; text-align:left; transition:transform 280ms var(--ui-ease),opacity 160ms ease,height 180ms ease,box-shadow 180ms ease;
 }
 .feedback-host .app-toast [data-content] { flex:1; min-width:0; overflow-wrap:anywhere; }
+/* Fade the front notice in at its final hit target. Sliding its whole box up
+   from outside the viewport moves it away from a stationary pointer. */
+.feedback-host[data-sonner-toaster] [data-sonner-toast].app-toast[data-front="true"][data-removed="false"] { --y:translateY(0); }
 .feedback-host .app-toast [data-title] { font-weight:500; }
 .feedback-host .app-toast [data-description] { margin-top:3px; font-size:12px; color:var(--ink-soft); }
 .feedback-host[data-sonner-toaster] .app-toast [data-close-button] { position:absolute; left:auto; right:6px; top:50%; transform:translateY(-50%); display:grid; place-items:center; width:44px; height:44px; min-width:44px; min-height:44px; margin:0; padding:0; border:0; background:transparent; color:var(--ink-soft); border-radius:50%; cursor:pointer; transition:background-color 140ms,color 140ms,transform 140ms; }
