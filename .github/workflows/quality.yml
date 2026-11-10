@@ -6,7 +6,9 @@ permissions:
   packages: read
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    # Keep the browser test OS aligned with the supported production base.
+    # ubuntu-latest now resolves to 26.04, unsupported by pinned Playwright.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
