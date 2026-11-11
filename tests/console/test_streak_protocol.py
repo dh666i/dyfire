@@ -167,6 +167,48 @@ def test_collector_requires_trusted_self_and_account_local_peer_mapping():
     asyncio.run(run())
 
 
+def test_collector_merges_streaks_across_init_response_batches():
+    async def run():
+        collector = StreakCollector()
+        requests = [
+            SimpleNamespace(url='https://imapi.douyin.com/v1/message/get_message_by_init'),
+            SimpleNamespace(url='https://imapi.douyin.com/v1/message/get_message_by_init'),
+        ]
+        for request, peer in zip(requests, ('222', '333')):
+            collector.capture_request(request)
+            init = fake_response(request.url, raw=response(conversation(f'0:1:111:{peer}')))
+            init.request = request
+            collector.capture(init)
+        users = fake_response(
+            'https://www.douyin.com/aweme/v1/web/im/user/info/',
+            body={'data': [
+                {'uid': '222', 'sec_uid': 'sec-a'},
+                {'uid': '333', 'sec_uid': 'sec-b'},
+            ]},
+        )
+        collector.capture(users)
+        result = await collector.finalize('111')
+        assert {item['sec_uid'] for item in result} == {'sec-a', 'sec-b'}
+        assert len(result) == 2
+    asyncio.run(run())
+
+
+def test_response_concurrency_is_bounded_without_dropping_small_bursts():
+    async def run():
+        collector = StreakCollector()
+        for _ in range(8):
+            collector.capture(fake_response(
+                'https://imapi.douyin.com/v1/message/get_message_by_init',
+                raw=response(conversation()),
+            ))
+        await collector.finalize('111')
+        diagnostic = collector.diagnostics()
+        assert diagnostic['init_responses'] == 8
+        assert diagnostic['init_conversations'] == 8
+        assert diagnostic['dropped_responses'] == 0
+    asyncio.run(run())
+
+
 def test_collector_diagnostics_report_only_counts_for_each_matching_stage():
     async def run():
         collector = StreakCollector()
@@ -193,6 +235,8 @@ def test_collector_diagnostics_report_only_counts_for_each_matching_stage():
             'uid_mappings': 1,
             'decode_errors': 0,
             'dropped_responses': 0,
+            'self_participant_matches': 1,
+            'peer_uid_matches': 1,
         }
         assert 'sec-private' not in str(diagnostic)
         assert '不应出现在诊断中' not in str(diagnostic)

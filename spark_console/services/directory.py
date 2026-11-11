@@ -5,7 +5,7 @@ from sqlalchemy import select, update, delete
 from core.avatars import safe_avatar_url
 from core.chat_errors import WebChatLoginRequiredError
 from spark_console.db import session_scope
-from spark_console.models import (ContactDirectoryJob, DouyinAccount, DouyinAccountProfile,
+from spark_console.models import (ContactDirectoryJob, DouyinAccount, DouyinAccountIdentity, DouyinAccountProfile,
     DouyinContactAvatar, DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity,
     TaskRun, User, utc_now)
 from spark_console.services.accounts import AccountService
@@ -131,6 +131,8 @@ async def process_directory_job(engine, cipher, reader=None):
             return False
         job_id, account_id, query, limit = job.id, account.id, job.query, job.limit
         expected_cookies, expected_nonce, expected_version = account.encrypted_cookies, account.cookie_nonce, account.cookie_version
+        identity = db.get(DouyinAccountIdentity, account.id)
+        trusted_self_uid = identity.douyin_user_id if identity else None
         try:
             payload = AccountService(db, cipher, AuditService(db)).decrypt_for_worker(account.id)
         except Exception:
@@ -138,7 +140,9 @@ async def process_directory_job(engine, cipher, reader=None):
             release(db, account.id, job.id)
             return True
         version = account.cookie_version
-    reading = asyncio.create_task(asyncio.wait_for((reader or read_directory)(payload, version, limit, query), timeout=120))
+    operation = (read_directory(payload, version, limit, query, trusted_self_uid=trusted_self_uid)
+                 if reader is None else reader(payload, version, limit, query))
+    reading = asyncio.create_task(asyncio.wait_for(operation, timeout=120))
     try:
         # Login takes priority over optional directory sync; relinquish the browser promptly.
         from spark_console.models import DouyinLoginSession
@@ -185,6 +189,8 @@ async def process_directory_job(engine, cipher, reader=None):
         elif isinstance(error, WebChatLoginRequiredError):
             message = "抖音登录已失效或需要验证，请重新登录后同步"
         elif isinstance(error, ValueError) and str(error).startswith("当前抖音页面"):
+            message = str(error)
+        elif isinstance(error, ValueError) and str(error).startswith("抖音账号身份"):
             message = str(error)
         elif isinstance(error, TimeoutError):
             message = "抖音响应超时，请稍后重试"

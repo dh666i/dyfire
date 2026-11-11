@@ -3,7 +3,7 @@ from spark_console.browser_environment import credential_options
 import asyncio
 from dataclasses import asdict
 
-from core.account_profile import read_self_profile, ACCOUNT_INFO_URL
+from core.account_profile import normalize_platform_user_id, read_self_profile, ACCOUNT_INFO_URL
 from core.web_chat import UserInfoCollector, WEB_CHAT_URL, ensure_web_chat_authenticated
 from spark_console.credentials import CredentialPayload
 from core.session_health import require_session, wait_for_session, inspect_session, SessionUnavailable
@@ -174,7 +174,7 @@ def _merge_streak_observations(dom_observations, im_observations):
     return merged
 
 
-async def read_directory(payload_bytes, version, limit, query):
+async def read_directory(payload_bytes, version, limit, query, *, trusted_self_uid=None):
     from playwright.async_api import async_playwright
     payload = CredentialPayload.parse(bytes(payload_bytes), version)
     collector = UserInfoCollector()
@@ -212,9 +212,12 @@ async def read_directory(payload_bytes, version, limit, query):
             if final.state in ('verification', 'logged_out'):
                 raise SessionUnavailable(final)
             identities = await collector.drain()
-            im_streaks = await streak_collector.finalize(profile.get("platform_user_id"))
+            profile_uid = normalize_platform_user_id(profile.get("platform_user_id"))
+            trusted_uid = normalize_platform_user_id(trusted_self_uid)
+            self_uid = trusted_uid or profile_uid
+            im_streaks = await streak_collector.finalize(self_uid)
             conversation_to_sec_uid = _conversation_identity_map(
-                streak_samples, profile.get("platform_user_id"), streak_collector.uid_to_sec_uid,
+                streak_samples, self_uid, streak_collector.uid_to_sec_uid,
             )
             dom_streaks = parse_streak_rows(
                 streak_samples,
@@ -229,6 +232,10 @@ async def read_directory(payload_bytes, version, limit, query):
                 "conversation_identity_links": len(conversation_to_sec_uid),
                 "im_observations": len(im_streaks),
                 "matched_observations": len(streaks),
+                "trusted_self_uid_available": trusted_uid is not None,
+                "profile_matches_trusted_identity": (
+                    profile_uid == trusted_uid if trusted_uid is not None and profile_uid is not None else None
+                ),
             }
             items = []
             for row in rows:

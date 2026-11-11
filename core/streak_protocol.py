@@ -16,6 +16,7 @@ from core.protobuf_codec import ProtobufDecodeError, fields, singular
 INIT_PATH = (6, 2043, 1, 1)
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_PENDING_RESPONSES = 4
+MAX_QUEUED_RESPONSES = 128
 STREAK_KEYS = frozenset(('a:consecutive_chat', 'a:consecutive_chat_data'))
 _RECOVER = re.compile(r'重燃中\s*([0-9]{1,3})\s*/\s*([0-9]{1,3})\Z')
 _COUNTDOWN = re.compile(r'[0-9]{1,3}\s*天后消失\Z')
@@ -225,7 +226,9 @@ class StreakCollector:
         self.uid_to_sec_uid = {}
         self._ambiguous_uids = set()
         self._streaks = {}
+        self._streak_sequences = {}
         self._pending = set()
+        self._response_slots = asyncio.Semaphore(MAX_PENDING_RESPONSES)
         self._request_sequences = {}
         self._request_order = []
         self._sequence = 0
@@ -238,6 +241,8 @@ class StreakCollector:
         self.init_observation_count = 0
         self.user_info_response_count = 0
         self.dropped_response_count = 0
+        self.self_participant_match_count = 0
+        self.peer_uid_match_count = 0
 
     def diagnostics(self):
         """Return bounded counts only; never expose response or identity data."""
@@ -251,6 +256,8 @@ class StreakCollector:
             'uid_mappings': len(self.uid_to_sec_uid),
             'decode_errors': self.decode_errors,
             'dropped_responses': self.dropped_response_count,
+            'self_participant_matches': self.self_participant_match_count,
+            'peer_uid_matches': self.peer_uid_match_count,
         }
 
     @classmethod
@@ -287,7 +294,7 @@ class StreakCollector:
                 self.init_ok_response_count += 1
         elif kind == 'users':
             self.user_info_response_count += 1
-        if len(self._pending) >= MAX_PENDING_RESPONSES:
+        if len(self._pending) >= MAX_QUEUED_RESPONSES:
             self.dropped_response_count += 1
             return
         try:
@@ -313,58 +320,65 @@ class StreakCollector:
         kind = self._kind(response.url)
         if kind is None or response.status != 200:
             return
-        if kind == 'init' and sequence is not None and sequence < self._latest_init_sequence:
-            return
-        try:
-            if kind == 'users':
-                body = await response.json()
-                users = body.get('data') if isinstance(body, dict) else None
-                if not isinstance(users, list):
+        async with self._response_slots:
+            try:
+                if kind == 'users':
+                    body = await response.json()
+                    users = body.get('data') if isinstance(body, dict) else None
+                    if not isinstance(users, list):
+                        return
+                    for user in users[:2000]:
+                        if not isinstance(user, dict):
+                            continue
+                        uid, sec_uid = _uid(user.get('uid')), user.get('sec_uid')
+                        if not uid or not isinstance(sec_uid, str) or not _SEC_UID.fullmatch(sec_uid):
+                            continue
+                        if uid in self._ambiguous_uids:
+                            continue
+                        previous = self.uid_to_sec_uid.get(uid)
+                        if previous and previous != sec_uid:
+                            self.uid_to_sec_uid.pop(uid, None)
+                            self._ambiguous_uids.add(uid)
+                        elif len(self.uid_to_sec_uid) < 2000:
+                            self.uid_to_sec_uid[uid] = sec_uid
                     return
-                for user in users[:2000]:
-                    if not isinstance(user, dict):
-                        continue
-                    uid, sec_uid = _uid(user.get('uid')), user.get('sec_uid')
-                    if not uid or not isinstance(sec_uid, str) or not _SEC_UID.fullmatch(sec_uid):
-                        continue
-                    if uid in self._ambiguous_uids:
-                        continue
-                    previous = self.uid_to_sec_uid.get(uid)
-                    if previous and previous != sec_uid:
-                        self.uid_to_sec_uid.pop(uid, None)
-                        self._ambiguous_uids.add(uid)
-                    elif len(self.uid_to_sec_uid) < 2000:
-                        self.uid_to_sec_uid[uid] = sec_uid
-                return
-            raw = await response.body()
-            observed_at = datetime.now(timezone.utc)
-            self.init_conversation_count += len(conversation_messages(raw))
-            observations = extract_init_streaks(raw, observed_at=observed_at)
-            self.init_observation_count += len(observations)
-            for observation in observations:
-                key = observation['conversation_id']
-                if sequence == self._latest_init_sequence and (key in self._streaks or len(self._streaks) < 2000):
-                    self._streaks[key] = observation
-            # raw is not retained: no chats, protobuf blobs or credentials saved.
-        except (ProtobufDecodeError, ValueError, TypeError, RecursionError):
-            self.decode_errors += 1
-        except Exception:
-            # Closed pages or interrupted response reads are not observations.
-            self.decode_errors += 1
+                raw = await response.body()
+                observed_at = datetime.now(timezone.utc)
+                self.init_conversation_count += len(conversation_messages(raw))
+                observations = extract_init_streaks(raw, observed_at=observed_at)
+                self.init_observation_count += len(observations)
+                if sequence is None:
+                    sequence = self._latest_init_sequence or 1
+                for observation in observations:
+                    key = observation['conversation_id']
+                    previous = self._streak_sequences.get(key, -1)
+                    if sequence >= previous and (key in self._streaks or len(self._streaks) < 2000):
+                        self._streaks[key] = observation
+                        self._streak_sequences[key] = sequence
+                # raw is not retained: no chats, protobuf blobs or credentials saved.
+            except (ProtobufDecodeError, ValueError, TypeError, RecursionError):
+                self.decode_errors += 1
+            except Exception:
+                # Closed pages or interrupted response reads are not observations.
+                self.decode_errors += 1
 
     def observations(self, trusted_self_uid):
         own_uid = _uid(trusted_self_uid)
         if own_uid is None:
             return []
         found, ambiguous = {}, set()
+        self.self_participant_match_count = 0
+        self.peer_uid_match_count = 0
         for observation in self._streaks.values():
             participants = observation['participants']
             if participants.count(own_uid) != 1:
                 continue
+            self.self_participant_match_count += 1
             peer = participants[1] if participants[0] == own_uid else participants[0]
             sec_uid = self.uid_to_sec_uid.get(peer)
             if not sec_uid or sec_uid in ambiguous:
                 continue
+            self.peer_uid_match_count += 1
             value = {key: item for key, item in observation.items() if key not in ('participants', 'conversation_id')}
             value['sec_uid'] = sec_uid
             if sec_uid in found and any(found[sec_uid][key] != value[key] for key in ('days', 'state', 'recover_current', 'recover_total')):

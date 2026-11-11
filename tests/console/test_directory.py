@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import delete, select
 from spark_console.db import session_scope
 from spark_console.crypto import CookieCipher
-from spark_console.models import (User, DouyinAccount, DouyinAccountProfile, ContactDirectoryJob,
+from spark_console.models import (User, DouyinAccount, DouyinAccountIdentity, DouyinAccountProfile, ContactDirectoryJob,
     DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -125,6 +125,17 @@ class DirectoryTests(unittest.TestCase):
             self.assertEqual('succeeded', stored_job.status)
             self.assertEqual({'init_responses': 1, 'matched_observations': 1},
                              json.loads(stored_job.result_json)['streak_diagnostics'])
+
+    def test_sync_passes_verified_account_uid_to_directory_reader(self):
+        self.post()
+        with session_scope(self.engine) as db:
+            db.add(DouyinAccountIdentity(account_id=self.account, douyin_user_id='12345678901'))
+        result = {'items': [], 'profile': {}, 'streaks': [], 'streak_diagnostics': {}, 'has_more': False}
+        reader = AsyncMock(return_value=result)
+        with patch('spark_console.directory_browser.read_directory', reader):
+            asyncio.run(process_directory_job(self.engine, self.cipher))
+        reader.assert_awaited_once()
+        self.assertEqual('12345678901', reader.await_args.kwargs['trusted_self_uid'])
 
     def test_conversations_response_is_bounded_and_signals_more(self):
         """Legacy picker responses must not grow with a large directory."""

@@ -35,6 +35,21 @@ export function streakSummary(value) {
   return `${snapshot.days === null ? '天数待同步' : `${snapshot.days} 天`} · ${streakStateLabel(snapshot)}`;
 }
 
+export function streakSyncHint(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== 'object') return '';
+  const matched = Number(diagnostics.matched_observations) || 0;
+  if (matched > 0) return `最近一次同步读取到 ${matched} 位好友的火花。`;
+  if (diagnostics.trusted_self_uid_available === false) return '好友已同步，但账号身份未完成核验，暂时无法匹配火花。';
+  const candidates = Number(diagnostics.init_observations) || 0;
+  const selfMatches = Number(diagnostics.self_participant_matches) || 0;
+  const peerMatches = Number(diagnostics.peer_uid_matches) || 0;
+  if (candidates > 0 && selfMatches === 0) return `抖音返回了 ${candidates} 条火花信息，但没有匹配到当前抖音账号身份。`;
+  if (selfMatches > 0 && peerMatches === 0) return `已匹配到 ${selfMatches} 条本人会话，但好友身份未匹配，火花暂未显示。`;
+  if (peerMatches > 0) return `已匹配到 ${peerMatches} 位好友会话，但平台火花信息无法通过一致性校验。`;
+  if (Number(diagnostics.init_ok_responses) > 0) return '好友已同步；抖音本次返回的会话中没有可识别的火花信息。';
+  return '';
+}
+
 export function filterStreakContacts(items, {query='', filter='all', order='default', existing=new Set()}={}) {
   const search = query.trim().toLocaleLowerCase();
   const filtered = list(items).filter(item => {

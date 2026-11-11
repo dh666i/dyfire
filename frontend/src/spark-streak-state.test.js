@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {filterStreakContacts,streakHistoryPath,streakMilestones,streakSnapshot,streakStateLabel,streakSummary,streakTime} from './spark-streak-state.js';
+import {filterStreakContacts,streakHistoryPath,streakMilestones,streakSnapshot,streakStateLabel,streakSummary,streakSyncHint,streakTime} from './spark-streak-state.js';
 
 const observed_at='2026-11-11T01:30:00Z';
 const snapshot=(days,state='active',extra={})=>({days,state,observed_at,source:'douyin_dom',...extra});
@@ -13,6 +13,14 @@ test('missing observations stay unknown instead of becoming a zero-day or succes
   }
   assert.equal(streakSnapshot(snapshot(0,'broken')).days,0);
   for(const days of ['', '90', -1, 1.2, NaN, Infinity]) assert.equal(streakSnapshot(snapshot(days)).days,null);
+});
+
+test('sync feedback separates missing platform data from self and friend identity mismatches',()=>{
+  assert.match(streakSyncHint({init_ok_responses:2}),/没有可识别的火花/);
+  assert.match(streakSyncHint({init_observations:9,self_participant_matches:0}),/没有匹配到当前抖音账号身份/);
+  assert.match(streakSyncHint({self_participant_matches:9,peer_uid_matches:0}),/好友身份未匹配/);
+  assert.match(streakSyncHint({peer_uid_matches:4,matched_observations:0}),/一致性校验/);
+  assert.match(streakSyncHint({matched_observations:4}),/读取到 4 位好友/);
 });
 
 test('stale evidence is labeled as past state and excluded from currently active filter',()=>{
