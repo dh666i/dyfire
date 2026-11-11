@@ -132,7 +132,7 @@ html .mobile-dock a:not(.active) { color:var(--ink-soft); }
 .site-select { display:flex; align-items:center; justify-content:space-between; gap:14px; cursor:pointer; text-align:left; }
 .site-select>span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .site-select svg { display:block; width:17px; height:17px; color:var(--ink-muted); }
-.site-select-positioner { z-index:450; }
+.site-select-positioner { z-index:1200; }
 .site-select-popup { min-width:var(--anchor-width); max-width:calc(100vw - 32px); max-height:min(320px,var(--available-height)); overflow:auto; padding:6px; border-radius:14px; color:var(--ink-dark); background:var(--ui-popup); box-shadow:0 14px 40px rgba(0,0,0,.18); outline:1px solid var(--hairline); transform-origin:var(--transform-origin); transition:opacity 140ms ease,transform 180ms var(--ui-ease); }
 .site-select-popup[data-starting-style],.site-select-popup[data-ending-style] { opacity:0; transform:translateY(-3px) scale(.98); }
 .site-select-option { display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:42px; border-radius:9px; padding:9px 12px; font-size:13px; cursor:pointer; outline:none; overflow-wrap:anywhere; }

@@ -17,7 +17,7 @@ def update_status(**changes):
     }
 
 
-def open_panel(browser_site, state, *, width=1280, theme='light'):
+def open_panel(browser_site, state, *, width=1280, theme='light', clock=False):
     browser, base, tokens = browser_site
     context = browser.new_context(viewport={'width': width, 'height': 1000}, reduced_motion='reduce')
     context.add_init_script(f"localStorage.setItem('dyfire-theme','{theme}')")
@@ -26,6 +26,8 @@ def open_panel(browser_site, state, *, width=1280, theme='light'):
     page.route('**/api/admin/updates', lambda route: route.fulfill(json=state))
     # Every mutation is intercepted, including unexpected action names.
     page.route('**/api/admin/updates/**', lambda route: route.fulfill(json={'accepted': True, 'operation_id': 'new-operation'}))
+    if clock:
+        page.clock.install()
     page.goto(base + '/admin/settings', wait_until='domcontentloaded')
     panel = page.locator('.update-panel')
     expect(panel).to_be_visible()
@@ -87,14 +89,13 @@ def test_transfer_progress_distinguishes_unknown_download_and_reuse(browser_site
 
 def test_accepted_request_stays_locked_until_matching_status_arrives(browser_site):
     state = update_status(web_update_available=True)
-    context, page, panel = open_panel(browser_site, state)
+    context, page, panel = open_panel(browser_site, state, clock=True)
     try:
         requests = []
         def accept(route):
             requests.append(route.request.post_data_json)
             route.fulfill(json={'accepted': True, 'operation_id': 'new-operation'})
         page.route('**/api/admin/updates/install-web', accept)
-        page.clock.install()
         panel.get_by_role('button', name='仅更新网页', exact=True).click()
         expect(panel.get_by_text('请求已提交，等待更新服务接收。')).to_be_visible()
         expect(panel.get_by_role('button', name='完整更新', exact=True)).to_be_disabled()

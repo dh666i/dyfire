@@ -70,6 +70,9 @@ export function Drawer({open, title, eyebrow, onClose, canClose, children, foote
     const onKey=e=>{
       if(drawerStack[drawerStack.length-1]!==drawerId)return;
       if(document.querySelector('.modal-overlay'))return;
+      // Portaled selects own their own focus loop and Escape dismissal. Their
+      // options are outside this drawer's DOM subtree, but above its surface.
+      if(document.querySelector('.site-select-popup'))return;
       if(e.key==='Escape'){requestCloseRef.current?.();return;}
       if(e.key!=='Tab')return;
       const dialog=dialogRef.current;
