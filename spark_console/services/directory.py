@@ -1,17 +1,24 @@
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, exists, not_, func, text
+from sqlalchemy.orm import aliased
 from core.avatars import safe_avatar_url
 from core.chat_errors import WebChatLoginRequiredError
 from spark_console.db import session_scope
-from spark_console.models import (ContactDirectoryJob, DouyinAccount, DouyinAccountIdentity, DouyinAccountProfile,
-    DouyinContactAvatar, DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity,
-    TaskRun, User, utc_now)
+from spark_console.models import (AccountOperation, ContactDirectoryJob, DouyinAccount, DouyinAccountIdentity,
+    DouyinAccountProfile, DouyinContactAvatar, DouyinContactIdentity, DouyinConversation,
+    DouyinLoginSession, SparkTask, SparkTaskTargetIdentity, TaskRun, User, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.subscriptions import SubscriptionService
 from spark_console.services.streaks import record_observations
+
+
+AUTO_DIRECTORY_SYNC_INTERVAL = timedelta(hours=24)
+AUTO_DIRECTORY_SYNC_LIMIT = 100
+AUTO_DIRECTORY_QUEUE_LIMIT = 4
+AUTO_DIRECTORY_MARKER = '_automatic_directory_sync'
 
 
 def profile_map(db, account_ids):
@@ -93,10 +100,92 @@ def task_avatar_map(db, tasks):
 def job_view(job):
     if job.status in ('queued', 'running') and job.created_at.replace(tzinfo=timezone.utc) < utc_now() - timedelta(minutes=5):
         return {"id": job.id, "status": "failed", "error": "同步超时，请重试", "limit": job.limit, "query": job.query}
+    result = json.loads(job.result_json) if job.result_json else {}
+    result.pop(AUTO_DIRECTORY_MARKER, None)
     return {"id": job.id, "status": job.status, "error": job.error,
             "limit": job.limit, "query": job.query,
             "finished_at": job.finished_at.replace(tzinfo=timezone.utc).isoformat() if job.finished_at else None,
-            **(json.loads(job.result_json) if job.result_json else {})}
+            **result}
+
+
+def is_automatic_directory_job(job):
+    if not job or not job.result_json:
+        return False
+    try:
+        return bool(json.loads(job.result_json).get(AUTO_DIRECTORY_MARKER))
+    except (TypeError, ValueError):
+        return False
+
+
+def enqueue_due_directory_syncs(engine, *, now=None, queue_limit=AUTO_DIRECTORY_QUEUE_LIMIT):
+    """Queue bounded refreshes for valid accounts that have enabled tasks."""
+    now = now or utc_now()
+    cutoff = now - AUTO_DIRECTORY_SYNC_INTERVAL
+    running_task = aliased(SparkTask)
+    with session_scope(engine) as db:
+        if engine.dialect.name == 'sqlite':
+            db.execute(text('BEGIN IMMEDIATE'))
+        active_jobs = db.scalar(select(func.count()).select_from(ContactDirectoryJob).where(
+            ContactDirectoryJob.status.in_(('queued', 'running')),
+        )) or 0
+        remaining = max(0, int(queue_limit) - int(active_jobs))
+        if remaining == 0:
+            return 0
+
+        candidates = db.execute(
+            select(DouyinAccount.id, DouyinAccount.owner_user_id)
+            .join(User, User.id == DouyinAccount.owner_user_id)
+            .where(
+                exists().where(
+                    SparkTask.douyin_account_id == DouyinAccount.id,
+                    SparkTask.enabled.is_(True),
+                ),
+                DouyinAccount.validation_state == 'valid',
+                User.status == 'active',
+                not_(exists().where(
+                    ContactDirectoryJob.owner_user_id == DouyinAccount.owner_user_id,
+                    ContactDirectoryJob.status.in_(('queued', 'running')),
+                )),
+                not_(exists().where(
+                    TaskRun.status == 'running',
+                    TaskRun.task_id == running_task.id,
+                    running_task.douyin_account_id == DouyinAccount.id,
+                )),
+                not_(exists().where(
+                    ContactDirectoryJob.account_id == DouyinAccount.id,
+                    ContactDirectoryJob.created_at >= cutoff,
+                )),
+                not_(exists().where(
+                    AccountOperation.account_id == DouyinAccount.id,
+                    AccountOperation.expires_at > now,
+                )),
+                not_(exists().where(
+                    DouyinLoginSession.account_id == DouyinAccount.id,
+                    DouyinLoginSession.slot.is_not(None),
+                    DouyinLoginSession.status.in_(('queued', 'loading_qr', 'awaiting_scan', 'confirming')),
+                    DouyinLoginSession.expires_at > now,
+                )),
+            )
+            .order_by(DouyinAccount.updated_at, DouyinAccount.id)
+            .limit(remaining)
+            .with_for_update(of=DouyinAccount, skip_locked=True)
+        ).all()
+
+        queued = 0
+        for account_id, owner_user_id in candidates:
+            # Respect the existing free-tier and subscription entitlement rules.
+            if not SubscriptionService(db, AuditService(db)).has_task_access(owner_user_id):
+                continue
+            db.add(ContactDirectoryJob(
+                account_id=account_id,
+                owner_user_id=owner_user_id,
+                limit=AUTO_DIRECTORY_SYNC_LIMIT,
+                result_json=json.dumps({AUTO_DIRECTORY_MARKER: True}),
+            ))
+            queued += 1
+        if queued:
+            db.flush()
+        return queued
 
 
 async def process_directory_job(engine, cipher, reader=None):
@@ -130,6 +219,7 @@ async def process_directory_job(engine, cipher, reader=None):
             release(db, account.id, job.id)
             return False
         job_id, account_id, query, limit = job.id, account.id, job.query, job.limit
+        automatic_job = is_automatic_directory_job(job)
         expected_cookies, expected_nonce, expected_version = account.encrypted_cookies, account.cookie_nonce, account.cookie_version
         identity = db.get(DouyinAccountIdentity, account.id)
         trusted_self_uid = identity.douyin_user_id if identity else None
@@ -175,11 +265,14 @@ async def process_directory_job(engine, cipher, reader=None):
                 # delivery or nicknames; the collector only returns validated
                 # observations matched by this account's stable sec_uid.
                 record_observations(db, account_id, result.get("streaks", []))
-                job.result_json = json.dumps({
+                result_payload = {
                     "items": result["items"],
                     "has_more": result.get("has_more", False),
                     "streak_diagnostics": result.get("streak_diagnostics", {}),
-                }, ensure_ascii=False)
+                }
+                if automatic_job:
+                    result_payload[AUTO_DIRECTORY_MARKER] = True
+                job.result_json = json.dumps(result_payload, ensure_ascii=False)
                 job.status = "succeeded"
             job.finished_at = utc_now()
     except Exception as error:

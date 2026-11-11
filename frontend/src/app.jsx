@@ -724,18 +724,17 @@ function FriendCard({task: t, last, state, onEdit, onStreak}) {
     ref.current.style.setProperty('--spot-y', `${e.clientY - r.top}px`);
   };
   const inner = <>
-    <div className="fire-friend-top">
-      <motion.span layoutId={reduced?undefined:`task-avatar-${t.id}`} className="fire-friend-avatar" transition={{duration:.32,ease:[.22,1,.36,1]}}>{t.avatar?<img src={t.avatar} alt=""/>:initial(t.name)}</motion.span>
-      <Badge tone={state?.tone||'neutral'}>{state?.label||'待发送'}</Badge>
-    </div>
-    <motion.b layoutId={reduced?undefined:`task-name-${t.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{displayName(t.name)}</motion.b>
-    <time>{compactFriendSchedule(last?.time, t.time)}</time>
+    <motion.span layoutId={reduced?undefined:`task-avatar-${t.id}`} className="fire-friend-avatar" transition={{duration:.32,ease:[.22,1,.36,1]}}>{t.avatar?<img src={t.avatar} alt=""/>:initial(t.name)}</motion.span>
+    <span className="fire-friend-copy">
+      <motion.b layoutId={reduced?undefined:`task-name-${t.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{displayName(t.name)}</motion.b>
+      <span className="fire-friend-meta"><time>{compactFriendSchedule(last?.time, t.time)}</time><Badge tone={state?.tone||'neutral'}>{state?.label||'待发送'}</Badge></span>
+    </span>
   </>;
   if (onEdit) {
     return (
       <article id={`task-row-${t.id}`} ref={ref} data-reveal="section" className="fire-friend-card fire-friend-with-streak" onPointerMove={track}>
         <button type="button" className="fire-friend-main" aria-label={`编辑 ${displayName(t.name)} 的任务`} onClick={()=>onEdit(t)}>{inner}</button>
-        <SparkSummary spark={t.spark} name={t.name} onClick={onStreak?()=>onStreak(t):undefined}/>
+        <SparkSummary compact showTime={false} spark={t.spark} name={t.name} onClick={onStreak?()=>onStreak(t):undefined}/>
       </article>
     );
   }

@@ -8,9 +8,9 @@ function FlameIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 3c1 5-3 6-3 9-1-1-2-2-2-4-3 3-4 6-3 9a7.5 7.5 0 0 0 14-1c1-5-3-9-6-13Z"/><path d="M12 14c-1 2-3 3-2 5a2.5 2.5 0 0 0 4-2"/></svg>;
 }
 
-export function SparkSummary({spark,name,onClick,compact=false}) {
+export function SparkSummary({spark,name,onClick,compact=false,showTime=true}) {
   const snapshot = streakSnapshot(spark);
-  const content = <><span className="streak-summary-main"><FlameIcon/><span>{snapshot.days === null ? '天数待同步' : <><b>{snapshot.days}</b> 天</>}</span><span className="streak-summary-state">{streakStateLabel(snapshot)}</span></span><span className="streak-summary-time">{snapshot.observed_at ? `同步于 ${streakTime(snapshot.observed_at)}${snapshot.stale ? ' · 待更新' : ''}` : '尚未读取平台火花'}</span></>;
+  const content = <><span className="streak-summary-main"><FlameIcon/><span>{snapshot.days === null ? '天数待同步' : <><b>{snapshot.days}</b> 天</>}</span><span className="streak-summary-state">{streakStateLabel(snapshot)}</span></span>{showTime&&<span className="streak-summary-time">{snapshot.observed_at ? `同步于 ${streakTime(snapshot.observed_at)}${snapshot.stale ? ' · 待更新' : ''}` : '尚未读取平台火花'}</span>}</>;
   const className = `streak-summary${compact ? ' streak-summary-compact' : ''}`;
   return onClick ? <button type="button" className={className} data-streak-state={snapshot.stale?'stale':snapshot.state} aria-label={`查看 ${name || '好友'} 的火花详情`} onClick={onClick}>{content}<StatusIcon kind="chevronRight" className="streak-summary-chevron"/></button> : <span className={className} data-streak-state={snapshot.stale?'stale':snapshot.state}>{content}</span>;
 }

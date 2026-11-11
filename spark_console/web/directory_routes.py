@@ -7,7 +7,7 @@ from spark_console.models import ContactDirectoryJob, DouyinAccount, utc_now
 from spark_console.services import NotFound
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
-from spark_console.services.directory import job_view
+from spark_console.services.directory import is_automatic_directory_job, job_view
 from spark_console.services.subscriptions import SubscriptionService
 
 
@@ -59,9 +59,30 @@ def build_directory_router(engine, auth, cipher):
             if active:
                 if active.account_id == account_id and active.query == query.strip() and active.limit == limit:
                     return JSONResponse(job_view(active), status_code=202, headers=headers)
-                raise HTTPException(409, "已有同步或搜索进行中，请等待完成")
-            recent = db.scalar(select(func.count()).select_from(ContactDirectoryJob).where(ContactDirectoryJob.owner_user_id == user.id,
-                ContactDirectoryJob.created_at > utc_now()-timedelta(minutes=1)))
+                # A low-priority automatic refresh that has not started yet
+                # can be claimed by an explicit user action. This keeps the
+                # manual button responsive without creating a second browser
+                # job or bypassing the account lock.
+                if active.status == 'queued' and is_automatic_directory_job(active):
+                    if active.account_id == account_id:
+                        active.limit = limit
+                        active.query = query.strip()
+                        active.result_json = None
+                        db.flush()
+                        return JSONResponse(job_view(active), status_code=202, headers=headers)
+                    # An automatic job for another account must never be
+                    # reassigned. Retire it and let this explicit request
+                    # create a normal manual job below.
+                    active.status = 'failed'
+                    active.error = '用户手动同步优先'
+                    active.finished_at = utc_now()
+                else:
+                    raise HTTPException(409, "已有同步或搜索进行中，请等待完成")
+            recent_jobs = db.scalars(select(ContactDirectoryJob).where(
+                ContactDirectoryJob.owner_user_id == user.id,
+                ContactDirectoryJob.created_at > utc_now()-timedelta(minutes=1),
+            )).all()
+            recent = sum(not is_automatic_directory_job(item) for item in recent_jobs)
             queued = db.scalar(select(func.count()).select_from(ContactDirectoryJob).where(ContactDirectoryJob.status.in_(['queued','running']),
                 ContactDirectoryJob.created_at > utc_now()-timedelta(minutes=5)))
             if recent >= 4 or queued >= 20:

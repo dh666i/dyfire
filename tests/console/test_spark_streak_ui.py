@@ -62,7 +62,11 @@ def test_streak_cards_details_and_filters_are_readable_without_changing_delivery
         expect(card.locator('.badge')).to_have_text('已完成')
         expect(card.locator('.streak-summary')).to_contain_text('128')
         expect(card.locator('.streak-summary')).to_contain_text('已点亮')
-        assert card.locator('.streak-summary').bounding_box()['y'] >= card.locator('.fire-friend-main').bounding_box()['y'] + card.locator('.fire-friend-main').bounding_box()['height']
+        summary_box = card.locator('.streak-summary').bounding_box()
+        main_box = card.locator('.fire-friend-main').bounding_box()
+        # The home card keeps the spark metric beside the friend identity so
+        # the status remains visible without adding a third vertical row.
+        assert summary_box['x'] >= main_box['x'] + main_box['width'] - 2
         unknown = page.get_by_role('button', name='查看 还未同步 的火花详情', exact=True)
         expect(unknown).to_contain_text('天数待同步')
         expect(unknown).not_to_contain_text('999')

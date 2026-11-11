@@ -3,14 +3,15 @@ import json
 import unittest
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from spark_console.db import session_scope
 from spark_console.crypto import CookieCipher
 from spark_console.models import (User, DouyinAccount, DouyinAccountIdentity, DouyinAccountProfile, ContactDirectoryJob,
     DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
-from spark_console.services.directory import save_profile, save_contacts, process_directory_job, task_avatar_map
+from spark_console.services.directory import (save_profile, save_contacts, process_directory_job,
+    task_avatar_map, enqueue_due_directory_syncs, AUTO_DIRECTORY_MARKER)
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
 from spark_console.directory_browser import collect_directory, ROWS_SCRIPT, STREAK_ROWS_SCRIPT, read_self_profile, _conversation_identity_map, _merge_streak_observations
 from core.streak_observation import parse_streak_rows
@@ -71,6 +72,98 @@ class DirectoryTests(unittest.TestCase):
             for _ in range(3):
                 db.add(ContactDirectoryJob(account_id=self.account, owner_user_id=self.owner, status='succeeded', finished_at=utc_now()))
         self.assertEqual(429, self.post().status_code)
+
+    def test_background_sync_is_due_once_per_account_and_bounded(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            account = db.get(DouyinAccount, self.account)
+            account.validation_state = 'valid'
+            db.add(SparkTask(owner_user_id=self.owner, douyin_account_id=self.account,
+                             target_name='同学', send_time='12:00', message_template='test', enabled=True))
+        self.assertEqual(1, enqueue_due_directory_syncs(self.engine, now=now))
+        with session_scope(self.engine) as db:
+            job = db.scalar(select(ContactDirectoryJob))
+            self.assertEqual(100, job.limit)
+            self.assertEqual('', job.query)
+        self.assertEqual(0, enqueue_due_directory_syncs(self.engine, now=now + timedelta(hours=23, minutes=59)))
+        with session_scope(self.engine) as db:
+            db.scalar(select(ContactDirectoryJob)).status = 'succeeded'
+            db.scalar(select(ContactDirectoryJob)).finished_at = now
+        self.assertEqual(1, enqueue_due_directory_syncs(self.engine, now=now + timedelta(hours=24, minutes=1)))
+
+    def test_background_sync_skips_invalid_accounts_and_running_sends(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            account = db.get(DouyinAccount, self.account)
+            account.validation_state = 'temporary'
+            task = SparkTask(owner_user_id=self.owner, douyin_account_id=self.account,
+                             target_name='同学', send_time='12:00', message_template='test', enabled=True)
+            db.add(task)
+            db.flush()
+        self.assertEqual(0, enqueue_due_directory_syncs(self.engine, now=now))
+
+    def test_background_sync_queue_is_globally_bounded(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            for index in range(5):
+                user = User(username=f'auto-{index}', password_hash='unused', role='user')
+                db.add(user)
+                db.flush()
+                account = AccountService(db, self.cipher, AuditService(db)).create(
+                    user.id, f'账号-{index}', b'[{"name":"sid","value":"test"}]'
+                )
+                account.validation_state = 'valid'
+                db.add(SparkTask(owner_user_id=user.id, douyin_account_id=account.id,
+                                 target_name='好友', send_time='12:00', message_template='test', enabled=True))
+        self.assertEqual(4, enqueue_due_directory_syncs(self.engine, now=now))
+        with session_scope(self.engine) as db:
+            self.assertEqual(4, db.scalar(select(func.count()).select_from(ContactDirectoryJob)
+                                         .where(ContactDirectoryJob.status == 'queued')))
+        self.assertEqual(0, enqueue_due_directory_syncs(self.engine, now=now))
+
+    def test_manual_or_failed_attempt_suppresses_background_refresh(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            db.get(DouyinAccount, self.account).validation_state = 'valid'
+            db.add(SparkTask(owner_user_id=self.owner, douyin_account_id=self.account,
+                             target_name='同学', send_time='12:00', message_template='test', enabled=True))
+            db.add(ContactDirectoryJob(account_id=self.account, owner_user_id=self.owner,
+                                       status='failed', error='页面未就绪', created_at=now))
+        self.assertEqual(0, enqueue_due_directory_syncs(self.engine, now=now + timedelta(hours=12)))
+
+    def test_manual_sync_claims_queued_automatic_refresh(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            db.get(DouyinAccount, self.account).validation_state = 'valid'
+            db.add(SparkTask(owner_user_id=self.owner, douyin_account_id=self.account,
+                             target_name='同学', send_time='12:00', message_template='test', enabled=True))
+        self.assertEqual(1, enqueue_due_directory_syncs(self.engine, now=now))
+        response = self.post(limit=20)
+        self.assertEqual(202, response.status_code, response.text)
+        with session_scope(self.engine) as db:
+            job = db.scalar(select(ContactDirectoryJob))
+            self.assertEqual(20, job.limit)
+            self.assertIsNone(job.result_json)
+
+    def test_manual_sync_does_not_reassign_other_accounts_auto_job(self):
+        with session_scope(self.engine) as db:
+            other = AccountService(db, self.cipher, AuditService(db)).create(
+                self.owner, '另一个账号', b'[{"name":"sid","value":"other"}]'
+            )
+            db.add(ContactDirectoryJob(account_id=other.id, owner_user_id=self.owner,
+                                       status='queued', limit=100,
+                                       result_json=json.dumps({AUTO_DIRECTORY_MARKER: True})))
+        manual_job = self.post(account=self.account, limit=20)
+        self.assertEqual(202, manual_job.status_code)
+        with session_scope(self.engine) as db:
+            rows = db.scalars(select(ContactDirectoryJob)).all()
+            self.assertEqual(2, len(rows))
+            retired = next(row for row in rows if row.account_id == other.id)
+            manual = next(row for row in rows if row.account_id == self.account)
+            self.assertEqual('failed', retired.status)
+            self.assertIsNotNone(retired.result_json)
+            self.assertEqual('queued', manual.status)
+            self.assertIsNone(manual.result_json)
 
     def test_profile_auto_name_and_custom_remark_preserved(self):
         with session_scope(self.engine) as db:

@@ -366,9 +366,9 @@ async def run_loop() -> None:
         async def background():
             nonlocal background_turn
             from spark_console.health_worker import process_health_check
-            from spark_console.services.directory import process_directory_job
+            from spark_console.services.directory import enqueue_due_directory_syncs, process_directory_job
             from spark_console.services.probes import process
-            actions=[lambda:process_health_check(engine,worker.cipher),lambda:process_directory_job(engine,worker.cipher),lambda:process(engine,worker.cipher)]
+            actions=[lambda:process_health_check(engine,worker.cipher),lambda:process_directory_job(engine,worker.cipher),lambda:process(engine,worker.cipher),lambda:bool(enqueue_due_directory_syncs(engine))]
             # Rotate even when one kind has a backlog so self-checks and
             # directory reads cannot permanently starve one another.
             first=background_turn%len(actions);background_turn+=1
