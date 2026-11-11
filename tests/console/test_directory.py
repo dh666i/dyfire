@@ -12,7 +12,8 @@ from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.directory import save_profile, save_contacts, process_directory_job, task_avatar_map
 from spark_console.web.task_groups import list_task_groups, list_group_tasks
-from spark_console.directory_browser import collect_directory, ROWS_SCRIPT, read_self_profile
+from spark_console.directory_browser import collect_directory, ROWS_SCRIPT, STREAK_ROWS_SCRIPT, read_self_profile, _conversation_identity_map, _merge_streak_observations
+from core.streak_observation import parse_streak_rows
 from tests.console.test_web_fixture import UserFixture
 
 
@@ -374,10 +375,64 @@ class DirectoryBrowserTests(unittest.IsolatedAsyncioTestCase):
     async def test_accumulates_twenty_across_virtual_scroll(self):
         page = AsyncMock()
         chunks = iter([[{'name':str(i)} for i in range(14)], [{'name':str(i)} for i in range(10,24)]])
-        page.evaluate.side_effect = lambda script: next(chunks) if script == ROWS_SCRIPT else True
+        page.evaluate.side_effect = lambda script: next(chunks) if script == ROWS_SCRIPT else [] if script == STREAK_ROWS_SCRIPT else True
         with patch('spark_console.directory_browser.asyncio.sleep', new=AsyncMock()):
             result = await collect_directory(page, 20)
         self.assertEqual([str(i) for i in range(20)], [row['name'] for row in result])
+
+    async def test_collects_streak_badges_from_each_virtual_window_and_parses_stable_ids(self):
+        from datetime import datetime, timezone
+        page = AsyncMock()
+        chunks = iter([
+            [{'name': '小张', 'sec_uid': 'sec-a'}],
+            [{'name': '小王', 'sec_uid': 'sec-b'}],
+            [],
+        ])
+        samples = iter([
+            [{'identity': {'sec_uids': ['sec-a'], 'uids': [], 'conversation_ids': []},
+              'signals': [{'kind': 'badge', 'text': '120'}]}],
+            [{'identity': {'sec_uids': ['sec-b'], 'uids': [], 'conversation_ids': []},
+              'signals': [{'kind': 'badge', 'text': '42'}]}],
+            [],
+        ])
+        scrolls = iter([True, False, False])
+        page.evaluate.side_effect = lambda script: next(chunks) if script == ROWS_SCRIPT else next(samples) if script == STREAK_ROWS_SCRIPT else next(scrolls)
+        output = []
+        with patch('spark_console.directory_browser.asyncio.sleep', new=AsyncMock()):
+            rows = await collect_directory(page, 20, streak_samples=output)
+        self.assertEqual(['sec-a', 'sec-b'], [row['sec_uid'] for row in rows])
+        parsed = parse_streak_rows(output, observed_at=datetime(2026, 11, 11, tzinfo=timezone.utc))
+        self.assertEqual({'sec-a': 120, 'sec-b': 42}, {item['sec_uid']: item['days'] for item in parsed})
+        self.assertEqual(3, sum(call.args[0] == STREAK_ROWS_SCRIPT for call in page.evaluate.await_args_list))
+
+    def test_conversation_identity_mapping_requires_trusted_self_and_unambiguous_peer(self):
+        samples = [
+            {'identity': {'conversation_ids': ['0:1:100:200']}},
+            {'identity': {'conversation_ids': ['0:1:100:201']}},
+            {'identity': {'conversation_ids': ['0:1:100:202', '0:1:100:203']}},
+        ]
+        identities = _conversation_identity_map(samples, '100', {'200': 'sec-a', '201': 'sec-b', '202': 'sec-c', '203': 'sec-d'})
+        self.assertEqual({'0:1:100:200': 'sec-a', '0:1:100:201': 'sec-b'},
+                         {key: value for key, value in identities.items() if key.rsplit(':', 1)[-1] in ('200', '201')})
+        ambiguous_sample = {'identity': {'conversation_ids': ['0:1:100:202', '0:1:100:203']},
+                            'signals': [{'kind': 'badge', 'text': '392'}]}
+        self.assertEqual([], parse_streak_rows([ambiguous_sample], conversation_to_sec_uid=identities))
+        self.assertEqual({}, _conversation_identity_map(samples, None, {'200': 'sec-a'}))
+
+    def test_conflicting_streak_sources_are_discarded(self):
+        dom = [{'sec_uid': 'sec-a', 'days': 120, 'state': 'active', 'recover_current': None,
+                'recover_total': None, 'platform_text': '120', 'source': 'douyin_dom'}]
+        same = [{'sec_uid': 'sec-a', 'days': 120, 'state': 'active', 'recover_current': None,
+                 'recover_total': None, 'platform_text': '120', 'source': 'douyin_im'}]
+        more_complete = [{'sec_uid': 'sec-a', 'days': 120, 'state': 'active', 'recover_current': None,
+                          'recover_total': None, 'platform_text': '120', 'source': 'douyin_im'}]
+        partial_dom = [{'sec_uid': 'sec-a', 'days': 120, 'state': 'unknown', 'recover_current': None,
+                        'recover_total': None, 'platform_text': '120', 'source': 'douyin_dom'}]
+        conflict = [{'sec_uid': 'sec-a', 'days': 121, 'state': 'active', 'recover_current': None,
+                     'recover_total': None, 'platform_text': '121', 'source': 'douyin_im'}]
+        self.assertEqual('douyin_dom', _merge_streak_observations(dom, same)[0]['source'])
+        self.assertEqual('douyin_im', _merge_streak_observations(partial_dom, more_complete)[0]['source'])
+        self.assertEqual([], _merge_streak_observations(dom, conflict))
 
     async def test_profile_endpoint_failure_is_optional(self):
         context = AsyncMock()
