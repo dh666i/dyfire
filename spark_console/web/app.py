@@ -229,6 +229,10 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             if context.get('registered'):
                 params['registered'] = '1'
             location = str(request.url.path)
+            # The reset verifier is POST-only. Failed codes must return to
+            # the same recoverable React form, not an unhandled GET endpoint.
+            if name == 'forgot_password.html' and location == '/forgot-password/reset':
+                location = '/forgot-password'
             if params:
                 location += '?' + urlencode(params)
             return RedirectResponse(location, status_code=303)

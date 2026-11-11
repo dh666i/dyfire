@@ -88,7 +88,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: pip install -r requirements.txt -r requirements-console.txt pytest
-      - run: python -m playwright install --with-deps chromium
+      - run: python -m playwright install --with-deps chromium webkit
       - run: npm ci
         working-directory: frontend
       - run: npm run build

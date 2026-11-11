@@ -51,6 +51,49 @@ test('disabled and multi-select controls retain native behavior',t=>{
   const f=fixture(t);f.select.disabled=true;f.open();assert.equal(f.menu(),null);
   f.select.disabled=false;f.select.multiple=true;f.open();assert.equal(f.menu(),null);
 });
+test('an iOS touch gesture blocks every native picker action and toggles the custom list only once',t=>{
+  const f=fixture(t);
+  const dispatch=type=>{
+    const event=new f.window.Event(type,{bubbles:true,cancelable:true});
+    f.select.dispatchEvent(event);assert.equal(event.defaultPrevented,true,type);
+  };
+  for(const type of ['pointerdown','touchstart','touchend','mousedown','click'])dispatch(type);
+  assert.equal(f.menu()?.getAttribute('role'),'listbox');
+  assert.equal(f.select.getAttribute('aria-expanded'),'true');
+  for(const type of ['pointerdown','touchstart','touchend','mousedown','click'])dispatch(type);
+  assert.equal(f.menu(),null);assert.deepEqual(f.changes,[]);
+});
+test('click-only accessible activation opens and closes the custom list without native activation',t=>{
+  const f=fixture(t);
+  for(const expanded of [true,false]){
+    const click=new f.window.MouseEvent('click',{bubbles:true,cancelable:true,detail:0});
+    f.select.dispatchEvent(click);
+    assert.equal(click.defaultPrevented,true);
+    assert.equal(Boolean(f.menu()),expanded);
+  }
+});
+test('touch cancellation never takes over disabled, multiple or visible list controls',t=>{
+  const f=fixture(t);
+  for(const properties of [{disabled:true},{disabled:false,multiple:true},{multiple:false,size:4}]){
+    Object.assign(f.select,properties);
+    for(const type of ['pointerdown','touchstart','touchend','mousedown','click']){
+      const event=new f.window.Event(type,{bubbles:true,cancelable:true});
+      f.select.dispatchEvent(event);assert.equal(event.defaultPrevented,false,type);
+    }
+    assert.equal(f.menu(),null);
+  }
+});
+test('older touch-only browsers open a custom list and choose once',t=>{
+  const f=fixture(t);
+  const start=new f.window.Event('touchstart',{bubbles:true,cancelable:true});
+  f.select.dispatchEvent(start);assert.equal(start.defaultPrevented,true);
+  f.select.dispatchEvent(new f.window.Event('touchend',{bubbles:true,cancelable:true}));
+  f.select.dispatchEvent(new f.window.Event('touchstart',{bubbles:true,cancelable:true}));
+  assert.equal(f.menu(),null);
+  f.select.dispatchEvent(new f.window.Event('touchstart',{bubbles:true,cancelable:true}));
+  f.menu().children[1].click();
+  assert.equal(f.select.value,'B');assert.deepEqual(f.changes,['B']);
+});
 test('creating a task, retrying or submitting without confirmation does not finish onboarding',()=>{
   for(const status of [undefined,'scheduled','retrying','failed','submitted_unconfirmed']){
     assert.equal(hasConfirmedExecution({tasks:[{}],runs:status?[{status}]:[]}),false);

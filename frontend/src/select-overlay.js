@@ -3,7 +3,13 @@ export function installSelectOverlay(windowObject=window) {
   if (windowObject.__dyfireSelectOverlay) return windowObject.__dyfireSelectOverlay;
   const document=windowObject.document;
   const disabled=option=>!option||option.disabled||(option.parentElement?.tagName==='OPTGROUP'&&option.parentElement.disabled);
+  const enhanced=target=>{
+    const select=target?.closest?.('select');
+    return select&&!select.disabled&&!select.multiple&&select.size<=1?select:null;
+  };
   let active=null, menu=null, activeIndex=-1, sequence=0;
+  let activation=null;
+  const justActivated=select=>activation?.select===select&&Date.now()-activation.at<1000;
   const close=({restoreFocus=false}={})=>{
     const select=active;
     if(menu){const exiting=menu;exiting.classList.add('is-closing');exiting.setAttribute('aria-hidden','true');exiting.inert=true;
@@ -31,7 +37,7 @@ export function installSelectOverlay(windowObject=window) {
   };
   const choose=index=>{
     const select=active;
-    if(!select||disabled(select.options[index]))return;
+    if(!select||select.disabled||disabled(select.options[index]))return;
     const changed=select.selectedIndex!==index;
     select.selectedIndex=index;
     close({restoreFocus:true});
@@ -65,15 +71,37 @@ export function installSelectOverlay(windowObject=window) {
     select.setAttribute('aria-expanded','true');select.setAttribute('aria-controls',menu.id);
     highlight(select.selectedIndex>=0&&!disabled(select.options[select.selectedIndex])?select.selectedIndex:enabledIndices()[0]);
   };
+  const toggle=(select,source)=>{activation={select,source,at:Date.now()};active===select?close():open(select)};
   const onPointer=event=>{
-    const select=event.target.closest?.('select');
-    if(select&&!select.multiple&&select.size<=1){event.preventDefault();active===select?close():open(select);return}
+    const select=enhanced(event.target);
+    if(select){event.preventDefault();toggle(select,'pointer');return}
     if(menu?.contains(event.target))return;
     close();
   };
+  // Safari can activate the native picker at touch/click default-action time
+  // even when pointerdown was cancelled. Cancel each native entry point, but
+  // let only the first event in the gesture toggle our listbox. Keep these
+  // listeners non-passive so iOS can actually cancel the touch default.
+  const onStart=event=>{
+    const select=enhanced(event.target);
+    if(!select)return;
+    event.preventDefault();
+    const pointerAlreadyHandled=activation?.source==='pointer'&&justActivated(select);
+    if(event.type==='touchstart'?!pointerAlreadyHandled:!justActivated(select))toggle(select,event.type);
+  };
+  const onTouchEnd=event=>{if(enhanced(event.target))event.preventDefault()};
+  const onClick=event=>{
+    const select=enhanced(event.target);
+    if(!select)return;
+    event.preventDefault();
+    // Screen readers and programmatic activation may dispatch only click.
+    if(!justActivated(select))active===select?close():open(select);
+    activation=null;
+  };
   const onKey=event=>{
-    const select=event.target.closest?.('select');
-    if(!select||select.disabled||select.multiple||select.size>1)return;
+    const select=enhanced(event.target);
+    if(!select)return;
+    activation=null;
     if(event.key==='Tab'){close();return}
     if(event.key==='Escape'){if(menu){event.preventDefault();event.stopImmediatePropagation();close({restoreFocus:true})}return}
     if(!['Enter',' ','ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
@@ -87,8 +115,11 @@ export function installSelectOverlay(windowObject=window) {
   };
   const onScroll=event=>{if(menu&&event.target?.nodeType&&menu.contains(event.target))return;close()};
   const onResize=()=>close();
+  const touchOptions={capture:true,passive:false};
   document.addEventListener('pointerdown',onPointer,true);document.addEventListener('keydown',onKey,true);
+  document.addEventListener('mousedown',onStart,true);document.addEventListener('click',onClick,true);
+  document.addEventListener('touchstart',onStart,touchOptions);document.addEventListener('touchend',onTouchEnd,touchOptions);
   windowObject.addEventListener('resize',onResize);windowObject.addEventListener('scroll',onScroll,true);
-  const overlay={destroy(){close();document.removeEventListener('pointerdown',onPointer,true);document.removeEventListener('keydown',onKey,true);windowObject.removeEventListener('resize',onResize);windowObject.removeEventListener('scroll',onScroll,true);delete windowObject.__dyfireSelectOverlay}};
+  const overlay={destroy(){close();document.removeEventListener('pointerdown',onPointer,true);document.removeEventListener('keydown',onKey,true);document.removeEventListener('mousedown',onStart,true);document.removeEventListener('click',onClick,true);document.removeEventListener('touchstart',onStart,touchOptions);document.removeEventListener('touchend',onTouchEnd,touchOptions);windowObject.removeEventListener('resize',onResize);windowObject.removeEventListener('scroll',onScroll,true);delete windowObject.__dyfireSelectOverlay}};
   windowObject.__dyfireSelectOverlay=overlay;return overlay;
 }
