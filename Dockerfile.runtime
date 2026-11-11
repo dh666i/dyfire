@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Maintained independently; application builds consume the verified digests.
-FROM ubuntu:24.04 AS os-runtime
+FROM ubuntu:26.04 AS os-runtime
 ARG DEBIAN_FRONTEND=noninteractive
 ARG RUNTIME_REFRESH=manual
 ENV PATH=/opt/venv/bin:$PATH
