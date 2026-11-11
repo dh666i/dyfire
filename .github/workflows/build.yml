@@ -33,7 +33,7 @@ jobs:
       - name: Read verified runtime lock
         id: runtime
         run: python scripts/runtime_images.py github-output
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
