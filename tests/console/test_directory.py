@@ -89,14 +89,34 @@ class DirectoryTests(unittest.TestCase):
 
     def test_sync_persists_aliases_without_changing_credentials(self):
         job = self.post().json()
+        observed_at = utc_now().isoformat()
+        with session_scope(self.engine) as db:
+            task = SparkTask(owner_user_id=self.owner, douyin_account_id=self.account,
+                             target_name='同学', send_time='12:00', message_template='test')
+            db.add(task)
+            db.flush()
+            db.add(SparkTaskTargetIdentity(task_id=task.id, sec_uid='uid-a'))
         with session_scope(self.engine) as db:
             original = db.get(DouyinAccount, self.account).encrypted_cookies
-        reader = AsyncMock(return_value={'items':[{'name':'同学', 'sec_uid':'uid-a', 'nickname':'小张', 'remark_name':'同学', 'unique_id':'zhang123', 'avatar_url':'https://p3.douyinpic.com/a.jpg'}], 'profile':{'nickname':'本人'}, 'has_more':True})
+        reader = AsyncMock(return_value={'items':[{'name':'同学', 'sec_uid':'uid-a', 'nickname':'小张', 'remark_name':'同学', 'unique_id':'zhang123', 'avatar_url':'https://p3.douyinpic.com/a.jpg'}], 'profile':{'nickname':'本人'}, 'streaks':[{'sec_uid':'uid-a', 'days':374, 'state':'recovering', 'recover_current':1, 'recover_total':3, 'source':'douyin_im', 'platform_text':'重燃中 1/3', 'observed_at':observed_at}], 'has_more':True})
         asyncio.run(process_directory_job(self.engine, self.cipher, reader))
         response = self.client.get(f'/accounts/{self.account}/conversations').json()
         self.assertEqual('succeeded', response['sync']['status'])
         self.assertEqual('小张', response['items'][0]['nickname'])
         self.assertEqual('zhang123', response['items'][0]['unique_id'])
+        self.assertEqual(374, response['items'][0]['spark']['days'])
+        self.assertEqual('recovering', response['items'][0]['spark']['state'])
+        self.assertEqual('重燃中 1/3', response['items'][0]['spark']['platform_text'])
+        streaks = self.client.get('/api/streaks', params={'account_id': self.account})
+        self.assertEqual(200, streaks.status_code, streaks.text)
+        self.assertEqual(374, streaks.json()['items'][0]['days'])
+        history = self.client.get('/api/streaks/history', params={'account_id': self.account, 'sec_uid': 'uid-a'})
+        self.assertEqual(200, history.status_code, history.text)
+        self.assertEqual('recovering', history.json()['current']['state'])
+        bootstrap = self.client.get('/api/app/bootstrap').json()
+        task_row = next(item for item in bootstrap['tasks'] if item['name'] == '同学')
+        self.assertEqual(374, task_row['spark']['days'])
+        self.assertEqual('recovering', task_row['spark']['state'])
         with session_scope(self.engine) as db:
             self.assertEqual(original, db.get(DouyinAccount, self.account).encrypted_cookies)
             self.assertEqual('succeeded', db.get(ContactDirectoryJob, job['id']).status)

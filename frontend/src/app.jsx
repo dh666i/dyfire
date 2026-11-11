@@ -38,6 +38,8 @@ import {ContactPanel} from './ui-panels.jsx';
 import './ui-system.css';
 import './ui-continuity.css';
 import './ui-mobile.css';
+import {SparkSummary, SparkDetail} from './spark-streak.jsx';
+import {filterStreakContacts, streakSnapshot, streakSummary} from './spark-streak-state.js';
 import {installSelectOverlay} from './select-overlay.js';
 import {hasConfirmedExecution} from './onboarding-state.js';
 const AuthPage=React.lazy(()=>import('./auth-pages.jsx'));
@@ -663,7 +665,7 @@ function AccountStatus({account={}, onAction}) { const health=account.health||{}
 function Dashboard({data,onRefresh}) {
   const navigate=useNavigate(); const accountNavigate=useAccountNavigation();
   const tasks=asList(data?.tasks), accounts=asList(data?.accounts), runs=asList(data?.runs), membership=data.membership||{};
-  const [supportOpen,setSupportOpen]=useState(false), [saved,setSaved]=useState(''), [editTask,setEditTask]=useState(null);
+  const [supportOpen,setSupportOpen]=useState(false), [saved,setSaved]=useState(''), [editTask,setEditTask]=useState(null), [sparkTarget,setSparkTarget]=useState(null);
   const runByTaskId=new Map(); runs.forEach(run=>{if(run?.taskId&&!runByTaskId.has(run.taskId))runByTaskId.set(run.taskId,run)});
   const friends=tasks.filter(task=>task.enabled||runByTaskId.has(task.id));
   const create=()=>navigate(accounts.length?'/studio':'/accounts');
@@ -672,9 +674,9 @@ function Dashboard({data,onRefresh}) {
     <div className="fire-home-toolbar"><div className="home-title"><span className="fire-date">{new Date().toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai',month:'long',day:'numeric',weekday:'long'})} · 北京时间</span><h1>今天的续火</h1></div><div className="fire-home-actions"><Button variant="quiet" onClick={()=>navigate('/runs')}>执行记录</Button><Button onClick={create}>{accounts.length?'新建任务':'绑定账号'}</Button></div></div>
     <DailyOverview accounts={accounts} runs={runs} tasks={tasks} limits={data.resource_limits} onAccountTasks={(account,event)=>accountNavigate(account,event?.currentTarget?.closest('.daily-account-row'))} onCreate={create}/>
     <OnboardingGuide data={data} membership={membership} accounts={accounts} tasks={tasks} onNavigate={navigate}/>
-    <div className="fire-home-main"><section><div className="home-task-heading"><h2>续火花任务</h2><Link to="/studio" className="text-action">全部任务<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div><div className={`fire-friend-grid${friends.length<=3?' is-compact':''}`}>{friends.length?friends.slice(0,9).map(task=><FriendCard key={task.id} task={task} last={runByTaskId.get(task.id)} state={friendState(task,runByTaskId.get(task.id))} onEdit={setEditTask}/>):<Empty title="还没有今日续火任务" text="创建任务后会显示今日执行状态。"/>}{friends.length<3&&<button type="button" data-reveal="section" className="fire-friend-card fire-friend-add" onClick={create}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section></div>
+    <div className="fire-home-main"><section><div className="home-task-heading"><h2>续火花任务</h2><Link to="/studio" className="text-action">全部任务<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div><div className={`fire-friend-grid${friends.length<=3?' is-compact':''}`}>{friends.length?friends.slice(0,9).map(task=><FriendCard key={task.id} task={task} last={runByTaskId.get(task.id)} state={friendState(task,runByTaskId.get(task.id))} onEdit={setEditTask} onStreak={setSparkTarget}/>):<Empty title="还没有今日续火任务" text="创建任务后会显示今日执行状态。"/>}{friends.length<3&&<button type="button" data-reveal="section" className="fire-friend-card fire-friend-add" onClick={create}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section></div>
     <div className="fire-home-bottom"><ActivityHeatmap activity={data.activity}/><section data-reveal="section" className="home-membership"><div><h2>{membershipIsFreeTier(membership)?'免费版':'我的订阅'}</h2><p>启用任务 {membershipTaskUsage(membership)??membership.task_count??data.resource_limits?.tasks_enabled_total??tasks.filter(task=>task.enabled).length} / {membership.task_limit_label||membership.max_tasks||1}</p></div><strong>{membership.active?(membership.days_remaining??'∞'):membershipIsFreeTier(membership)?'1':'—'}<small>{membership.active?'天有效':membershipIsFreeTier(membership)?'个免费任务':'未开通'}</small></strong><Button variant="quiet" onClick={()=>navigate('/subscription')}>{membership.active?'管理订阅':membershipIsFreeTier(membership)?'升级订阅':'查看套餐'}</Button><MembershipPlanNotice membership={membership} compact/>{!membership.active&&!membershipIsFreeTier(membership)&&<button type="button" className="fire-support-link" onClick={()=>setSupportOpen(true)}>联系客服开通</button>}</section></div>
-    <TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={()=>setEditTask(null)} onRefresh={onRefresh} onSaved={(message,id)=>{setSaved(message);flashTask(id)}}/><Toast message={saved} onClose={()=>setSaved('')}/><ContactSupportModal plans={data.plans||[]} open={supportOpen} onClose={()=>setSupportOpen(false)}/>
+    <TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={()=>setEditTask(null)} onRefresh={onRefresh} onSaved={(message,id)=>{setSaved(message);flashTask(id)}}/><Toast message={saved} onClose={()=>setSaved('')}/><ContactSupportModal plans={data.plans||[]} open={supportOpen} onClose={()=>setSupportOpen(false)}/><SparkDetail target={sparkTarget} onClose={()=>setSparkTarget(null)} request={api}/>
   </div>;
 }
 
@@ -712,7 +714,7 @@ function compactFriendSchedule(value, fallback) {
 }
 
 // FriendCard with pointer-tracking spotlight (same pattern as Card)
-function FriendCard({task: t, last, state, onEdit}) {
+function FriendCard({task: t, last, state, onEdit, onStreak}) {
   const ref = useRef(null);
   const reduced=useReducedMotion();
   const track = e => {
@@ -727,14 +729,14 @@ function FriendCard({task: t, last, state, onEdit}) {
       <Badge tone={state?.tone||'neutral'}>{state?.label||'待发送'}</Badge>
     </div>
     <motion.b layoutId={reduced?undefined:`task-name-${t.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{displayName(t.name)}</motion.b>
-    {t.streak != null && <strong><span className="fire-streak-icon" aria-hidden="true">🔥</span> {t.streak}<small> 天连续</small></strong>}
     <time>{compactFriendSchedule(last?.time, t.time)}</time>
   </>;
   if (onEdit) {
     return (
-      <button id={`task-row-${t.id}`} ref={ref} type="button" data-reveal="section" className="fire-friend-card" onClick={()=>onEdit(t)} onPointerMove={track}>
-        {inner}
-      </button>
+      <article id={`task-row-${t.id}`} ref={ref} data-reveal="section" className="fire-friend-card fire-friend-with-streak" onPointerMove={track}>
+        <button type="button" className="fire-friend-main" aria-label={`编辑 ${displayName(t.name)} 的任务`} onClick={()=>onEdit(t)}>{inner}</button>
+        <SparkSummary spark={t.spark} name={t.name} onClick={onStreak?()=>onStreak(t):undefined}/>
+      </article>
     );
   }
   return (
@@ -750,17 +752,19 @@ function ContactPicker({open,onClose,account,data,onDone,releasedKeys=new Set(),
   const controller=controllerRef.current;
   const [state,setState]=useState(()=>controller.getState());
   const [query,setQuery]=useState('');
+  const [sparkFilter,setSparkFilter]=useState('all');
+  const [sparkOrder,setSparkOrder]=useState('default');
   useEffect(()=>controller.subscribe(setState),[controller]);
   useEffect(()=>{
     if(!open||!account?.id){controller.close();return;}
-    setQuery('');
+    setQuery('');setSparkFilter('all');setSparkOrder('default');
     void controller.open(account.id,data?.csrf||'');
     return()=>controller.close();
   },[open,account?.id,controller,data?.csrf]);
   const {items,selected,loading,busy,error,page}=state;
   const existing=new Set(asList(data?.tasks).filter(t=>t?.accountId===account?.id).map(contactKey));
   releasedKeys.forEach(key=>existing.delete(key));
-  const visible=items.filter(i=>[i?.name,i?.nickname,i?.remark_name,i?.unique_id,i?.short_id].filter(Boolean).join(' ').toLowerCase().includes(query.toLowerCase()));
+  const visible=filterStreakContacts(items,{query,filter:sparkFilter,order:sparkOrder,existing});
   const actionLabel=busy==='page'?'正在加载更多…':busy==='sync'?'正在同步好友…':page.dbHasMore?'加载更多好友':page.activeSync?'继续同步好友':page.canSyncMore?'同步更多好友':'重新同步好友';
   const coverageLabel=page.dbHasMore?`已显示 ${items.length} / ${page.total} 位已同步好友`:`已显示 ${items.length} 位已同步好友`;
   const coverageHint=page.dbHasMore?'继续加载已同步的好友，搜索会覆盖加载后的列表。':page.syncHasMore===true&&page.syncLimit>=100?'当前同步最多读取最近 100 个会话，可重新同步更新。':page.syncHasMore===false?'本次同步未返回更多会话，可重新同步检查。':'列表来自已同步会话，可继续同步更多好友。';
@@ -768,15 +772,16 @@ function ContactPicker({open,onClose,account,data,onDone,releasedKeys=new Set(),
   return <ContactPanel DesktopDrawer={Drawer} open={open} onClose={close} title="选择目标好友" eyebrow="SELECT CONNECTIONS" wide>
     <div className="drawer-content contact-picker-content">
       <input className="input search-input" aria-label="搜索已同步好友" value={query} onChange={e=>setQuery(e.target.value)} placeholder="输入昵称或备注，搜索已加载会话"/>
+      <div className="streak-picker-filters"><SiteSelect label="筛选好友火花与任务" value={sparkFilter} onValueChange={setSparkFilter} items={[{value:'all',label:'全部好友'},{value:'has_streak',label:'有火花天数'},{value:'active',label:'火花已点亮'},{value:'needs_attention',label:'熄灭或重燃中'},{value:'without_task',label:'尚未创建任务'}]}/><SiteSelect label="好友排序" value={sparkOrder} onValueChange={setSparkOrder} items={[{value:'default',label:'会话原顺序'},{value:'days_desc',label:'火花天数从高到低'},{value:'name',label:'按好友昵称'}]}/></div>
       {limitMessage&&<div className="inline-feedback" role="status">{limitMessage} <Link to="/subscription" className="text-action">查看套餐<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div>}
       <div className="drawer-tools"><span>{selected.size} 人已选{Number.isFinite(selectionLimit)?` / ${selectionLimit} 个可用额度`:''}</span><button type="button" onClick={()=>{const keys=visible.filter(i=>!existing.has(contactKey(i))&&!selected.has(contactKey(i))).map(contactKey);const next=Number.isFinite(selectionLimit)?keys.slice(0,Math.max(0,selectionLimit-selected.size)):keys;if(Number.isFinite(selectionLimit)&&keys.length>next.length)onLimitReached?.();controller.selectMany(next)}} disabled={loading||Number.isFinite(selectionLimit)&&selectionLimit<=selected.size}>全选当前结果</button><button type="button" onClick={()=>controller.clearSelection()} disabled={loading}>清空</button></div>
       {(loading||busy==='page'||busy==='sync')&&items.length>0&&<div className="contact-picker-loading" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/>{busy==='sync'?'正在同步好友…':'正在加载更多好友…'}</div>}
       {loading&&!items.length?<div className="skeleton-stack"><div/><div/><div/></div>:<div className="contact-list"><MotionList className="contact-motion-list">{visible.map((item,i)=>{
         const id=contactKey(item)||`contact-${i}`;const name=displayName(item?.name,'未命名好友');const disabled=existing.has(id);
         const atLimit=Number.isFinite(selectionLimit)&&selected.size>=selectionLimit&&!selected.has(id);
-        return <label className={`contact-row ${selected.has(id)?'is-selected ':''}${disabled||atLimit?'disabled':''}`} key={id} data-motion-state={selected.has(id)?'selected':'idle'}><input type="checkbox" disabled={disabled||atLimit} checked={selected.has(id)} onChange={e=>{if(e.target.checked&&atLimit){onLimitReached?.();return}controller.select(id,e.target.checked)}}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':atLimit?'额度已用完':item?.remark_name||item?.nickname||'已同步会话'}</small></span></label>
+        return <label className={`contact-row ${selected.has(id)?'is-selected ':''}${disabled||atLimit?'disabled':''}`} key={id} data-motion-state={selected.has(id)?'selected':'idle'}><input type="checkbox" disabled={disabled||atLimit} checked={selected.has(id)} onChange={e=>{if(e.target.checked&&atLimit){onLimitReached?.();return}controller.select(id,e.target.checked)}}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><b>{name}</b><small>{disabled?'已有续火任务':atLimit?'额度已用完':item?.remark_name||item?.nickname||'已同步会话'}</small><span className="streak-contact-meta" data-streak-state={item.spark?.stale?'stale':streakSnapshot(item.spark).state}>{streakSummary(item.spark)}</span></span></label>
       })}</MotionList></div>}
-      {!loading&&!error&&!visible.length&&<Empty title={query?'没有匹配的已加载会话':'还没有已同步好友'} text={query?'搜索仅覆盖已加载会话，可以加载或同步更多好友后再搜索。':'点击下方同步按钮，读取这个账号的最近好友会话。'}/>}
+      {!loading&&!error&&!visible.length&&<Empty title={query||sparkFilter!=='all'?'没有匹配的已加载会话':'还没有已同步好友'} text={query||sparkFilter!=='all'?'筛选与排序仅覆盖已加载会话，可以调整条件或同步更多好友。':'点击下方同步按钮，读取这个账号的最近好友会话。'}/>}
     </div>
     <footer className="drawer-foot contact-picker-footer">
       <div className="contact-picker-coverage" aria-live="polite"><b>{coverageLabel}</b><small>{busy==='sync'?'同步可能需要几分钟，关闭后可重新打开查看进度。':coverageHint}</small></div>
@@ -803,12 +808,29 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
   const contextNavigate=useNavigate();
   const contextId=new URLSearchParams(contextLocation.search).get('account')||'';
   const accounts=asList(data?.accounts); const membership=data?.membership||{};
+  const allTasks=asList(data?.tasks);
   const contextAccount=accounts.find(item=>item.id===contextId);
   const [accountId,setAccountId]=useState(contextAccount?.id||accounts[0]?.id||'');
   useEffect(()=>{if(contextAccount){setAccountId(contextAccount.id);setFriends([]);setSelectedTime('')}},[contextAccount?.id]);
   const [selectedTime,setSelectedTime]=useState('');
   const [kind,setKind]=useState('douyin_sticker'); const [message,setMessage]=useState('');
   const [friends,setFriends]=useState([]); const [picker,setPicker]=useState(false);
+  const [sparkTarget,setSparkTarget]=useState(null);
+  const openedMilestoneRef=useRef('');
+  useEffect(()=>{
+    const params=new URLSearchParams(contextLocation.search);
+    const sec_uid=params.get('spark')||'';
+    const accountId=params.get('account')||'';
+    const key=accountId&&sec_uid?`${accountId}:${sec_uid}`:'';
+    if(!key)return;
+    if(openedMilestoneRef.current===key){
+      setSparkTarget(current=>current?.accountId===accountId&&current?.sec_uid===sec_uid?current:{accountId,sec_uid,name:allTasks.find(item=>item.accountId===accountId&&item.sec_uid===sec_uid)?.name||'好友'});
+      return;
+    }
+    openedMilestoneRef.current=key;
+    const task=allTasks.find(item=>item.accountId===accountId&&item.sec_uid===sec_uid);
+    setSparkTarget({accountId,sec_uid,name:task?.name||'好友'});
+  },[contextLocation.search,allTasks]);
   const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all'); const [notice,setNotice]=useState(''); const [successToast,setSuccessToast]=useState('');
   const [openTaskMenu,setOpenTaskMenu]=useState(null);
   const [taskRows,setTaskRows]=useState(()=>asList(data?.tasks));
@@ -948,7 +970,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
       <FilterSummary items={[{key:'search',label:'好友',value:search,onRemove:()=>setSearch('')},{key:'state',label:'状态',value:filter==='all'?'':filter==='active'?'已启用':'已暂停',onRemove:()=>setFilter('all')}]} onClear={()=>{setSearch('');setFilter('all')}}/>
       {contextLoading&&shown.length>0&&<ReadStatus busy/>}
       {taskListError&&<div className="inline-feedback danger-text" role="alert">{taskListError}<Button variant="quiet" onClick={onRefresh}>重新读取</Button></div>}
-      {contextLoading&&!shown.length?<ListSkeleton label="正在读取此账号的任务…"/>:taskListError&&!shown.length?null:shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div><MotionList className="task-motion-list">{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';const menuOpen=openTaskMenu===task?.id;return <div id={`task-row-${task.id}`} className="task-row" data-feedback={rowFeedback.states[task.id]?.kind} aria-busy={rowFeedback.states[task.id]?.kind==='pending'||undefined} data-motion-state={task?.enabled?'enabled':'paused'} key={task?.id||`${name}-${index}`}><span className="person-cell"><motion.span layoutId={reduced?undefined:`task-avatar-${task.id}`} className="avatar" transition={{duration:.32,ease:[.22,1,.36,1]}}>{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</motion.span><span><motion.b layoutId={reduced?undefined:`task-name-${task.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{name}</motion.b><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><span className="task-status"><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><small>{friendState(task,asList(data.runs).find(run=>run.taskId===task.id)).label}</small></span><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} disabled={rowFeedback.states[task.id]?.kind==='pending'} onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={()=>toggleTask(task)}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><div className="task-row-menu"><RowActionMenu label={`${name} 更多操作`} open={menuOpen} onOpenChange={open=>setOpenTaskMenu(open?task.id:null)} triggerClassName="task-row-menu-btn" popupClassName="task-action-popup" keepMounted><TaskProbeAction taskId={task.id} csrf={data.csrf} label="运行前自检" menuItem/><RowActionItem className="row-menu-item is-danger" onClick={()=>deleteTask(task)}>删除任务</RowActionItem></RowActionMenu></div></span><RowFeedback value={rowFeedback.states[task.id]}/></div>})}</MotionList></div>:<Empty title={search||filter!=='all'?'没有匹配的任务':'还没有续火任务'} text={search||filter!=='all'?'调整搜索条件，或清除筛选查看全部任务。':'先选择账号和好友，创建第一条每日计划。'} action={search||filter!=='all'?<Button variant="quiet" onClick={()=>{setSearch('');setFilter('all')}}>清除筛选</Button>:null}/>}
+      {contextLoading&&!shown.length?<ListSkeleton label="正在读取此账号的任务…"/>:taskListError&&!shown.length?null:shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div><MotionList className="task-motion-list">{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';const menuOpen=openTaskMenu===task?.id;return <div id={`task-row-${task.id}`} className="task-row" data-feedback={rowFeedback.states[task.id]?.kind} aria-busy={rowFeedback.states[task.id]?.kind==='pending'||undefined} data-motion-state={task?.enabled?'enabled':'paused'} key={task?.id||`${name}-${index}`}><span className="person-cell"><motion.span layoutId={reduced?undefined:`task-avatar-${task.id}`} className="avatar" transition={{duration:.32,ease:[.22,1,.36,1]}}>{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</motion.span><span><motion.b layoutId={reduced?undefined:`task-name-${task.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{name}</motion.b><small>{displayText(task?.kind,'续火花表情')}</small><SparkSummary compact spark={task.spark} name={name} onClick={()=>setSparkTarget(task)}/></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><span className="task-status"><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><small>{friendState(task,asList(data.runs).find(run=>run.taskId===task.id)).label}</small></span><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} disabled={rowFeedback.states[task.id]?.kind==='pending'} onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={()=>toggleTask(task)}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><div className="task-row-menu"><RowActionMenu label={`${name} 更多操作`} open={menuOpen} onOpenChange={open=>setOpenTaskMenu(open?task.id:null)} triggerClassName="task-row-menu-btn" popupClassName="task-action-popup" keepMounted><TaskProbeAction taskId={task.id} csrf={data.csrf} label="运行前自检" menuItem/><RowActionItem className="row-menu-item is-danger" onClick={()=>deleteTask(task)}>删除任务</RowActionItem></RowActionMenu></div></span><RowFeedback value={rowFeedback.states[task.id]}/></div>})}</MotionList></div>:<Empty title={search||filter!=='all'?'没有匹配的任务':'还没有续火任务'} text={search||filter!=='all'?'调整搜索条件，或清除筛选查看全部任务。':'先选择账号和好友，创建第一条每日计划。'} action={search||filter!=='all'?<Button variant="quiet" onClick={()=>{setSearch('');setFilter('all')}}>清除筛选</Button>:null}/>}
       {taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}
     </section><Card className="composer-card" id="task-composer">
       <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div></div>
@@ -990,7 +1012,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
         </div>
       </form>
     </Card></div>
-    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} releasedKeys={releasedKeys} selectionLimit={Number.isFinite(remainingTaskCapacity)?remainingTaskCapacity:null} limitMessage={remainingTaskCapacity===0?quotaMessage:''} onLimitReached={()=>setNotice(quotaMessage)} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh} onSaved={(msg,id,patch)=>{setTaskRows(rows=>rows.map(row=>row.id===id?{...row,...patch}:row));rowFeedback.mark(id,msg);setSuccessToast(msg);flashTask(id)}}/><Toast message={successToast} onClose={closeSuccessToast}/>
+    <ContactPicker open={picker} onClose={()=>setPicker(false)} account={account} data={data} releasedKeys={releasedKeys} selectionLimit={Number.isFinite(remainingTaskCapacity)?remainingTaskCapacity:null} limitMessage={remainingTaskCapacity===0?quotaMessage:''} onLimitReached={()=>setNotice(quotaMessage)} onDone={value=>{if(value)setFriends(value)}}/><TaskEditDrawer task={editTask} data={data} open={Boolean(editTask)} onClose={closeEdit} onRefresh={onRefresh} onSaved={(msg,id,patch)=>{setTaskRows(rows=>rows.map(row=>row.id===id?{...row,...patch}:row));rowFeedback.mark(id,msg);setSuccessToast(msg);flashTask(id)}}/><Toast message={successToast} onClose={closeSuccessToast}/><SparkDetail target={sparkTarget} onClose={()=>setSparkTarget(null)} request={api}/>
   </>;
 }
 

@@ -25,6 +25,7 @@ from spark_console.models import (
     DouyinLoginChallenge,
     DouyinLoginInput,
     DouyinLoginSession,
+    DouyinStreakObservation,
     MailDelivery,
     TaskRun,
     TaskRunAttempt,
@@ -340,7 +341,7 @@ def retain(
             policy=policy,
             categories={
                 name: RetentionCategory()
-                for name in ("runs", "login_sessions", "web_sessions", "mail", "audits", "account_incidents")
+                for name in ("runs", "login_sessions", "web_sessions", "mail", "audits", "account_incidents", "streak_observations")
             },
             lock_acquired=False,
         )
@@ -356,6 +357,7 @@ def retain(
     mail_criteria = _mail_criteria(cutoffs["mail"])
     audit_criteria = _audit_criteria(cutoffs["audits"])
     incident_criteria = (AccountIncident.resolved_at.is_not(None), AccountIncident.resolved_at <= cutoffs['runs'])
+    streak_criteria = (DouyinStreakObservation.observed_at <= as_of - timedelta(days=365),)
 
     categories = {
         "runs": RetentionCategory(candidates=_count(db, TaskRun, *run_criteria)),
@@ -369,6 +371,7 @@ def retain(
         "audits": RetentionCategory(candidates=_count(db, AuditEvent, *audit_criteria)),
         "account_incidents": RetentionCategory(candidates=_count(db, AccountIncident, *incident_criteria),
             protected=_count(db,AccountIncident,AccountIncident.resolved_at.is_(None))),
+        "streak_observations": RetentionCategory(candidates=_count(db, DouyinStreakObservation, *streak_criteria)),
     }
     protected = _protected_counts(db, as_of)
     for name, count in protected.items():
@@ -423,6 +426,10 @@ def retain(
         )
         categories['account_incidents'].deleted = _delete_one_batch(db,AccountIncident,AccountIncident.id,
             incident_criteria,batch_size=policy.batch_size)
+        categories['streak_observations'].deleted = _delete_one_batch(
+            db, DouyinStreakObservation, DouyinStreakObservation.id,
+            streak_criteria, batch_size=policy.batch_size,
+        )
         if sum(item.deleted for item in categories.values()):
             db.add(
                 AuditEvent(

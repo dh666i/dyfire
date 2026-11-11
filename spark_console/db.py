@@ -19,7 +19,7 @@ from spark_console.task_targets import (
 
 
 SQLITE_LOCK_TIMEOUT_SECONDS = 10.0
-SQLITE_SCHEMA_VERSION = 25
+SQLITE_SCHEMA_VERSION = 27
 
 
 def _enable_sqlite_wal(cursor) -> None:
@@ -152,6 +152,10 @@ def create_schema(engine: Engine) -> None:
         connection.execute(text('CREATE UNIQUE INDEX IF NOT EXISTS uq_login_action_request ON douyin_login_actions (scan_id,request_id)'))
         connection.execute(text('ALTER TABLE payment_records ADD COLUMN IF NOT EXISTS request_digest VARCHAR(64)'))
         connection.execute(text("UPDATE payment_records SET request_digest=md5(request_id) WHERE request_digest IS NULL"))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_streak_observations_observed_at "
+            "ON douyin_streak_observations (observed_at)"
+        ))
     _assert_postgres_schema_complete(engine)
     with session_scope(engine) as session:
         if session.get(WorkerLock, 1) is None:
@@ -190,6 +194,7 @@ def _assert_postgres_schema_complete(engine: Engine) -> None:
         "uq_douyin_account_user_id",
         "uq_account_incidents_open",
         "uq_login_action_request",
+        "ix_streak_observations_observed_at",
     }
     actual_indexes = {
         index["name"]
@@ -249,6 +254,8 @@ def _run_sqlite_migrations(connection: Connection) -> None:
         (23, "complete_optimization", _upgrade_sqlite_complete_optimization),
         (24, "remote_action_payload_fingerprint", _upgrade_sqlite_remote_action_fingerprint),
         (25, "payment_request_fingerprint", _upgrade_sqlite_payment_request_fingerprint),
+        (26, "platform_streak_observations", _upgrade_sqlite_streak_observations),
+        (27, "platform_streak_retention_index", _upgrade_sqlite_streak_retention_index),
     )
     connection.exec_driver_sql(
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
@@ -271,6 +278,19 @@ def _run_sqlite_migrations(connection: Connection) -> None:
             "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
             (version, name),
         )
+
+
+def _upgrade_sqlite_streak_observations(connection: Connection) -> None:
+    # New tables only: no relationship, task, or credential is rewritten.
+    for name in ("douyin_streak_snapshots", "douyin_streak_observations", "douyin_streak_milestones"):
+        Base.metadata.tables[name].create(connection, checkfirst=True)
+
+
+def _upgrade_sqlite_streak_retention_index(connection: Connection) -> None:
+    connection.exec_driver_sql(
+        "CREATE INDEX IF NOT EXISTS ix_streak_observations_observed_at "
+        "ON douyin_streak_observations (observed_at)"
+    )
 
 
 def _upgrade_sqlite_complete_optimization(connection: Connection) -> None:

@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -260,6 +261,61 @@ class DouyinContactAvatar(Base):
     sec_uid: Mapped[str] = mapped_column(String(256), primary_key=True)
     avatar_url: Mapped[str] = mapped_column(String(2048), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class DouyinStreakSnapshot(Base):
+    """Only platform-observed relationship facts, never inferred from sends."""
+    __tablename__ = "douyin_streak_snapshots"
+    __table_args__ = (
+        CheckConstraint("days IS NULL OR days >= 0", name="ck_streak_days"),
+        CheckConstraint("state IN ('unknown','active','broken','recovering')", name="ck_streak_state"),
+        Index("ix_streak_snapshots_account_state", "account_id", "state"),
+    )
+    account_id: Mapped[str] = mapped_column(ForeignKey("douyin_accounts.id", ondelete="CASCADE"), primary_key=True)
+    sec_uid: Mapped[str] = mapped_column(String(256), primary_key=True)
+    days: Mapped[int | None] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
+    recover_current: Mapped[int | None] = mapped_column(Integer)
+    recover_total: Mapped[int | None] = mapped_column(Integer)
+    platform_text: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DouyinStreakObservation(Base):
+    __tablename__ = "douyin_streak_observations"
+    __table_args__ = (
+        ForeignKeyConstraint(["account_id", "sec_uid"], ["douyin_streak_snapshots.account_id", "douyin_streak_snapshots.sec_uid"], ondelete="CASCADE"),
+        Index("ix_streak_observations_account_target_time", "account_id", "sec_uid", "observed_at"),
+        Index("ix_streak_observations_observed_at", "observed_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uuid_string)
+    account_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    sec_uid: Mapped[str] = mapped_column(String(256), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    days: Mapped[int | None] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(16), nullable=False)
+    recover_current: Mapped[int | None] = mapped_column(Integer)
+    recover_total: Mapped[int | None] = mapped_column(Integer)
+    platform_text: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class DouyinStreakMilestone(Base):
+    __tablename__ = "douyin_streak_milestones"
+    __table_args__ = (
+        ForeignKeyConstraint(["account_id", "sec_uid"], ["douyin_streak_snapshots.account_id", "douyin_streak_snapshots.sec_uid"], ondelete="CASCADE"),
+        CheckConstraint("days IN (100,365,520,1000)", name="ck_streak_milestone_days"),
+    )
+    account_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sec_uid: Mapped[str] = mapped_column(String(256), primary_key=True)
+    days: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(24), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class ScanStatus(StrEnum):

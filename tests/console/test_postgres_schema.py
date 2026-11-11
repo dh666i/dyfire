@@ -30,6 +30,27 @@ def test_postgres_schema_and_scheduler_claim_are_real_database_operations():
     assert "ix_mail_deliveries_status_updated" in indexes
     assert "ix_audit_events_request_id" in indexes
     assert "uq_douyin_account_user_id" in indexes
+    assert "ix_streak_snapshots_account_state" in indexes
+    assert "ix_streak_observations_account_target_time" in indexes
+
+    for table_name in ("douyin_streak_observations", "douyin_streak_milestones"):
+        foreign_keys = inspector.get_foreign_keys(table_name)
+        assert any(
+            key["referred_table"] == "douyin_streak_snapshots"
+            and key["constrained_columns"] == ["account_id", "sec_uid"]
+            and key["referred_columns"] == ["account_id", "sec_uid"]
+            and key["options"].get("ondelete", "").upper() == "CASCADE"
+            for key in foreign_keys
+        ), table_name
+
+    snapshot_checks = {
+        item["name"] for item in inspector.get_check_constraints("douyin_streak_snapshots")
+    }
+    milestone_checks = {
+        item["name"] for item in inspector.get_check_constraints("douyin_streak_milestones")
+    }
+    assert {"ck_streak_days", "ck_streak_state"} <= snapshot_checks
+    assert "ck_streak_milestone_days" in milestone_checks
     audit_columns = {column["name"] for column in inspector.get_columns("audit_events")}
     assert {"request_id", "client_ip", "outcome", "error_code"} <= audit_columns
 

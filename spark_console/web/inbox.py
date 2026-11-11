@@ -3,7 +3,7 @@ import hashlib
 from urllib.parse import quote
 from datetime import datetime,timedelta,timezone
 from sqlalchemy import select
-from spark_console.models import AuditEvent,DouyinAccount,SparkTask,TaskRun,UserSubscription
+from spark_console.models import AuditEvent,DouyinAccount,DouyinContactIdentity,DouyinStreakMilestone,SparkTask,TaskRun,UserSubscription
 
 INBOX_ACCOUNT_LIMIT = 100
 INBOX_READ_EVENT_LIMIT = 1000
@@ -45,6 +45,28 @@ def entries(db,user_id):
     for run,task,count in groups.values():
         pending=run.status=='submitted_unconfirmed'
         add('run:'+run.id,task.target_name+(' · 发送待确认' if pending else ' · 执行异常'),f'最近七天同类记录 {count} 条。'+('请先核对抖音聊天记录，不要直接重发。' if pending else '请查看执行详情与账号状态。'),'/runs?q='+quote(task.target_name),run.scheduled_for)
+    milestone_rows=db.execute(select(DouyinStreakMilestone,DouyinAccount,DouyinContactIdentity).join(
+        DouyinAccount,DouyinAccount.id==DouyinStreakMilestone.account_id
+    ).outerjoin(DouyinContactIdentity,(DouyinContactIdentity.account_id==DouyinStreakMilestone.account_id)&
+        (DouyinContactIdentity.sec_uid==DouyinStreakMilestone.sec_uid)
+    ).where(DouyinAccount.owner_user_id==user_id,DouyinStreakMilestone.observed_at>=since
+    ).order_by(DouyinStreakMilestone.observed_at.desc(),DouyinStreakMilestone.days.desc()).limit(200)).all()
+    by_relationship={}
+    for milestone,account,contact in milestone_rows:
+        key=(account.id,milestone.sec_uid)
+        by_relationship.setdefault(key,[]).append((milestone,account,contact))
+    for values in by_relationship.values():
+        crossed=[item for item in values if item[0].kind=='crossed']
+        selected=crossed or [max(values,key=lambda item:item[0].days)]
+        for milestone,account,contact in selected:
+            name=(contact.remark_name or contact.nickname) if contact else None
+            name=name or '好友'
+            observed=milestone.kind=='first_observed'
+            title=f'{name} · {milestone.days} 天火花里程碑'
+            detail=(f'抖音平台首次读取到 {milestone.days} 天；实际达到日期未知。' if observed
+                    else f'抖音平台观测到火花天数跨过 {milestone.days} 天。')
+            url='/studio?'+ 'account='+quote(account.id,safe='')+'&spark='+quote(milestone.sec_uid,safe='')
+            add(f'spark-milestone:{account.id}:{milestone.sec_uid}:{milestone.days}',title,detail,url,milestone.observed_at,'success')
     sub=db.get(UserSubscription,user_id)
     if sub and sub.valid_until and sub.valid_until.replace(tzinfo=timezone.utc)<datetime.now(timezone.utc)+timedelta(days=3):
         add('expiry:'+sub.valid_until.isoformat(),'会员到期提醒','请查看有效期与额度；到期后保留 1 个好友任务，其余任务暂不执行。','/subscription',sub.valid_until)

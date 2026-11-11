@@ -34,6 +34,7 @@ from spark_console.models import (
 from spark_console.services.account_health import views as account_health_views
 from spark_console.services.incidents import current_map as current_incidents, views as incident_views
 from spark_console.services.directory import profile_map, task_avatar_map
+from spark_console.services.streaks import task_snapshot_map
 from spark_console.services.accounts import AccountService
 from spark_console.services.tasks import TaskService
 from spark_console.services.audits import AuditService
@@ -77,6 +78,7 @@ def _task_payload(db, tasks):
         ).all()
     } if task_ids else {}
     avatars = task_avatar_map(db, tasks)
+    streaks = task_snapshot_map(db, tasks, identities)
     return [
         {
             "id": t.id,
@@ -88,6 +90,7 @@ def _task_payload(db, tasks):
             "message": t.message_template,
             "enabled": t.enabled,
             "avatar": avatars.get(t.id),
+            "spark": streaks.get(t.id),
         }
         for t in tasks
     ]

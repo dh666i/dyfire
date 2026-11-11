@@ -7,6 +7,7 @@ from core.account_profile import read_self_profile, ACCOUNT_INFO_URL
 from core.web_chat import UserInfoCollector, WEB_CHAT_URL, ensure_web_chat_authenticated
 from spark_console.credentials import CredentialPayload
 from core.session_health import require_session, wait_for_session, inspect_session, SessionUnavailable
+from core.streak_protocol import StreakCollector
 
 # Only conversation rows and user-result rows with an explicit identity are read.
 # Never click a search result, a send button, or the chat editor.
@@ -89,6 +90,7 @@ async def read_directory(payload_bytes, version, limit, query):
     from playwright.async_api import async_playwright
     payload = CredentialPayload.parse(bytes(payload_bytes), version)
     collector = UserInfoCollector()
+    streak_collector = StreakCollector()
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True)
         try:
@@ -97,6 +99,8 @@ async def read_directory(payload_bytes, version, limit, query):
                 await context.add_cookies(payload.cookies_to_add())
             page = await context.new_page()
             page.on("response", collector.capture)
+            page.on("request", streak_collector.capture_request)
+            page.on("response", streak_collector.capture)
             await page.goto(WEB_CHAT_URL, wait_until="domcontentloaded", timeout=45000)
             # A cold chat page may still be hydrating. Retry once only when
             # evidence is inconclusive, never when login/verification is explicit.
@@ -119,6 +123,7 @@ async def read_directory(payload_bytes, version, limit, query):
             if final.state in ('verification', 'logged_out'):
                 raise SessionUnavailable(final)
             identities = await collector.drain()
+            streaks = await streak_collector.finalize(profile.get("platform_user_id"))
             items = []
             for row in rows:
                 candidates = [i for i in identities if (row.get("sec_uid") and i.sec_uid == row["sec_uid"])
@@ -143,6 +148,7 @@ async def read_directory(payload_bytes, version, limit, query):
                 }''', query)
                 import json
                 raise ValueError('当前抖音页面搜索结果未识别；结构诊断：'+json.dumps(structure,ensure_ascii=False))
-            return {"items": items, "profile": profile, "has_more": len(rows) >= limit and limit < 100}
+            return {"items": items, "profile": profile, "streaks": streaks,
+                    "has_more": len(rows) >= limit and limit < 100}
         finally:
             await browser.close()

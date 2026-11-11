@@ -49,6 +49,7 @@ from spark_console.web.directory_routes import build_directory_router
 from spark_console.web.health_routes import build_health_router
 from spark_console.services.account_health import views as health_views
 from spark_console.services.directory import profile_map, task_avatar_map, job_view
+from spark_console.services.streaks import contact_snapshot_map, unknown_snapshot
 from spark_console.models import ContactDirectoryJob
 from spark_console.web.auth import WebAuth
 from spark_console.web.admin_routes import build_admin_router, render_admin_codes
@@ -152,6 +153,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
     app.include_router(build_studio_router(engine, auth, cipher))
     from spark_console.web.spa_routes import build_spa_router
     app.include_router(build_spa_router(engine, auth, settings, cipher))
+    from spark_console.web.streak_routes import build_streak_router
+    app.include_router(build_streak_router(engine, auth))
     frontend_assets = PACKAGE_ROOT.parent / 'frontend' / 'dist' / 'assets'
     if frontend_assets.is_dir():
         app.mount('/assets', StaticFiles(directory=str(frontend_assets)), name='frontend-assets')
@@ -829,6 +832,13 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 ContactDirectoryJob.status.in_(['queued', 'running'])).order_by(ContactDirectoryJob.created_at.desc()).limit(1))
             sorted_items = sorted(items, key=lambda item: item["name"])
             page = sorted_items[offset:offset + limit]
+            snapshots = contact_snapshot_map(
+                db, account_id, [item["sec_uid"] for item in page if item.get("sec_uid")]
+            )
+            page = [
+                {**item, "spark": snapshots.get(item.get("sec_uid"), unknown_snapshot())}
+                for item in page
+            ]
             next_offset = offset + len(page)
             sync_view = job_view(latest) if latest else None
             active_view = job_view(active) if active else None

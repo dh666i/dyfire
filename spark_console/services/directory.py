@@ -11,6 +11,7 @@ from spark_console.models import (ContactDirectoryJob, DouyinAccount, DouyinAcco
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.subscriptions import SubscriptionService
+from spark_console.services.streaks import record_observations
 
 
 def profile_map(db, account_ids):
@@ -166,6 +167,10 @@ async def process_directory_job(engine, cipher, reader=None):
             else:
                 save_contacts(db, account_id, result["items"])
                 save_profile(db, account, result.get("profile", {}))
+                # Optional platform metadata must never be inferred from task
+                # delivery or nicknames; the collector only returns validated
+                # observations matched by this account's stable sec_uid.
+                record_observations(db, account_id, result.get("streaks", []))
                 job.result_json = json.dumps({"items": result["items"], "has_more": result.get("has_more", False)}, ensure_ascii=False)
                 job.status = "succeeded"
             job.finished_at = utc_now()

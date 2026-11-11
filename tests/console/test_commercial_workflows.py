@@ -2,7 +2,7 @@ import unittest
 from datetime import timedelta
 from sqlalchemy import select,func
 from spark_console.db import session_scope
-from spark_console.models import SparkTask,TaskRun,User,DouyinAccount,AuditEvent,WebSession,utc_now
+from spark_console.models import SparkTask,TaskRun,User,DouyinAccount,DouyinContactIdentity,DouyinStreakMilestone,AuditEvent,WebSession,utc_now
 from spark_console.services.tasks import TaskService
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
@@ -72,6 +72,25 @@ class CommercialWorkflowTests(unittest.TestCase):
         marked=self.client.post('/api/attention/read',json={'csrf_token':self.f.csrf,'item_id':item['id']})
         self.assertEqual(200,marked.status_code)
         self.assertTrue(next(i for i in marked.json()['items'] if i['id']==item['id'])['read'])
+
+    def test_recent_streak_milestone_is_actionable_and_deduplicated_per_relationship(self):
+        with session_scope(self.f.engine) as db:
+            db.add(DouyinContactIdentity(account_id=self.f.account,sec_uid='milestone-peer',nickname='琪宝',remark_name='郭琪'))
+            db.add_all([
+                DouyinStreakMilestone(account_id=self.f.account,sec_uid='milestone-peer',days=100,kind='first_observed',observed_at=utc_now()-timedelta(hours=1)),
+                DouyinStreakMilestone(account_id=self.f.account,sec_uid='milestone-peer',days=365,kind='crossed',observed_at=utc_now()-timedelta(minutes=30)),
+                DouyinStreakMilestone(account_id=self.f.account,sec_uid='milestone-peer',days=520,kind='first_observed',observed_at=utc_now()-timedelta(minutes=20)),
+            ])
+        items=[item for item in self.client.get('/api/attention').json()['items'] if '火花里程碑' in item['title']]
+        self.assertEqual(1,len(items))
+        self.assertIn('郭琪',items[0]['title'])
+        self.assertIn('365 天',items[0]['title'])
+        self.assertIn('跨过 365 天',items[0]['detail'])
+        self.assertEqual(f'/studio?account={self.f.account}&spark=milestone-peer',items[0]['url'])
+        self.assertFalse(items[0]['read'])
+        self.client.post('/api/attention/read',json={'csrf_token':self.f.csrf,'item_id':items[0]['id']})
+        marked=[item for item in self.client.get('/api/attention').json()['items'] if item['id']==items[0]['id']]
+        self.assertTrue(marked[0]['read'])
 
     def test_account_center_api_lists_and_revokes_only_other_sessions(self):
         with session_scope(self.f.engine) as db:
