@@ -1,0 +1,2 @@
+# HTTP/API and monitoring only. Browser automation belongs to auth/worker.
+-r requirements-console.txt

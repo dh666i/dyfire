@@ -1,0 +1,99 @@
+name: Maintain pinned runtimes
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: dyfire-runtime-maintenance
+  cancel-in-progress: false
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [web, browser]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build maintained runtime
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.runtime
+          target: ${{ matrix.component }}-runtime
+          push: true
+          pull: true
+          build-args: RUNTIME_REFRESH=${{ github.run_id }}
+          tags: ghcr.io/dh666i/dyfire:runtime-${{ matrix.component }}-${{ github.run_id }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=registry,ref=ghcr.io/dh666i/dyfire:runtime-cache-${{ matrix.component }}
+          cache-to: type=registry,ref=ghcr.io/dh666i/dyfire:runtime-cache-${{ matrix.component }},mode=max,image-manifest=true,oci-mediatypes=true
+      - name: Validate runtime contents and local browser launch
+        env:
+          IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+        run: docker run --rm --entrypoint python -v "$PWD/deploy/runtime_smoke.py:/app/runtime_smoke.py:ro" "$IMAGE" /app/runtime_smoke.py --component '${{ matrix.component }}'
+      - uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
+        with:
+          image-ref: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Record verified runtime digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+          COMPONENT: ${{ matrix.component }}
+        shell: python
+        run: |
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd()))
+          from scripts.release_runtime_image import resolve
+          index = os.environ['INDEX_IMAGE']
+          Path('runtime-' + os.environ['COMPONENT'] + '.json').write_text(json.dumps({'image': resolve(index), 'index_image': index}))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.component }}
+          path: runtime-${{ matrix.component }}.json
+  proposed-lock:
+    needs: runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: runtime-*
+          merge-multiple: true
+      - name: Generate a lock for review, without changing the live application
+        shell: python
+        run: |
+          import json, os, subprocess, sys
+          from pathlib import Path
+          web = json.loads(Path('runtime-web.json').read_text())
+          browser = json.loads(Path('runtime-browser.json').read_text())
+          subprocess.run([sys.executable, 'scripts/runtime_images.py', 'write', '--lock', 'runtime-images.json',
+              '--web', web['image'], '--web-index', web['index_image'], '--browser', browser['image'],
+              '--browser-index', browser['index_image'], '--source-sha', os.environ['GITHUB_SHA']], check=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              out.write('Verified runtime lock is attached as runtime-images-lock. Review and commit it to deploy/runtime-images.json before the next application release. No production deployment was performed.\n')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-images-lock
+          path: runtime-images.json

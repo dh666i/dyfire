@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+# Maintained independently; application builds consume the verified digests.
+FROM ubuntu:24.04 AS os-runtime
+ARG DEBIAN_FRONTEND=noninteractive
+ARG RUNTIME_REFRESH=manual
+ENV PATH=/opt/venv/bin:$PATH
+WORKDIR /app
+RUN set -eux; test -n "$RUNTIME_REFRESH"; \
+    apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends ca-certificates python3 python3-venv \
+    && python3 -m venv /opt/venv \
+    && useradd --create-home --uid 10001 --user-group spark \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM os-runtime AS web-runtime
+ARG PIP_INDEX_URL=https://pypi.org/simple
+COPY requirements-web.txt requirements-console.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "$PIP_INDEX_URL" -r requirements-web.txt \
+    && python -c "import importlib.util; assert importlib.util.find_spec('playwright') is None"
+ENV DYFIRE_RUNTIME_COMPONENT=web
+USER spark
+
+FROM os-runtime AS browser-toolchain
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY requirements-browser-runtime.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "$PIP_INDEX_URL" -r requirements-browser-runtime.txt \
+    && python -m playwright install --with-deps --only-shell chromium \
+    && chmod -R a+rX /ms-playwright \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM browser-toolchain AS browser-runtime
+ARG PIP_INDEX_URL=https://pypi.org/simple
+COPY requirements.txt requirements-console.txt ./
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --index-url "$PIP_INDEX_URL" -r requirements.txt -r requirements-console.txt \
+    && pip check
+ENV DYFIRE_RUNTIME_COMPONENT=browser
+USER spark
