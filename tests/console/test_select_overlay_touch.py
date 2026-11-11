@@ -1,5 +1,6 @@
 """Real touch activation of the shared select, without native picker defaults."""
 import os
+import json
 from pathlib import Path
 
 import pytest
@@ -35,26 +36,40 @@ def test_touch_and_keyboard_use_only_the_shared_listbox(engine):
             source = Path('frontend/src/select-overlay.js').read_text(encoding='utf-8')
             page.add_script_tag(content=source.replace('export function ', 'function ', 1)
                                 + '\nwindow.testSelectOverlay=installSelectOverlay(window);')
-            page.add_style_tag(content='''.fire-select-menu{background:#fff;border:1px solid #ddd;
-                z-index:999;padding:6px}.fire-select-option{display:flex;min-height:44px;width:100%}
+            page.add_style_tag(content='''.fire-select-menu{position:fixed;overflow:auto;
+                background:#fff;border:1px solid #ddd;z-index:999;padding:6px}
+                .fire-select-option{display:flex;min-height:44px;width:100%}
                 .fire-select-option.is-active{background:#fdd}''')
             page.evaluate('''() => {
-                window.events=[]; window.changes=[];
+                window.events=[]; window.changes=[]; window.selectTrace=[];
                 const select=document.querySelector('#status');
                 for(const type of ['pointerdown','touchstart','touchend','mousedown','click'])
                   select.addEventListener(type,event=>events.push({type,cancelled:event.defaultPrevented}));
                 select.addEventListener('change',()=>changes.push(select.value));
+                for(const type of ['pointerdown','pointerenter','pointermove','touchstart','touchend',
+                                   'click','keydown','keyup','focus','blur','change'])
+                  document.addEventListener(type,event=>{
+                    if(event.target===select||event.target.closest?.('.fire-select-menu'))
+                      selectTrace.push({type,key:event.key,pointer:event.pointerType,
+                        target:event.target.id||event.target.tagName,cancelled:event.defaultPrevented,
+                        value:select.value,highlight:select.getAttribute('aria-activedescendant'),
+                        focused:document.activeElement?.id});
+                  },true);
             }''')
             control = page.get_by_role('combobox', name='用户状态筛选')
             control.tap()
             expect(page.get_by_role('listbox')).to_have_count(2)  # custom list + native multiple
             menu = page.locator('.fire-select-menu')
             expect(menu).to_be_visible()
+            assert menu.evaluate('(el)=>getComputedStyle(el).position') == 'fixed'
+            assert menu.bounding_box()['y'] >= control.bounding_box()['y'] + control.bounding_box()['height']
             events = page.evaluate('events')
             assert any(event['type'] == 'touchstart' for event in events), events
             assert all(event['cancelled'] for event in events), events
             assert page.evaluate("!CSS.supports('selector(select:open)') || !document.querySelector('#status').matches(':open')")
-            menu.get_by_role('option', name='正常', exact=True).tap()
+            normal_option = menu.get_by_role('option', name='正常', exact=True)
+            normal_box = normal_option.bounding_box()
+            normal_option.tap()
             expect(control).to_have_value('active')
             expect(menu).to_have_count(0)
             assert page.evaluate('changes') == ['active']
@@ -62,8 +77,13 @@ def test_touch_and_keyboard_use_only_the_shared_listbox(engine):
             control.tap(); expect(menu).to_be_visible()
             control.tap(); expect(menu).to_have_count(0)
             # Keyboard and screen-reader click activation still use the same popup.
+            # Keep the physical pointer where the old option was: rebuilding
+            # the menu must not let a synthetic enter replace ArrowDown's item.
+            page.mouse.move(normal_box['x'] + normal_box['width'] / 2,
+                            normal_box['y'] + normal_box['height'] / 2)
             control.press('ArrowDown')
             expect(menu).to_be_visible()
+            expect(menu.get_by_role('option', name='已停用', exact=True)).to_have_class('fire-select-option is-active')
             control.press('Enter')
             expect(control).to_have_value('disabled')
             assert page.evaluate('changes') == ['active', 'disabled']
@@ -80,6 +100,12 @@ def test_touch_and_keyboard_use_only_the_shared_listbox(engine):
                 el.dispatchEvent(event);return !event.defaultPrevented;
             }''')
             assert not errors, errors
+        except Exception:
+            output = Path('.artifacts/select-touch'); output.mkdir(parents=True, exist_ok=True)
+            (output / f'{engine}-failure-events.json').write_text(
+                json.dumps(page.evaluate('window.selectTrace || []'), ensure_ascii=False, indent=2), encoding='utf-8')
+            page.screenshot(path=str(output / f'{engine}-failure.png'))
+            raise
         finally:
             context.close(); browser.close()
 

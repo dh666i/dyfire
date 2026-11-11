@@ -113,6 +113,8 @@ jobs:
             .artifacts/ui-toast-hover/
             .artifacts/ui-controls-refinement/screenshots/
             .artifacts/ui-site-unification/screenshots/
+            .artifacts/select-touch/
+            .artifacts/auth-ui/
           retention-days: 7
           include-hidden-files: true
   validate:

@@ -60,7 +60,11 @@ export function installSelectOverlay(windowObject=window) {
       const label=document.createElement('span');label.textContent=option.textContent;row.append(label);
       if(option.selected){const check=document.createElement('b');check.setAttribute('aria-hidden','true');check.textContent='✓';row.append(check)}
       row.addEventListener('pointerdown',event=>event.preventDefault());
-      row.addEventListener('pointerenter',()=>highlight(index));row.addEventListener('click',()=>choose(index));menu.append(row);
+      // Inserting a popup beneath a stationary pointer can synthesize enter
+      // events (notably WebKit). Only real pointer motion may take selection
+      // back from the keyboard; touch commits through click instead.
+      row.addEventListener('pointermove',event=>{if(event.pointerType!=='touch')highlight(index)});
+      row.addEventListener('click',()=>choose(index));menu.append(row);
     });
     const below=windowObject.innerHeight-rect.bottom-12,above=rect.top-12,goUp=below<220&&above>below;
     const maxHeight=Math.max(120,Math.min(300,goUp?above:below));

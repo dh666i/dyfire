@@ -34,9 +34,18 @@ test('keyboard navigation skips disabled options and Home/End select enabled end
   f.open();f.key('End');f.key(' ');assert.equal(f.select.value,'D');
 });
 test('pointer hover then Enter never advances to another option',t=>{
-  const f=fixture(t);f.open();f.menu().children[1].dispatchEvent(new f.window.Event('pointerenter'));
+  const f=fixture(t);f.open();f.menu().children[1].dispatchEvent(new f.window.Event('pointermove'));
   assert.equal(f.select.getAttribute('aria-activedescendant'),f.menu().children[1].id);
   f.key('Enter');assert.equal(f.select.value,'B');
+});
+test('stationary pointer enter and touch motion cannot overwrite a keyboard highlight',t=>{
+  const f=fixture(t);f.open();f.key('ArrowDown');
+  const option=f.menu().children[0];
+  option.dispatchEvent(new f.window.Event('pointerenter'));
+  const touch=new f.window.Event('pointermove');Object.defineProperty(touch,'pointerType',{value:'touch'});
+  option.dispatchEvent(touch);
+  assert.equal(f.select.getAttribute('aria-activedescendant'),f.menu().children[1].id);
+  f.key('Enter');assert.equal(f.select.value,'B');assert.deepEqual(f.changes,['B']);
 });
 test('scrolling inside menu keeps it open; scrolling outside closes it',t=>{
   const f=fixture(t);f.open();const menu=f.menu();menu.dispatchEvent(new f.window.Event('scroll'));
