@@ -21,10 +21,12 @@ npm ci
 npm run build
 cd ..
 sudo python3 deploy/initialize.py
-docker compose --env-file .env.console -f compose.console.yml build
+python3 scripts/runtime_images.py build
 docker compose --env-file .env.console -f compose.console.yml up -d
 docker compose --env-file .env.console -f compose.console.yml exec spark-web python -m spark_console.cli create-admin admin@example.com
 ```
+
+本地构建从 `deploy/runtime-images.json` 读取已验证的固定基础镜像。Web/API 与监控使用不含 Playwright/Chromium 的轻镜像；登录验证与任务发送使用浏览器镜像，仍保持同一业务代码与数据库。依赖发生变化时先运行 GitHub Actions 的 `Maintain pinned runtimes`，核对其测试和安全扫描，下载 `runtime-images-lock` 产物并更新锁文件。生产服务器只拉发布镜像，不运行本地构建命令。
 
 ### 数据保留维护
 

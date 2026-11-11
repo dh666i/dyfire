@@ -4,9 +4,12 @@ x-common: &common
   build:
     context: .
     dockerfile: Dockerfile.console
+    target: browser
     network: host
     args:
       PIP_INDEX_URL: ${SPARK_BUILD_PIP_INDEX_URL:-https://pypi.org/simple}
+      WEB_RUNTIME_IMAGE: ${WEB_RUNTIME_IMAGE:-}
+      BROWSER_RUNTIME_IMAGE: ${BROWSER_RUNTIME_IMAGE:-}
   restart: unless-stopped
   init: true
   env_file: .env.console
@@ -68,6 +71,14 @@ services:
       start_period: 10s
   spark-web:
     <<: *common
+    image: ${SPARK_WEB_IMAGE:-${SPARK_IMAGE_NAME:-douyin-spark-web:local}}
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+      target: web
+      args:
+        WEB_RUNTIME_IMAGE: ${WEB_RUNTIME_IMAGE:-}
+        BROWSER_RUNTIME_IMAGE: ${BROWSER_RUNTIME_IMAGE:-}
     environment:
       SPARK_HOST_METRICS_DIR: /run/host-metrics
       DYFIRE_UPDATE_DIR: /run/dyfire-updates
@@ -96,6 +107,14 @@ services:
       start_period: 20s
   spark-monitor:
     <<: *common
+    image: ${SPARK_MONITOR_IMAGE:-${SPARK_WEB_IMAGE:-${SPARK_IMAGE_NAME:-douyin-spark-web:local}}}
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+      target: web
+      args:
+        WEB_RUNTIME_IMAGE: ${WEB_RUNTIME_IMAGE:-}
+        BROWSER_RUNTIME_IMAGE: ${BROWSER_RUNTIME_IMAGE:-}
     command: [python, -m, spark_console.ops_history]
     environment:
       SPARK_HOST_METRICS_DIR: /run/host-metrics
@@ -119,6 +138,7 @@ services:
       start_period: 20s
   spark-auth:
     <<: *common
+    image: ${SPARK_BROWSER_IMAGE:-${SPARK_IMAGE_NAME:-douyin-spark-browser:local}}
     command: [python, -m, spark_console.auth_worker]
     environment:
       SPARK_AUTH_POLL_SECONDS: "1"
@@ -136,6 +156,7 @@ services:
       start_period: 20s
   spark-worker:
     <<: *common
+    image: ${SPARK_BROWSER_IMAGE:-${SPARK_IMAGE_NAME:-douyin-spark-browser:local}}
     command: [python, -m, spark_console.worker]
     environment:
       SPARK_WORKER_CONCURRENCY: "1"

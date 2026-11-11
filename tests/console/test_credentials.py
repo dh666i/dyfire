@@ -611,6 +611,7 @@ def _fake_core_tasks(*, capture_baseline=None, confirm=None):
 class ExecutorCredentialTests(unittest.IsolatedAsyncioTestCase):
     async def _execute_until_target_selection(self, raw, version, browser=None):
         from core.web_chat import TargetNotFoundError
+        from core.session_health import wait_for_session as inspect_final_session
 
         browser = browser or _FakeBrowser()
         async_api = ModuleType("playwright.async_api")
@@ -622,6 +623,12 @@ class ExecutorCredentialTests(unittest.IsolatedAsyncioTestCase):
         async def target_not_found(*_args, **_kwargs):
             raise TargetNotFoundError("fixed public mapping")
 
+        async def inspect_static_fake(page, context, **_kwargs):
+            # These fake pages never hydrate. Exercise the real final session
+            # classification without spending 45 seconds waiting for a fake
+            # DOM to change. Real grace periods have their own session tests.
+            return await inspect_final_session(page, context, timeout=0)
+
         with patch.dict(
             "sys.modules",
             {
@@ -629,7 +636,9 @@ class ExecutorCredentialTests(unittest.IsolatedAsyncioTestCase):
                 "playwright.async_api": async_api,
                 "core.tasks": core_tasks,
             },
-        ), patch("spark_console.executor.select_web_chat_target", target_not_found):
+        ), patch("spark_console.executor.select_web_chat_target", target_not_found), \
+            patch("core.session_health.wait_for_session", inspect_static_fake), \
+            patch("core.session_health.RELOAD_COOLDOWN_SECONDS", 0):
             result = await DouyinExecutor().execute(
                 raw, "目标", "消息", credential_version=version
             )

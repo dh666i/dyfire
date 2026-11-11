@@ -5,11 +5,50 @@ permissions:
   contents: read
   packages: read
 jobs:
-  validate:
-    # Keep the browser test OS aligned with the supported production base.
-    # ubuntu-latest now resolves to 26.04, unsupported by pinned Playwright.
+  static:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-console.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements.txt -r requirements-console.txt pip-audit
+      - run: npm ci
+        working-directory: frontend
+      - run: python scripts/check_version.py
+      - run: python scripts/export_contracts.py --check
+      - run: python scripts/runtime_images.py validate
+      - run: node scripts/dedupe_css.mjs --check
+      - run: npm run build
+        working-directory: frontend
+      - run: node --test frontend/src/*.test.js
+      - run: pip-audit --strict
+      - run: npm audit --audit-level=high
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-frontend
+          path: frontend/dist/
+          if-no-files-found: error
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    # Each shard has its own services and workspace. Parallel pytest processes
+    # must never share the same PostgreSQL database or Redis test namespace.
     services:
       postgres:
         image: postgres:16
@@ -31,88 +70,62 @@ jobs:
       DYFIRE_REQUIRE_BROWSER: '1'
       TEST_POSTGRES_URL: postgresql+psycopg://postgres:postgres@localhost:5432/dyfire
       TEST_REDIS_URL: redis://localhost:6379/15
+      DYFIRE_TEST_SHARDS: '4'
+      DYFIRE_TEST_SHARD: ${{ matrix.shard }}
+      DYFIRE_SHARD_EVIDENCE: .artifacts/ci-shard/collection.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-console.txt
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: pip install -r requirements.txt -r requirements-console.txt pytest pip-audit
+      - run: pip install -r requirements.txt -r requirements-console.txt pytest
       - run: python -m playwright install --with-deps chromium
       - run: npm ci
         working-directory: frontend
-      - run: python scripts/check_version.py
-      - run: python scripts/export_contracts.py --check
-      - run: node scripts/dedupe_css.mjs --check
       - run: npm run build
         working-directory: frontend
-      - name: All isolated console and shared-core tests
-        # Root platform probes are intentionally excluded: they need private
-        # Douyin account data and can perform real network/send operations.
-        # See docs/test-boundaries.md. New console tests are collected by default.
-        run: python -m pytest tests/console tests/test_deployment_paths.py tests/test_postgres_profile.py -q --junitxml=test-results.xml
-      - run: node --test frontend/src/*.test.js
-      - run: pip-audit --strict
-      - run: npm audit --audit-level=high
-        working-directory: frontend
+      - name: Run complete isolated suite across deterministic shards
+        # Root platform probes need real account data and may send messages.
+        # The collection list is audited after every shard completes.
+        run: python -m pytest -p scripts.ci_shard tests/console tests/test_deployment_paths.py tests/test_postgres_profile.py -q --junitxml=.artifacts/ci-shard/test-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: quality-evidence
-          path: test-results.xml
+          name: quality-shard-${{ matrix.shard }}
+          path: .artifacts/ci-shard/
+          include-hidden-files: true
+          if-no-files-found: error
       - name: Preserve isolated browser failure evidence
         uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: browser-failure-evidence
+          name: browser-failure-evidence-${{ matrix.shard }}
           path: |
             .artifacts/ui-toast-hover/
             .artifacts/ui-controls-refinement/screenshots/
             .artifacts/ui-site-unification/screenshots/
           retention-days: 7
-      - name: Weekly maintained runtime cache
-        id: runtime
-        shell: python
-        run: |
-          import os
-          from datetime import datetime, timezone
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('refresh=' + datetime.now(timezone.utc).strftime('%G-W%V') + '\n')
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+          include-hidden-files: true
+  validate:
+    # Retain the existing required-check identity: quality / validate.
+    needs: [static, tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/download-artifact@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.console
-          push: false
-          load: true
-          tags: dyfire:validation
-          pull: true
-          build-args: RUNTIME_REFRESH=${{ steps.runtime.outputs.refresh }}
-          cache-from: |
-            type=registry,ref=ghcr.io/dh666i/dyfire:buildcache
-            type=gha,scope=dyfire-console
-            type=gha
-          cache-to: type=gha,scope=dyfire-console,mode=max
-      - run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" dyfire:validation /app/smoke.py
-      - name: Prove code-only updates reuse browser and font layers
-        run: python scripts/check_image_reuse.py --runtime-refresh '${{ steps.runtime.outputs.refresh }}'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: image-layer-evidence
-          path: image-layer-reuse.json
-      - uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
-        with:
-          image-ref: dyfire:validation
-          scanners: vuln,secret
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
+          pattern: quality-shard-*
+          path: .artifacts/quality-evidence
+      - run: python -m scripts.ci_shard .artifacts/quality-evidence --commit "$GITHUB_SHA" --shards 4

@@ -5,14 +5,14 @@
 ## 启用条件
 
 1. 首次部署经过验证，镜像为 `ghcr.io/dh666i/dyfire@sha256:...` 的完整摘要。
-2. `installed.json` 记录实际部署的 `version`、`schema`（目前为 1）、`image`。不得填写尚未部署的镜像。
+2. `installed.json` 记录实际部署的 `version`、数据兼容 `schema`（目前为 1）、`image`；组件发行还记录 `components.web/browser` 与 `compatibility`。新 Release 清单的 `schema: 2` 是保护旧更新器的清单版本，新更新器会把 `compatibility.database` 规范化为安装记录的 `schema`。不得填写尚未部署的镜像。
 3. 公开仓库读取 Release 不需要令牌；若保留私有凭据，令牌置于 `secrets/github.read.token`，root 所有、0600 权限。令牌只需读取仓库内容与发行信息。另用有 read:packages 权限的凭据在主机完成 `docker login ghcr.io`，不写入网页或仓库。
-4. 每个可更新发行版使用 `vX.Y.Z` 标签。GitHub Actions 会在容器健康检查通过后发布正式 Release，发行说明包含 `dyfire-manifest` JSON 注释，记录与镜像实际一致的 version、schema、image 摘要。草稿和预发行版永不参与自动更新。
+4. 每个可更新发行版使用 `vX.Y.Z` 标签。main 同一提交的质量门禁、两类候选容器验收和安全扫描通过后，标签工作流直接提升已验证摘要并发布 Release，不重新构建。发行说明包含 `dyfire-manifest` JSON 注释，记录与镜像实际一致的版本、组件摘要及兼容协议。草稿和预发行版永不参与自动更新。
 5. 复制 `dyfire-updater.service` 到 systemd 服务目录并启用。没有完成上述配置，网页保持“更新服务暂未连接”。
 
 更新过程：从固定仓库读取版本 → 校验版本与数据结构 → 检查扫码/发送及空间 → 从运行中的 Web 容器解析 `/data` 主机绑定目录 → 下载固定镜像 → 停止写入服务 → 生成部署前快照 → 启动新版本 → 校验健康与实际版本。镜像拉取最多等待 1 小时，停止/启动服务等本机操作最多等待 10 分钟。失败恢复旧镜像。不会自动恢复旧数据库，避免回滚执行记录后重复发送。完整更新和回滚都会在下载前、停止服务前检查活跃发送与扫码会话；发现任一操作进行中就拒绝切换，不中断现有抖音登录态或消息任务。
 
-管理员也可以选择 Web-only 更新：只拉取并重建 `spark-web`，保留 `spark-auth`、`spark-worker` 和 `spark-monitor` 的进程与镜像不变。此模式只适用于前端/API 展示改动；涉及调度、发送、登录流程或数据结构的版本必须使用完整更新。Web-only 版本记录在 `web-installed.json`，不覆盖完整服务的 `installed.json`。
+管理员也可以选择 Web-only 更新：只拉取并重建 `spark-web` 容器，保留 `spark-auth`、`spark-worker` 和 `spark-monitor` 的进程与镜像不变。此模式只适用于兼容的前端/API 改动；需要更新执行服务的版本使用完整更新。Web-only 版本记录在 `web-installed.json`，不覆盖完整服务的 `installed.json`。启用 [Web 切换](../docs/web-handoff.md) 后，临时候选先通过健康与版本检查再接流量；整个过程不在服务器构建镜像。
 
 仅相同 schema 的版本可以自动更新。包含不兼容迁移的版本必须另行制定迁移方案；此机制不承诺任意版本之间回滚。
 
@@ -90,6 +90,27 @@ python3 deploy/recovery_drill.py \
 配合 `ProtectHome=true` 无需读取整个 root 主目录。维护安装器仅迁移 ghcr.io 的现有认证条目；
 如需要重新登录，使用 `sudo env DOCKER_CONFIG=/opt/dyfire/secrets/docker docker login ghcr.io`。
 
-基础系统每周刷新缓存并执行 apt 更新；Python 或 Playwright 依赖变更也会重新构建运行层。
-普通应用页面改动复用同周、同依赖的运行层，避免每次发布都让服务器重下 Chromium。
-所有发行镜像仍由同提交门禁和扫描验证，不复用旧应用镜像作为基础。
+基础系统和 Python/Chromium 依赖由独立 `runtime.yml` 每周或手动维护。维护候选通过验收与
+扫描后更新 `deploy/runtime-images.json`，应用构建只消费固定摘要；普通页面改动不会因为
+跨周就重新安装整个运行层。Web/监控使用轻量镜像，登录/发送共享浏览器镜像。首次组件
+迁移先同步宿主更新器及新 Compose，旧单镜像更新器会因 Release 清单 schema 不同而拒绝
+自动安装。所有发行仍验证同一提交、运行镜像和安全扫描。详见[更新体积与发布约定](../docs/update-delivery.md)。
+
+## 需要浏览器的维护命令
+
+`account-identities` 会使用原登录态读取抖音账号身份，需要 Playwright。拆分后不能在轻量
+`spark-web` 中执行。现有 CLI 初始化还需要站内 session key，而长期运行的 auth/worker
+不挂载该密钥；需要人工核对时，在已部署的同版本浏览器镜像中启动一次性维护容器：
+
+```bash
+cd /opt/dyfire
+docker compose --project-name douyin-spark-console --env-file .env.console \
+  --file compose.console.yml run --rm --no-deps \
+  --volume /opt/dyfire/secrets/session.key:/run/secrets/session.key:ro \
+  spark-auth python -m spark_console.cli account-identities --active-only
+```
+
+此命令覆盖容器命令，只运行身份核对，不启动另一个 auth/worker 循环；完成后删除一次性
+容器，不改变长期服务的密钥挂载。先确认镜像版本与当前数据库匹配，因为 CLI 初始化会
+核对 schema。默认不保存身份登记结果，明确需要保存时才加 `--apply`。它会读取真实平台，
+不纳入 CI 或自动部署验收。

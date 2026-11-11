@@ -1,0 +1,23 @@
+.update-panel .update-download-estimates:empty { display:none; }
+.update-panel .update-download-estimates { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:18px 0; }
+.update-panel .update-download-estimate { display:grid; align-content:start; gap:6px; padding:14px 16px; border-radius:14px; background:var(--admin-soft); color:var(--ink-dark); }
+.update-panel .update-download-estimate > span { font-size:12px; color:var(--ink-soft); }
+.update-panel .update-download-estimate > b { font-size:14px; font-weight:600; }
+.update-panel .update-download-estimate > small { color:var(--ink-soft); font-size:11px; line-height:1.6; }
+.update-panel .update-compatibility-note { color:var(--ink-dark); font-size:13px; line-height:1.7; padding:12px 14px; border-radius:12px; background:var(--admin-selected); }
+.update-panel .image-pull-progress { padding:16px; margin:18px 0; border-radius:14px; background:var(--admin-soft); color:var(--ink-dark); }
+.update-panel .update-transfer-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px; line-height:1.6; }
+.update-panel .update-transfer-heading > b { flex:none; font-variant-numeric:tabular-nums; }
+.update-panel .image-pull-progress > progress { width:100%; }
+.update-panel .update-transfer-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:8px 0 0; }
+.update-panel .update-transfer-metrics dt { color:var(--ink-soft); font-size:11px; line-height:1.7; }
+.update-panel .update-transfer-metrics dd { margin:3px 0 0; color:var(--ink-dark); font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.update-panel .update-transfer-detail { color:var(--ink-soft); font-size:11px; line-height:1.6; }
+.update-panel .update-transfer-wait { margin:0; color:var(--ink-dark); font-size:12px; line-height:1.7; }
+.update-panel .update-rollback-choice { flex:1; min-width:0; display:grid; gap:8px; color:var(--ink-soft); font-size:13px; }
+.update-panel .update-progress > b { flex:none; font-family:inherit; }
+@media(max-width:600px) {
+  .update-panel .update-download-estimates { grid-template-columns:1fr; }
+  .update-panel .update-transfer-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .update-panel .update-transfer-metrics > div:last-child { grid-column:1/-1; }
+}

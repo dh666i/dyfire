@@ -34,6 +34,23 @@ def build_update_router(engine, auth):
             raise HTTPException(503, '更新服务目录未完成初始化')
         return root
 
+    def reuse_queued(existing, action, target):
+        """Only a complete matching request can be reused; never replace it."""
+        try:
+            queued = json.loads(existing.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            raise HTTPException(409, '已有更新操作正在处理')
+        if isinstance(queued, dict):
+            operation_id = queued.get('operation_id')
+            if (
+                queued.get('action') == action
+                and queued.get('version', '') == target
+                and isinstance(operation_id, str)
+                and operation_id.strip()
+            ):
+                return {'accepted': True, 'operation_id': operation_id, 'reused': True}
+        raise HTTPException(409, '已有更新操作正在等待处理')
+
     @router.get('/api/admin/updates')
     def status(request: Request):
         with session_scope(engine) as db:
@@ -49,7 +66,9 @@ def build_update_router(engine, auth):
         }
         if result['configured']:
             try:
-                state = json.loads((directory() / 'status.json').read_text())
+                state = json.loads((directory() / 'status.json').read_text(encoding='utf-8'))
+                if not isinstance(state, dict):
+                    raise ValueError('Invalid updater status')
                 # status.json is host-owned. Copy only the fields in the public
                 # contract so stale or unknown updater fields cannot change the
                 # API shape or overwrite server-derived values.
@@ -61,11 +80,15 @@ def build_update_router(engine, auth):
                     'error_detail', 'runtime', 'runtime_drift',
                     'download_plan',
                     'pull_progress',
+                    'component_versions', 'component_update_available', 'web_update_available',
+                    'web_update_allowed', 'web_update_reason', 'web_download_plan',
                 ):
                     if key in state:
                         result[key] = state[key]
-                result['update_available'] = newer(state.get('latest'), result['current'])
+                result['update_available'] = newer(state.get('latest'), result['current']) or bool(state.get('component_update_available'))
                 result['available'] = state.get('latest') if result['update_available'] else None
+                result.setdefault('web_update_available', newer(state.get('latest'), result['current']))
+                result.setdefault('web_update_allowed', True)
                 result['release'] = {
                     key: state.get(key)
                     for key in ('release_name', 'release_body', 'release_url', 'release_published_at')
@@ -82,12 +105,14 @@ def build_update_router(engine, auth):
                         if isinstance(item, dict) and re.fullmatch(r'\d+\.\d+\.\d+', str(item.get('version', '')))
                     ]
                 try:
-                    web = json.loads((directory().parent / 'web-installed.json').read_text())
+                    web = json.loads((directory().parent / 'web-installed.json').read_text(encoding='utf-8'))
+                    if not isinstance(web, dict):
+                        raise ValueError('Invalid installed Web state')
                     result['web_current'] = web.get('version')
                 except (OSError, ValueError):
                     result['web_current'] = result['current']
-                result['online'] = time.time() - state.get('heartbeat', 0) < 90
-            except (OSError, ValueError, HTTPException):
+                result['online'] = time.time() - float(state.get('heartbeat', 0)) < 90
+            except (OSError, TypeError, ValueError, HTTPException):
                 result['online'] = False
         return result
 
@@ -121,6 +146,9 @@ def build_update_router(engine, auth):
                 'requested_at': time.time(),
             }
             requests = directory() / 'requests'
+            existing = requests / 'request.json'
+            if existing.exists():
+                return reuse_queued(existing, action, target)
             pending = requests / (operation_id + '.tmp')
             try:
                 with pending.open('x', encoding='utf-8') as stream:
@@ -130,7 +158,7 @@ def build_update_router(engine, auth):
                 # Atomic no-overwrite publish; updater cannot see partial JSON.
                 os.link(pending, requests / 'request.json')
             except FileExistsError:
-                raise HTTPException(409, '已有更新操作正在等待处理')
+                return reuse_queued(existing, action, target)
             finally:
                 pending.unlink(missing_ok=True)
             AuditService(db).write(

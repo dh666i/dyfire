@@ -1,0 +1,10 @@
+[Unit]
+Description=Validate and reload Dyfire Web upstream
+After=nginx.service
+Requires=nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nginx -t -q
+ExecStart=/bin/systemctl reload nginx.service
+TimeoutStartSec=45

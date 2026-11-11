@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "inputs_sha256": "3ae8b0407c958f1be7838088a53967352cec8be6c896ebfb4309903efd912342",
+  "source_sha": "e46299693261fcbf8f456cf8ef19ee5a4ab26385",
+  "web": {
+    "image": "ghcr.io/dh666i/dyfire@sha256:56666bea2dceff1ff70000b648e50b89795428db9028eff77a93563b4a88aa8e",
+    "index_image": "ghcr.io/dh666i/dyfire@sha256:c94a03018f6964347f2421d1aadae19054f7e7087803b1a41c18dc0290482c4f"
+  },
+  "browser": {
+    "image": "ghcr.io/dh666i/dyfire@sha256:9b433bee2d0e869fc1af1d9224b146022b7a56fe0323a9f48946b231f7612e67",
+    "index_image": "ghcr.io/dh666i/dyfire@sha256:be683b16007c8cf2ac9f93cd2f8938aef9ddd685466a9c337d1853c21d69e764"
+  }
+}

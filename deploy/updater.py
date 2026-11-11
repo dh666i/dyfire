@@ -18,6 +18,10 @@ import sqlite3
 import subprocess
 import time
 import urllib.request
+try:
+    from deploy.update_transaction import Journal, atomic_json, atomic_text, TERMINAL
+except ModuleNotFoundError:
+    from update_transaction import Journal, atomic_json, atomic_text, TERMINAL
 
 ROOT = Path(os.environ.get('DYFIRE_DEPLOY_DIR', '/opt/dyfire')).resolve()
 DATA_DIR = Path(os.environ.get('DYFIRE_DATA_DIR', ROOT / 'data')).resolve()
@@ -25,6 +29,7 @@ QUEUE = ROOT / 'updates'
 STATE = {}
 REPOSITORY = 'dh666i/dyfire'
 IMAGE = 'ghcr.io/dh666i/dyfire'
+LEGACY_COMPATIBILITY = {'api': 1, 'browser': 1, 'database': 1}
 GITHUB_API = 'https://api.github.com/repos/' + REPOSITORY
 SERVICES = ['spark-web', 'spark-auth', 'spark-worker', 'spark-monitor']
 WEB_SERVICES = ['spark-web']
@@ -34,6 +39,71 @@ COMPOSE_OPERATION_TIMEOUT_SECONDS = 10 * 60
 IMAGE_PULL_TIMEOUT_SECONDS = 60 * 60
 _RELEASE_CACHE = {}
 _LAYER_CACHE = {}
+
+
+def pinned_image(value):
+    return bool(re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', str(value or '')))
+
+
+def service_images(record):
+    components = record.get('components') or {}
+    web = (components.get('web') or {}).get('image', record.get('image'))
+    browser = (components.get('browser') or {}).get('image', record.get('image'))
+    if not pinned_image(web) or not pinned_image(browser):
+        raise ValueError('安装记录不是本仓库的固定镜像')
+    return {'spark-web': web, 'spark-monitor': web, 'spark-auth': browser, 'spark-worker': browser}
+
+
+def installed_records():
+    current = json.loads((ROOT / 'installed.json').read_text(encoding='utf-8'))
+    web_file = ROOT / 'web-installed.json'
+    web = json.loads(web_file.read_text(encoding='utf-8')) if web_file.exists() else current
+    return current, web
+
+
+def installed_images(current, web):
+    images = service_images(current)
+    images['spark-web'] = service_images(web)['spark-web']
+    return images
+
+
+def persist_images(images):
+    # Compose invoked manually after an update must use the installed digests.
+    # Preserve all non-image configuration, including credentials and profiles.
+    names = {'SPARK_IMAGE_NAME': images['spark-web'], 'SPARK_WEB_IMAGE': images['spark-web'],
+             'SPARK_BROWSER_IMAGE': images['spark-auth'], 'SPARK_MONITOR_IMAGE': images['spark-monitor']}
+    if any(not pinned_image(value) for value in names.values()) or images['spark-worker'] != images['spark-auth']:
+        raise ValueError('无法保存无效的组件镜像配置')
+    path = ROOT / '.env.console'
+    lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+    pattern = re.compile(r'^\s*(?:export\s+)?(' + '|'.join(names) + r')\s*=')
+    kept = ''.join(line for line in lines if not pattern.match(line))
+    if kept and not kept.endswith('\n'):
+        kept += '\n'
+    atomic_text(path, kept + ''.join(f'{key}={value}\n' for key, value in names.items()))
+
+
+def compose_value(record):
+    # Keep legacy monolithic installations usable during migration.
+    return service_images(record) if record.get('components') else record['image']
+
+
+def checkpoint(operation_id, **fields):
+    return Journal(ROOT).checkpoint(operation_id, **fields)
+
+
+def release_for_target(target, operation_id=''):
+    version(target)
+    journal = Journal(ROOT).read()
+    if journal.get('operation_id') == operation_id and journal.get('release'):
+        release = journal['release']
+    else:
+        release = _release_from_payload(_cached_github('/releases/tags/v' + target, force=True), resolve_registry=False)
+    if not release or release.get('version') != target or not pinned_image(release.get('image')):
+        raise ValueError('指定正式发行没有可验证的镜像摘要')
+    service_images(release)
+    checkpoint(operation_id, release=release)
+    return release
 
 
 def image_layers(image):
@@ -125,6 +195,7 @@ def _inspect_container(container_id):
     return {
         'container_id': container_id[:12],
         'running': bool(state.get('Running')),
+        'health': (state.get('Health') or {}).get('Status'),
         'image': image,
         'repo_digests': repo_digests,
     }
@@ -180,17 +251,24 @@ def runtime_report(expected_version=None, expected_image=None, services=None):
             if isinstance(expected_image, dict)
             else expected_image
         )
-        if not item.get('running') or (expected and not _image_matches(item, expected)):
+        if (not item.get('running') or item.get('health', 'healthy') != 'healthy'
+                or (expected and not _image_matches(item, expected))):
             report['drift'] = True
     return report
 
 
 def verify_runtime(expected_version, expected_image, services=None):
     """Strict post-switch verification; raises before install records are written."""
-    report = runtime_report(expected_version, expected_image, services)
-    if report['drift']:
-        raise RuntimeError('运行容器版本或镜像与部署记录不一致')
-    return report
+    deadline = time.monotonic() + 90
+    while True:
+        report = runtime_report(expected_version, expected_image, services)
+        if not report['drift']:
+            return report
+        starting = any(item.get('health') == 'starting' for item in report.get('services', {}).values())
+        if not starting or time.monotonic() >= deadline:
+            raise RuntimeError('运行容器版本或镜像与部署记录不一致，或服务健康检查未通过')
+        write_state()
+        time.sleep(2)
 
 
 def version(value):
@@ -233,7 +311,7 @@ def _release_from_payload(release, resolve_registry=True):
     schema = manifest.get('schema', 1)
     if not isinstance(schema, int) or schema < 1:
         schema = 1
-    return {
+    result = {
         'version': tag,
         'schema': schema,
         'image': normalized_image,
@@ -244,14 +322,32 @@ def _release_from_payload(release, resolve_registry=True):
         'release_published_at': release.get('published_at') or '',
         'release_image': normalized_image,
     }
+    if manifest.get('manifest_version') == 2:
+        components = manifest.get('components')
+        compatibility = manifest.get('compatibility')
+        if (not isinstance(components, dict) or set(components) != {'web', 'browser'}
+                or not isinstance(compatibility, dict)
+                or manifest.get('schema') != 2
+                or any(type(compatibility.get(key)) is not int or compatibility[key] < 1 for key in LEGACY_COMPATIBILITY)):
+            return {}
+        normalized = {}
+        for name, item in components.items():
+            if not isinstance(item, dict) or not pinned_image(item.get('image')) or not pinned_image(item.get('index_image')):
+                return {}
+            normalized[name] = {'image': item['image'], 'index_image': item['index_image']}
+        if normalized['web']['image'] != normalized_image:
+            return {}
+        result.update(manifest_version=2, manifest_schema=2, schema=compatibility['database'],
+                      components=normalized, compatibility=compatibility,
+                      release_id=release.get('id'), commit=manifest.get('commit'))
+    elif manifest.get('manifest_version', 1) != 1:
+        return {}
+    return result
 
 
 def write_state(**values):
     STATE.update(values, heartbeat=time.time())
-    temp = QUEUE / 'status.tmp'
-    temp.write_text(json.dumps(STATE, ensure_ascii=False), encoding='utf-8')
-    os.chmod(temp, 0o644)
-    temp.replace(QUEUE / 'status.json')
+    atomic_json(QUEUE / 'status.json', STATE, mode=0o644)
 
 
 def registry_token():
@@ -335,7 +431,7 @@ def rollback_versions(current_version, limit=3):
         image = item.get('release_image')
         if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', image or ''):
             continue
-        result.append({'version': candidate, 'schema': item.get('schema', 1),
+        result.append({**item, 'version': candidate, 'schema': item.get('schema', 1),
                        'url': item.get('release_url', ''),
                        'published_at': item.get('release_published_at', ''), 'image': image})
         if len(result) >= limit:
@@ -356,11 +452,27 @@ def compose(image, *args):
             from deploy.image_pull import pull
         except ModuleNotFoundError:
             from image_pull import pull
-        try:layers=image_layers(image)
-        except Exception:layers={}
-        pull(image,layers,lambda value:write_state(pull_progress=value),timeout=IMAGE_PULL_TIMEOUT_SECONDS)
+        images = list(dict.fromkeys(image[service] for service in args[1:])) if isinstance(image, dict) else [image]
+        for index, selected in enumerate(images):
+            try:layers=image_layers(selected)
+            except Exception:layers={}
+            def publish(value):
+                # The byte counters describe this component, not the whole release.
+                # Keep the active image visible when the next component starts.
+                label = value.get('label', '')
+                if len(images) > 1:
+                    label = f'组件 {index + 1}/{len(images)} · {label}'
+                write_state(pull_progress={**value, 'label': label,
+                    'image_index': index + 1, 'image_count': len(images)})
+            pull(selected,layers,publish,timeout=IMAGE_PULL_TIMEOUT_SECONDS)
         return
-    env = dict(os.environ, SPARK_IMAGE_NAME=image, COMPOSE_PROJECT_NAME=COMPOSE_PROJECT)
+    if isinstance(image, dict):
+        env = dict(os.environ, SPARK_WEB_IMAGE=image['spark-web'],
+                   SPARK_BROWSER_IMAGE=image['spark-auth'],
+                   SPARK_MONITOR_IMAGE=image['spark-monitor'], COMPOSE_PROJECT_NAME=COMPOSE_PROJECT)
+    else:
+        env = dict(os.environ, SPARK_IMAGE_NAME=image, SPARK_WEB_IMAGE=image,
+                   SPARK_BROWSER_IMAGE=image, SPARK_MONITOR_IMAGE=image, COMPOSE_PROJECT_NAME=COMPOSE_PROJECT)
     process = subprocess.Popen(['docker', 'compose', '--project-name', COMPOSE_PROJECT, '--env-file', str(ROOT / '.env.console'),
                     '--file', str(ROOT / 'compose.console.yml'), *args], cwd=ROOT, env=env,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -473,7 +585,7 @@ def ready(expected):
                 health = json.load(response)
             with urllib.request.urlopen('http://127.0.0.1:8899/api/version', timeout=3) as response:
                 actual = json.load(response)
-            if actual['version'] == expected:
+            if health.get('status') == 'ready' and actual['version'] == expected:
                 return
         except (OSError, ValueError):
             pass
@@ -482,10 +594,11 @@ def ready(expected):
 
 
 def install(target, operation_id=''):
-    release = latest(force=True)  # Re-fetch from trusted origin; never trust status.json.
+    release = release_for_target(target, operation_id)
     current_file = ROOT / 'installed.json'
-    current = json.loads(current_file.read_text())
-    if release['version'] != target or version(target) <= version(current['version']):
+    current, web_current = installed_records()
+    if (release['version'] != target or version(target) <= version(current['version'])
+            or version(target) < version(web_current['version'])):
         raise ValueError('版本已变化或不高于当前版本，请重新检查更新')
     if current.get('schema') != release['schema']:
         raise ValueError('数据结构不兼容')
@@ -496,9 +609,14 @@ def install(target, operation_id=''):
     if shutil.disk_usage(ROOT).free < required + 2 * 1024**3:
         raise ValueError('备份空间不足，请清理磁盘后重试')
     assert_no_active_operations(data_dir)
-    plan=download_plan(release['image'],current['image'])
+    old_images = installed_images(current, web_current)
+    previous_image = current['image'] if len(set(old_images.values())) == 1 else old_images
+    next_images = service_images(release)
+    next_image = compose_value(release)
+    checkpoint(operation_id, previous=current, previous_web=web_current, stage='pulling')
+    plan=combined_download_plan(next_images, old_images)
     write_state(phase='pulling', message='正在下载版本', operation_id=operation_id, download_plan=plan)
-    compose(release['image'], 'pull', *SERVICES)
+    compose(next_image, 'pull', *SERVICES)
     backup = ROOT / 'backups' / time.strftime('%Y%m%d-%H%M%S')
     backup.mkdir(parents=True, mode=0o700)
     write_state(phase='stopping', message='等待当前操作结束并停止服务')
@@ -508,7 +626,8 @@ def install(target, operation_id=''):
     # rejected without running the recovery ``compose up`` path.
     assert_no_active_operations(data_dir)
     try:
-        compose(current['image'], 'stop', '-t', '180', *SERVICES)
+        checkpoint(operation_id, stage='switching')
+        compose(previous_image, 'stop', '-t', '180', *SERVICES)
         shutil.copytree(data_dir, backup / 'data', ignore=shutil.ignore_patterns('backups', 'snapshots'))
         shutil.copy2(current_file, backup / 'installed.json')
         web_file = ROOT / 'web-installed.json'
@@ -520,24 +639,30 @@ def install(target, operation_id=''):
             from snapshot_inventory import seal_snapshot
         seal_snapshot(backup)
         write_state(phase='installing', message='正在启动新版本')
-        compose(release['image'], 'up', '-d', '--no-build', *SERVICES)
+        compose(next_image, 'up', '-d', '--no-build', *SERVICES)
+        checkpoint(operation_id, stage='verifying')
         ready(target)
-        runtime=verify_runtime(target, release['image'], SERVICES)
-        temp = ROOT / 'installed.tmp'
-        temp.write_text(json.dumps(release))
-        temp.replace(current_file)
-        web_temp = ROOT / 'web-installed.tmp'
-        web_temp.write_text(json.dumps(release))
-        web_temp.replace(ROOT / 'web-installed.json')
+        runtime=verify_runtime(target, next_images, SERVICES)
+        persist_images(next_images)
+        atomic_json(current_file, release)
+        atomic_json(ROOT / 'web-installed.json', release)
+        write_state(**component_status(release, release, release))
         write_state(phase='complete', message='更新完成', installed=target,latest=target,**release,runtime=runtime,runtime_drift=False)
+        checkpoint(operation_id, stage='complete')
     except Exception:
         write_state(phase='rollback', message='更新未通过检查，正在恢复原版本')
         # Same schema only: retain new run records to avoid replaying a send.
         # Never automatically overwrite the live database with an older backup.
-        compose(current['image'], 'up', '-d', '--no-build', *SERVICES)
-        ready(current['version'])
-        verify_runtime(current['version'], current['image'], SERVICES)
+        checkpoint(operation_id, stage='recovering')
+        compose(previous_image, 'up', '-d', '--no-build', *SERVICES)
+        ready(web_current['version'])
+        verify_runtime(web_current['version'], old_images, SERVICES)
+        persist_images(old_images)
+        atomic_json(current_file, current)
+        atomic_json(ROOT / 'web-installed.json', web_current)
+        write_state(**component_status(release, current, web_current))
         write_state(phase='failed', message='更新失败，已恢复原版本')
+        checkpoint(operation_id, stage='rolled_back')
         raise
 
 
@@ -548,7 +673,7 @@ def install_web(target, operation_id=''):
     is suitable for presentation/API-only releases; schema or worker changes
     must still use the full ``install`` path.
     """
-    release = latest(force=True)
+    release = release_for_target(target, operation_id)
     current_file = ROOT / 'installed.json'
     current = json.loads(current_file.read_text())
     web_file = ROOT / 'web-installed.json'
@@ -557,33 +682,69 @@ def install_web(target, operation_id=''):
         raise ValueError('版本已变化或不高于当前版本，请重新检查更新')
     if current.get('schema') != release['schema'] or web_current.get('schema') != release['schema']:
         raise ValueError('数据结构不兼容')
+    required = release.get('compatibility', LEGACY_COMPATIBILITY)
+    installed_compatibility = current.get('compatibility', LEGACY_COMPATIBILITY)
+    if required != installed_compatibility:
+        raise ValueError('该版本需要同步升级执行服务，请选择完整更新')
     if not re.fullmatch(re.escape(IMAGE) + r'@sha256:[a-f0-9]{64}', web_current.get('image', '')):
         raise ValueError('当前 Web 安装记录不是本仓库的固定镜像')
+    checkpoint(operation_id, previous=current, previous_web=web_current, stage='pulling')
     write_state(phase='web_pulling', message='正在下载 Web 版本', operation_id=operation_id,
                 download_plan=download_plan(release['image'],web_current['image']))
     compose(release['image'], 'pull', *WEB_SERVICES)
     try:
+        from deploy import web_switch
+    except ModuleNotFoundError:
+        import web_switch
+    try:
+        checkpoint(operation_id, stage='switching')
         write_state(phase='web_installing', message='正在切换 Web 服务，发送服务保持运行')
-        compose(release['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
+        if web_switch.enabled(ROOT):
+            def checked_ready(expected):
+                ready(expected)
+                expected_image = release['image'] if expected == target else web_current['image']
+                verify_runtime(expected, expected_image, WEB_SERVICES)
+            web_switch.switch(ROOT, release['image'], target, operation_id,
+                recreate=lambda image: compose(image, 'up', '-d', '--no-build', '--no-deps', *WEB_SERVICES),
+                ready=checked_ready, publish=write_state,
+                previous_image=web_current['image'], previous_version=web_current['version'], project=COMPOSE_PROJECT)
+        else:
+            compose(release['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
+        checkpoint(operation_id, stage='verifying')
         ready(target)
         runtime=verify_runtime(target, release['image'], WEB_SERVICES)
-        temp = ROOT / 'web-installed.tmp'
-        temp.write_text(json.dumps(release))
-        temp.replace(ROOT / 'web-installed.json')
+        persist_images(installed_images(current, release))
+        atomic_json(ROOT / 'web-installed.json', release)
+        write_state(**component_status(release, current, release))
         write_state(phase='web_complete', message='Web 更新完成，发送服务未重启', web_installed=target,latest=target,**release,runtime=runtime,runtime_drift=False)
+        checkpoint(operation_id, stage='complete')
     except Exception:
-        write_state(phase='web_failed', message='Web 更新未通过健康检查')
+        checkpoint(operation_id, stage='recovering')
+        write_state(phase='web_rollback', message='Web 验收未通过，正在恢复上一版本')
+        if web_switch.enabled(ROOT):
+            web_switch.recover(ROOT,
+                recreate=lambda image: compose(image, 'up', '-d', '--no-build', '--no-deps', *WEB_SERVICES),
+                ready=ready, publish=write_state, project=COMPOSE_PROJECT)
+        compose(web_current['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
+        ready(web_current['version'])
+        verify_runtime(web_current['version'], web_current['image'], WEB_SERVICES)
+        persist_images(installed_images(current, web_current))
+        atomic_json(ROOT / 'web-installed.json', web_current)
+        write_state(**component_status(release, current, web_current))
+        write_state(phase='web_failed', message='Web 更新未通过检查，已恢复上一版本', web_installed=web_current['version'])
+        checkpoint(operation_id, stage='rolled_back')
         raise
 
 
 def rollback(target='', operation_id=''):
     current_file = ROOT / 'installed.json'
-    current = json.loads(current_file.read_text())
-    candidates = rollback_versions(current['version'])
-    if target:
-        selected = next((item for item in candidates if item['version'] == target), None)
+    current, web_current = installed_records()
+    transaction = Journal(ROOT).read()
+    if transaction.get('operation_id') == operation_id and transaction.get('release'):
+        selected = transaction['release']
     else:
-        selected = candidates[0] if candidates else None
+        candidates = rollback_versions(max(current['version'], web_current['version'], key=version))
+        selected = next((item for item in candidates if item['version'] == target), None) if target else (candidates[0] if candidates else None)
     if selected is None:
         raise ValueError('没有可用的安全回滚版本')
     if (current.get('schema') != selected.get('schema', 1)
@@ -591,31 +752,184 @@ def rollback(target='', operation_id=''):
         raise ValueError('当前安装记录不是本仓库的固定镜像')
     data_dir = resolve_data_dir()
     assert_no_active_operations(data_dir)
+    old_images = installed_images(current, web_current)
+    previous_image = current['image'] if len(set(old_images.values())) == 1 else old_images
+    next_image = compose_value(selected)
+    checkpoint(operation_id, previous=current, previous_web=web_current, release=selected, stage='pulling')
     write_state(phase='rollback_pulling', message='正在下载回滚版本', rollback_version=selected['version'], operation_id=operation_id)
-    compose(selected['image'], 'pull', *SERVICES)
+    compose(next_image, 'pull', *SERVICES)
     # As with a normal install, do not stop services if a send or login
     # operation began while the rollback image was downloading. Keep this
     # outside the recovery block so rejection cannot trigger ``compose up``.
     assert_no_active_operations(data_dir)
     try:
+        checkpoint(operation_id, stage='switching')
         write_state(phase='rollback', message='正在切换回滚版本')
-        compose(current['image'], 'stop', '-t', '180', *SERVICES)
-        compose(selected['image'], 'up', '-d', '--no-build', *SERVICES)
+        compose(previous_image, 'stop', '-t', '180', *SERVICES)
+        compose(next_image, 'up', '-d', '--no-build', *SERVICES)
+        checkpoint(operation_id, stage='verifying')
         ready(selected['version'])
-        verify_runtime(selected['version'], selected['image'], SERVICES)
-        temp = ROOT / 'installed.tmp'
-        record = {'version': selected['version'], 'schema': 1, 'image': selected['image']}
-        temp.write_text(json.dumps(record), encoding='utf-8')
-        temp.replace(current_file)
-        web_temp = ROOT / 'web-installed.tmp'
-        web_temp.write_text(json.dumps(record), encoding='utf-8')
-        web_temp.replace(ROOT / 'web-installed.json')
+        verify_runtime(selected['version'], service_images(selected), SERVICES)
+        record = {**selected, 'schema': selected.get('schema', 1)}
+        persist_images(service_images(record))
+        atomic_json(current_file, record)
+        atomic_json(ROOT / 'web-installed.json', record)
+        write_state(**component_status(current, record, record))
         write_state(phase='rollback_complete', message='回滚完成', installed=selected['version'])
+        checkpoint(operation_id, stage='complete')
     except Exception:
+        checkpoint(operation_id, stage='recovering')
         write_state(phase='rollback_failed', message='回滚未通过健康检查，正在恢复当前版本')
-        compose(current['image'], 'up', '-d', '--no-build', *SERVICES)
-        ready(current['version'])
-        verify_runtime(current['version'], current['image'], SERVICES)
+        compose(previous_image, 'up', '-d', '--no-build', *SERVICES)
+        ready(web_current['version'])
+        verify_runtime(web_current['version'], old_images, SERVICES)
+        persist_images(old_images)
+        atomic_json(current_file, current)
+        atomic_json(ROOT / 'web-installed.json', web_current)
+        checkpoint(operation_id, stage='rolled_back')
+        raise
+
+
+def combined_download_plan(desired, present):
+    try:
+        wanted = {}
+        existing = {}
+        for image in set(desired.values()):
+            wanted.update(image_layers(image))
+        for image in set(present.values()):
+            existing.update(image_layers(image))
+        missing = {digest: size for digest, size in wanted.items() if digest not in existing}
+        return {'known': True, 'compressed_image_bytes': sum(wanted.values()),
+                'download_upper_bound_bytes': sum(missing.values()), 'new_layers': len(missing),
+                'reused_layers': len(wanted) - len(missing), 'shared_by_services': len(desired)}
+    except Exception:
+        return {'known': False}
+
+
+def component_status(item, current, web_current):
+    images = installed_images(current, web_current)
+    desired = service_images(item)
+    compatible = (current.get('schema', 1) == item.get('schema', 1)
+                  and current.get('compatibility', LEGACY_COMPATIBILITY)
+                  == item.get('compatibility', LEGACY_COMPATIBILITY))
+    return dict(component_versions={'web': web_current['version'], 'browser': current['version']},
+        component_update_available=any(images[name] != desired[name] for name in SERVICES)
+            and version(item['version']) >= version(web_current['version']),
+        web_update_available=version(item['version']) > version(web_current['version']),
+        web_update_allowed=compatible,
+        web_update_reason='' if compatible else '该版本需要同步升级执行服务，请选择完整更新')
+
+
+def check_updates():
+    item = latest()
+    current, web_current = installed_records()
+    images = installed_images(current, web_current)
+    desired = service_images(item)
+    runtime = runtime_report(web_current['version'], images)
+    write_state(phase='checked', latest=item['version'], message='版本检查完成', **item,
+                **component_status(item, current, web_current),
+                rollback_versions=rollback_versions(max(current['version'], web_current['version'], key=version)),
+                download_plan=combined_download_plan(desired, images),
+                web_download_plan=download_plan(desired['spark-web'], images['spark-web']),
+                runtime=runtime, runtime_drift=runtime.get('drift', True))
+
+
+def recover_transaction(journal):
+    data = journal.read()
+    previous = data['previous']
+    previous_web = data.get('previous_web', previous)
+    selected = data['release']
+    web_only = data['action'] == 'install-web'
+    services = WEB_SERVICES if web_only else SERVICES
+    images = service_images(selected)
+    write_state(phase='recovering', message='正在核对上次更新，恢复已接受的操作', operation_id=data['operation_id'])
+    # A crash after a successful switch must not unnecessarily roll back a
+    # healthy image. For web handoffs, only a completed handoff can be committed.
+    handoff = ROOT / 'updates' / 'web-handoff.json'
+    handoff_done = True
+    matching_handoff = False
+    if web_only and handoff.exists():
+        state = json.loads(handoff.read_text(encoding='utf-8'))
+        matching_handoff = state.get('operation_id') == data['operation_id']
+        handoff_done = not matching_handoff or state.get('phase') == 'complete'
+    if handoff_done and data['stage'] != 'recovering':
+        try:
+            runtime = verify_runtime(selected['version'], images, services)
+            ready(selected['version'])
+        except Exception:
+            pass
+        else:
+            persist_images(installed_images(previous, selected) if web_only else images)
+            if not web_only:
+                atomic_json(ROOT / 'installed.json', selected)
+            atomic_json(ROOT / 'web-installed.json', selected)
+            write_state(**component_status(selected, previous if web_only else selected, selected))
+            write_state(phase='web_complete' if web_only else 'complete', message='已确认上次更新成功',
+                        web_installed=selected['version'], runtime=runtime, runtime_drift=False)
+            journal.update(stage='complete')
+            return
+    journal.update(stage='recovering')
+    old_images = installed_images(previous, previous_web)
+    if web_only:
+        try:
+            from deploy import web_switch
+        except ModuleNotFoundError:
+            import web_switch
+        if matching_handoff and web_switch.enabled(ROOT):
+            web_switch.recover(ROOT,
+                recreate=lambda image: compose(image, 'up', '-d', '--no-build', '--no-deps', *WEB_SERVICES),
+                ready=ready, publish=write_state, project=COMPOSE_PROJECT)
+        compose(previous_web['image'], 'up', '-d', '--no-build', *WEB_SERVICES)
+    else:
+        assert_no_active_operations(resolve_data_dir())
+        compose(old_images, 'up', '-d', '--no-build', *SERVICES)
+    ready(previous_web['version'])
+    verify_runtime(previous_web['version'], old_images, services)
+    persist_images(old_images)
+    atomic_json(ROOT / 'installed.json', previous)
+    atomic_json(ROOT / 'web-installed.json', previous_web)
+    write_state(**component_status(selected, previous, previous_web))
+    write_state(phase='rolled_back', message='上次更新中断，已恢复原版本', web_installed=previous_web['version'])
+    journal.update(stage='rolled_back')
+
+
+def process_request(data):
+    if not isinstance(data, dict) or data.get('action') not in ('check', 'install', 'install-web', 'rollback'):
+        raise ValueError('不支持的更新操作')
+    journal = Journal(ROOT)
+    record = journal.accept(data)
+    if record['stage'] in TERMINAL:
+        return
+    operation_id = record['operation_id']
+    write_state(operation_id=operation_id, requested_at=record['requested_at'], error_code=None,
+                error_detail=None, pull_progress=None, phase='accepted', message='更新操作已接受')
+    try:
+        if record['stage'] not in ('accepted', 'pulling'):
+            recover_transaction(journal)
+            return
+        if data['action'] == 'check':
+            write_state(phase='checking', message='正在读取发行版本')
+            check_updates()
+        elif data['action'] == 'install':
+            install(data['version'], operation_id)
+        elif data['action'] == 'install-web':
+            install_web(data['version'], operation_id)
+        else:
+            rollback(data.get('version', ''), operation_id)
+        journal.update(stage='complete')
+    except Exception as error:
+        record = journal.read()
+        if record['stage'] in ('switching', 'verifying', 'recovering'):
+            # Keep the journal/request pending; a later loop can finish recovery.
+            write_state(phase='recovering', message='更新恢复尚未完成，正在保留原版本并重试',
+                        error_code=type(error).__name__.lower(), error_detail='请检查服务健康状态与更新日志')
+        else:
+            if record['stage'] != 'rolled_back':
+                journal.update(stage='failed')
+            write_state(phase='rolled_back' if record['stage'] == 'rolled_back' else 'failed',
+                        message='更新失败，已恢复原版本' if record['stage'] == 'rolled_back' else '更新未完成，当前服务保持运行',
+                        error_code=type(error).__name__.lower(),
+                        error_detail=str(error).strip().replace('\n', ' ')[:240])
         raise
 
 
@@ -624,51 +938,41 @@ def main():
     with (ROOT / 'updater.lock').open('w') as lock:
         if fcntl is not None:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        write_state(phase='idle', message='更新服务已连接')
+        state_file = QUEUE / 'status.json'
+        if state_file.exists():
+            STATE.update(json.loads(state_file.read_text(encoding='utf-8')))
+        else:
+            write_state(phase='idle', message='更新服务已连接')
+        journal = Journal(ROOT)
         while True:
             request = QUEUE / 'requests' / 'request.json'
+            record = journal.read()
+            if not request.exists() and record and record.get('stage') not in TERMINAL:
+                atomic_json(request, {key: record[key] for key in ('operation_id', 'action', 'version', 'requested_at')})
             if request.exists():
+                data = None
                 try:
-                    # Keep file until complete so duplicate clicks are rejected.
-                    data = json.loads(request.read_text())
-                    if time.time() - data['requested_at'] > 300:
-                        raise ValueError('请求已过期，请重试')
-                    operation_id = str(data.get('operation_id') or '')
-                    write_state(operation_id=operation_id, requested_at=data.get('requested_at'), error_code=None, error_detail=None, download_plan={'known':False},pull_progress=None)
-                    if data['action'] == 'check':
-                        item = latest()
-                        current = json.loads((ROOT / 'installed.json').read_text())
-                        web_file = ROOT / 'web-installed.json'
-                        web_current = json.loads(web_file.read_text()) if web_file.is_file() else current
-                        runtime = runtime_report(
-                            web_current.get('version'),
-                            {service: (web_current if service == 'spark-web' else current).get('image')
-                             for service in SERVICES},
-                        )
-                        write_state(phase='checked', latest=item['version'], message='版本检查完成', **item,
-                                    rollback_versions=rollback_versions(current['version']),
-                                    download_plan=download_plan(item['image'],current['image']),
-                                    runtime=runtime,
-                                    runtime_drift=runtime.get('drift', True))
-                    elif data['action'] == 'install':
-                        install(data['version'], operation_id)
-                    elif data['action'] == 'install-web':
-                        install_web(data['version'], operation_id)
-                    elif data['action'] == 'rollback':
-                        rollback(data.get('version', ''), operation_id)
-                    else:
-                        raise ValueError('不支持的操作')
+                    data = json.loads(request.read_text(encoding='utf-8'))
+                    process_request(data)
                 except Exception as error:
-                    # Never expose command output or GitHub credentials to the UI.
-                    detail = str(error).strip().replace("\n", " ")[:240]
-                    write_state(
-                        phase='failed',
-                        message='操作未完成，请检查更新服务日志和发行配置',
-                        error_code=type(error).__name__.lower(),
-                        error_detail=detail or '未提供详细错误',
-                    )
+                    if not isinstance(data, dict) or not data.get('operation_id') or journal.read().get('operation_id') != data.get('operation_id'):
+                        write_state(phase='failed', message='更新请求未被接受', error_code=type(error).__name__.lower(),
+                                    error_detail='请求无效、已过期或上次操作尚未恢复')
                 finally:
-                    request.unlink(missing_ok=True)
+                    current = journal.read()
+                    if not isinstance(data, dict) or not data.get('operation_id') or current.get('operation_id') != data.get('operation_id') or current.get('stage') in TERMINAL:
+                        request.unlink(missing_ok=True)
+            else:
+                try:
+                    try:
+                        from deploy import web_switch
+                    except ModuleNotFoundError:
+                        import web_switch
+                    web_switch.maintenance(ROOT, project=COMPOSE_PROJECT)
+                except Exception:
+                    # Cleaning up a drained temporary container must not change
+                    # the outcome of a completed deployment or stop the daemon.
+                    pass
             write_state()
             time.sleep(5)
 

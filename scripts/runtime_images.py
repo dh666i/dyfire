@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / 'deploy/runtime-images.json'
@@ -38,7 +39,7 @@ def validate(data, root=ROOT):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=['fingerprint', 'validate', 'github-output', 'write'])
+    parser.add_argument('action', choices=['fingerprint', 'validate', 'github-output', 'write', 'build'])
     parser.add_argument('--lock', type=Path, default=LOCK)
     parser.add_argument('--web')
     parser.add_argument('--browser')
@@ -62,6 +63,9 @@ def main():
         output = 'web_runtime=' + data['web']['image'] + '\nbrowser_runtime=' + data['browser']['image'] + '\n'
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as stream:
             stream.write(output)
+    if args.action == 'build':
+        env = dict(os.environ, WEB_RUNTIME_IMAGE=data['web']['image'], BROWSER_RUNTIME_IMAGE=data['browser']['image'])
+        subprocess.run(['docker', 'compose', '--env-file', '.env.console', '--file', 'compose.console.yml', 'build'], env=env, cwd=ROOT, check=True)
     print(json.dumps({'runtime_lock': 'valid', 'inputs_sha256': data['inputs_sha256']}))
 
 

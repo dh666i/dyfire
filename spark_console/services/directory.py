@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update, delete
 from core.avatars import safe_avatar_url
-from core.web_chat import WebChatLoginRequiredError
+from core.chat_errors import WebChatLoginRequiredError
 from spark_console.db import session_scope
 from spark_console.models import (ContactDirectoryJob, DouyinAccount, DouyinAccountProfile,
     DouyinContactAvatar, DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity,

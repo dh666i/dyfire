@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from utils.logger import setup_logger
 from core.avatars import avatar_from_user_info
+from core.chat_errors import TargetNotFoundError, WebChatLoginRequiredError
 
 
 WEB_CHAT_URL = "https://www.douyin.com/chat"
@@ -132,14 +133,6 @@ class UserInfoCollector:
 def _optional_string(value) -> str | None:
     text = str(value or "").strip()
     return text or None
-
-
-class TargetNotFoundError(RuntimeError):
-    """Raised when the requested friend is absent from the web chat list."""
-
-
-class WebChatLoginRequiredError(RuntimeError):
-    """Raised when the web chat page requires the account to sign in again."""
 
 
 def _redirected_away_from_web_chat(url: object) -> bool:

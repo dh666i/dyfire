@@ -7,6 +7,107 @@ on:
 permissions:
   contents: read
   packages: read
+concurrency:
+  group: dyfire-ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   quality:
     uses: ./.github/workflows/quality.yml
+  candidate:
+    # Candidate tags are not releases. Their exact digests can be promoted only
+    # after the entire main push workflow, including every test shard, succeeds.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [web, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Read verified runtime lock
+        id: runtime
+        run: python scripts/runtime_images.py github-output
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build candidate once
+        uses: docker/build-push-action@v6
+        id: image
+        with:
+          context: .
+          file: Dockerfile.console
+          target: ${{ matrix.component }}
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            WEB_RUNTIME_IMAGE=${{ steps.runtime.outputs.web_runtime }}
+            BROWSER_RUNTIME_IMAGE=${{ steps.runtime.outputs.browser_runtime }}
+          tags: ghcr.io/dh666i/dyfire:${{ matrix.component }}-sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/dh666i/dyfire
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/dh666i/dyfire:buildcache-${{ matrix.component }}
+          cache-to: type=registry,ref=ghcr.io/dh666i/dyfire:buildcache-${{ matrix.component }},mode=max,image-manifest=true,oci-mediatypes=true
+      - name: Verify exact candidate container
+        env:
+          CANDIDATE_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+          COMPONENT: ${{ matrix.component }}
+        run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" "$CANDIDATE_IMAGE" /app/smoke.py --component "$COMPONENT"
+      - uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
+        with:
+          image-ref: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Record exact component digests
+        env:
+          CANDIDATE_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
+          COMPONENT: ${{ matrix.component }}
+        run: python -m scripts.release_candidate record --component "$COMPONENT" --index-image "$CANDIDATE_IMAGE" --output .artifacts/candidate/component.json
+      - name: Verify locked runtime layers are reused
+        env:
+          COMPONENT: ${{ matrix.component }}
+        shell: bash
+        run: |
+          image="$(python -c "import json; print(json.load(open('.artifacts/candidate/component.json'))['image'])")"
+          python scripts/check_image_reuse.py --component "$COMPONENT" --image "$image" --output .artifacts/candidate/image-layer-reuse.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-${{ matrix.component }}
+          path: .artifacts/candidate/
+          include-hidden-files: true
+          if-no-files-found: error
+  verified:
+    name: Record verified release candidate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, candidate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: candidate-*
+          path: .artifacts/components
+      - run: python -m scripts.release_candidate assemble --directory .artifacts/components --output .artifacts/release-candidate/candidate.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate
+          path: .artifacts/release-candidate/candidate.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 90

@@ -96,9 +96,12 @@ def test_routes_both_themes_and_mobile_sizes(browser_site,width,theme,role):
     if role=='admin':routes+=['/admin/overview','/admin/users','/admin/codes','/admin/runs','/admin/operations','/admin/settings','/admin/settings/mail']
     try:
         for route in routes:
-            page.goto(base+route,wait_until='networkidle')
-            page.locator('.fire-main').wait_for()
-            assert page.locator('.loading-screen').count()==0,route
+            page.goto(base+route,wait_until='domcontentloaded')
+            expect(page.locator('.fire-main')).to_be_visible()
+            expect(page.locator('.fire-main h1').first).to_be_visible()
+            expect(page.get_by_role('status',name='正在加载管理页面…')).to_have_count(0)
+            expect(page.locator('.loading-screen')).to_have_count(0)
+            page.evaluate('document.fonts.ready')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'),f'{role} {theme} {width} {route} overflows'
             assert not errors,errors
             if width in (390,1440):
@@ -114,8 +117,10 @@ def test_routes_both_themes_and_mobile_sizes(browser_site,width,theme,role):
                 '/admin/runs?view=today','/admin/operations?view=diagnostics',
                 '/admin/operations?view=audit','/admin/operations?view=business']
             for route in detail_routes:
-                page.goto(base+route,wait_until='networkidle')
-                page.locator('.fire-main').wait_for()
+                page.goto(base+route,wait_until='domcontentloaded')
+                expect(page.locator('.fire-main h1').first).to_be_visible()
+                expect(page.get_by_role('status',name='正在加载管理页面…')).to_have_count(0)
+                page.evaluate('document.fonts.ready')
                 name=role+'-'+route.strip('/').replace('/','-').replace('?','-').replace('=','-')
                 _capture_site_detail(page,name,full_page=True)
     finally:context.close()

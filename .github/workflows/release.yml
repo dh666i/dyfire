@@ -1,4 +1,4 @@
-name: Build and publish release image
+name: Publish verified release images
 on:
   push:
     tags:
@@ -7,98 +7,33 @@ on:
 permissions:
   contents: write
   packages: write
+  actions: read
 concurrency:
   group: dyfire-release
   cancel-in-progress: false
 jobs:
-  quality:
-    uses: ./.github/workflows/quality.yml
   release:
-    needs: quality
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Validate version
-        id: version
-        shell: python
-        run: |
-          import json, os, re
-          from pathlib import Path
-          version = Path('VERSION').read_text().strip()
-          assert re.fullmatch(r'\d+\.\d+\.\d+', version)
-          package = json.loads(Path('frontend/package.json').read_text())
-          assert package.get('version') == version, 'frontend/package.json version must match VERSION'
-          ref = os.environ.get('GITHUB_REF_NAME', '')
-          if ref.startswith('v'):
-              assert ref[1:] == version, f'tag {ref} does not match VERSION {version}'
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'version={version}\n')
-      - name: Weekly maintained runtime cache
-        id: runtime
-        shell: python
-        run: |
-          import os
-          from datetime import datetime, timezone
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write('refresh=' + datetime.now(timezone.utc).strftime('%G-W%V') + '\n')
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python scripts/check_version.py
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        id: image
-        with:
-          context: .
-          file: Dockerfile.console
-          push: true
-          pull: true
-          build-args: RUNTIME_REFRESH=${{ steps.runtime.outputs.refresh }}
-          tags: ghcr.io/dh666i/dyfire:${{ steps.version.outputs.version }}
-          provenance: mode=max
-          sbom: true
-          labels: org.opencontainers.image.source=https://github.com/dh666i/dyfire
-          cache-from: |
-            type=registry,ref=ghcr.io/dh666i/dyfire:buildcache
-            type=gha,scope=dyfire-console
-            type=gha
-          cache-to: |
-            type=registry,ref=ghcr.io/dh666i/dyfire:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
-            type=gha,scope=dyfire-console,mode=max
-      - name: Verify release container
+      - name: Promote the exact verified main commit without rebuilding
         env:
-          RELEASE_IMAGE: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
-        run: docker run --rm --entrypoint python -v "$PWD/deploy/smoke.py:/app/smoke.py:ro" "$RELEASE_IMAGE" /app/smoke.py
-      - uses: aquasecurity/trivy-action@38b337fff0a2f984d5be173c99e3f633438167ec
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m scripts.release_candidate release
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          image-ref: ghcr.io/dh666i/dyfire@${{ steps.image.outputs.digest }}
-          scanners: vuln,secret
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-      - name: Publish verified release
-        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_DIGEST: ${{ steps.image.outputs.digest }}
-        shell: python
-        run: |
-          import json, os, subprocess, sys
-          from pathlib import Path
-          sys.path.insert(0, str(Path.cwd()))
-          from scripts.release_runtime_image import resolve
-          version = os.environ['RELEASE_VERSION']
-          index_image = 'ghcr.io/dh666i/dyfire@' + os.environ['RELEASE_DIGEST']
-          # The runnable child is a member of the index tested above. The tag
-          # retains SBOM/provenance; production does not pull those attachments.
-          manifest = {'version': version, 'schema': 1, 'image': resolve(index_image), 'index_image': index_image}
-          body = 'Dyfire ' + version + '\n\n镜像已由 GitHub Actions 构建并通过容器健康检查。服务器更新器只会安装此 Release 中记录的固定镜像摘要。\n\n<!-- dyfire-manifest ' + json.dumps(manifest) + ' -->\n'
-          Path('release-notes.tmp').write_text(body, encoding='utf-8')
-          tag = 'v' + version
-          existing = subprocess.run(['gh', 'release', 'view', tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-          if existing.returncode == 0:
-              subprocess.run(['gh', 'release', 'edit', tag, '--title', 'Dyfire ' + version, '--notes-file', 'release-notes.tmp', '--draft=false', '--prerelease=false'], check=True)
-          else:
-              subprocess.run(['gh', 'release', 'create', tag, '--target', os.environ['GITHUB_SHA'], '--title', 'Dyfire ' + version, '--notes-file', 'release-notes.tmp'], check=True)
+          name: release-provenance
+          path: .artifacts/release-candidate/
+          include-hidden-files: true
+          retention-days: 90
