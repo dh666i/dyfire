@@ -1,7 +1,8 @@
 import React, {useEffect, useRef, useState} from 'react';
+import {RowActionItem} from './row-actions.jsx';
 
 export function createProbeAction({api}) {
-function TaskProbeAction({taskId,runId,csrf,label='检查任务状态'}) {
+function TaskProbeAction({taskId,runId,csrf,label='检查任务状态',menuItem=false}) {
   const [probe,setProbe]=useState(null); const [busy,setBusy]=useState(false); const [error,setError]=useState('');
   const generation=useRef(0);
   useEffect(()=>{
@@ -37,7 +38,8 @@ function TaskProbeAction({taskId,runId,csrf,label='检查任务状态'}) {
     finally{if(generation.current===currentGeneration)setBusy(false)}
   };
   const pending=busy||['queued','running'].includes(probe?.status);
-  return <><button type="button" className={label==='运行前自检'?'':'button quiet'} onClick={start} disabled={pending||!taskId}>{pending?'检查中…':label}</button>{error&&<small className="task-probe-feedback" role="alert">{error}</small>}{probe?.result?.summary&&<small className="task-probe-feedback" role="status">{probe.result.summary}</small>}{probe&&['queued','running'].includes(probe.status)&&<small className="task-probe-feedback" role="status">等待账号空闲进行只读检查，不会发送消息</small>}</>;
+  const text=pending?'检查中…':label;
+  return <>{menuItem?<RowActionItem className="row-menu-item" closeOnClick={false} onClick={start} disabled={pending||!taskId}>{text}</RowActionItem>:<button type="button" className="button quiet" onClick={start} disabled={pending||!taskId}>{text}</button>}{error&&<small className="task-probe-feedback" role="alert">{error}</small>}{probe?.result?.summary&&<small className="task-probe-feedback" role="status">{probe.result.summary}</small>}{probe&&['queued','running'].includes(probe.status)&&<small className="task-probe-feedback" role="status">等待账号空闲进行只读检查，不会发送消息</small>}</>;
 }
 
 

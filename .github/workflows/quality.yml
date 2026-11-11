@@ -115,6 +115,7 @@ jobs:
             .artifacts/ui-site-unification/screenshots/
             .artifacts/select-touch/
             .artifacts/auth-ui/
+            .artifacts/task-menu-overlay/
           retention-days: 7
           include-hidden-files: true
   validate:

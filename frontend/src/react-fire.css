@@ -876,23 +876,13 @@ html[data-theme="light"] .scan-loading-overlay{background:rgba(255,255,255,.9);c
 /* Task row mobile action menu */
 .task-row-menu{position:relative}
 .task-row-menu-btn{display:none;width:44px;height:44px;padding:0;border:1px solid rgba(24,23,23,.18);background:transparent;color:var(--ink-soft);cursor:pointer;font-size:16px;align-items:center;justify-content:center}
-.task-row-menu-dropdown{position:absolute;right:0;top:100%;z-index:20;min-width:130px;background:var(--paper-strong);border:1px solid rgba(24,23,23,.2);box-shadow:0 8px 24px rgba(0,0,0,.24);display:block;visibility:hidden;opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity 160ms ease,transform 160ms ease,visibility 160ms}
-.task-row-menu-dropdown.is-open{visibility:visible;opacity:1;pointer-events:auto;transform:none}
-.task-row-menu-dropdown button{display:flex;width:100%;align-items:center;gap:8px;padding:10px 14px;border:0;background:transparent;color:var(--ink-dark);font-size:12px;text-align:left;cursor:pointer}
-.task-row-menu-dropdown button:hover{background:rgba(255,255,255,.12)}
-.task-row-menu-dropdown button.danger-action{color:var(--state-danger)}
 .task-row-menu-btn{border-radius:9px;transition:background .16s ease,border-color .16s ease,color .16s ease}
 .task-row-menu .task-row-menu-btn { display:flex; }
 .same-device-scan-help { color:var(--ink-soft); font-size:11px; line-height:1.7; }
 .task-row-menu-btn:hover,.task-row-menu-btn:focus-visible,.task-row-menu-btn.is-open{background:rgba(255,107,37,.1);border-color:rgba(255,107,37,.38);color:var(--orange-soft);outline:none}
-.task-row-menu-dropdown{border-radius:10px;overflow:hidden;padding:4px;background:var(--paper-strong);border-color:var(--hairline);box-shadow:0 14px 34px rgba(0,0,0,.34)}
-.task-row-menu-dropdown button{min-height:38px;border-radius:7px;padding:9px 12px;transition:background .14s ease,color .14s ease}
-.task-row-menu-dropdown button:hover,.task-row-menu-dropdown button:focus-visible{background:rgba(255,107,37,.1);color:var(--ink-dark);outline:none}
-.task-row-menu-dropdown button.danger-action:hover,.task-row-menu-dropdown button.danger-action:focus-visible{background:rgba(228,119,110,.12);color:#ff9f91}
 .contact-picker-loading{display:flex;align-items:center;justify-content:center;gap:8px;min-height:34px;margin:4px 0 8px;border:1px solid var(--hairline);border-radius:9px;background:rgba(255,255,255,.025);color:var(--ink-soft);font-size:10px}
 .contact-picker-loading .loading-spinner{width:13px;height:13px;border-width:2px}
 html[data-theme="light"] .task-row-menu-btn{border-color:rgba(48,39,35,.16)}
-html[data-theme="light"] .task-row-menu-dropdown{background:var(--surface-strong);border-color:rgba(48,39,35,.14);box-shadow:0 14px 34px rgba(56,45,38,.16)}
 html[data-theme="light"] .contact-picker-loading{border-color:rgba(48,39,35,.13);background:rgba(48,39,35,.035);color:#75655d}
 @media(max-width:700px){
   .task-row > .row-actions .icon-action{display:inline-grid}
@@ -1266,7 +1256,6 @@ body,
   .admin-subview-tabs button,
   .workspace-tabs button,
   .task-row-menu-btn,
-  .task-row-menu-dropdown button,
   .contact-row,
   .quick-links a,
   .mosaic-task-row,

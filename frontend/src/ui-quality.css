@@ -211,8 +211,6 @@ input[type="checkbox"].ui-switch:checked { background-color:var(--orange); backg
 .drawer .contact-picker-content .contact-row.is-selected { border-color:color-mix(in srgb,var(--orange) 34%,transparent); background:color-mix(in srgb,var(--orange) 9%,transparent); }
 .contact-row input[type="checkbox"] { width:20px; height:20px; }
 .task-row-menu-btn svg { display:block; width:18px; height:18px; }
-.task-row-menu-dropdown button { min-height:42px; }
-.task-row-menu-dropdown button.danger-action:hover,.task-row-menu-dropdown button.danger-action:focus-visible { color:var(--state-danger); background:color-mix(in srgb,var(--state-danger) 10%,transparent); }
 
 /* Disclosure controls share one arrow without replacing native details. */
 :is(.fire-main,.drawer) details>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; padding:8px 0; list-style:none; color:var(--ink-soft); cursor:pointer; font-size:13px; line-height:1.6; }
