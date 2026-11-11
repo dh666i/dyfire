@@ -231,6 +231,27 @@ class StreakCollector:
         self._sequence = 0
         self._latest_init_sequence = 0
         self.decode_errors = 0
+        self.init_request_count = 0
+        self.init_response_count = 0
+        self.init_ok_response_count = 0
+        self.init_conversation_count = 0
+        self.init_observation_count = 0
+        self.user_info_response_count = 0
+        self.dropped_response_count = 0
+
+    def diagnostics(self):
+        """Return bounded counts only; never expose response or identity data."""
+        return {
+            'init_requests': self.init_request_count,
+            'init_responses': self.init_response_count,
+            'init_ok_responses': self.init_ok_response_count,
+            'init_conversations': self.init_conversation_count,
+            'init_observations': self.init_observation_count,
+            'user_info_responses': self.user_info_response_count,
+            'uid_mappings': len(self.uid_to_sec_uid),
+            'decode_errors': self.decode_errors,
+            'dropped_responses': self.dropped_response_count,
+        }
 
     @classmethod
     def _kind(cls, url):
@@ -246,6 +267,7 @@ class StreakCollector:
     def capture_request(self, request):
         if self._kind(request.url) != 'init':
             return
+        self.init_request_count += 1
         self._sequence += 1
         self._latest_init_sequence = self._sequence
         key = id(request)
@@ -257,7 +279,16 @@ class StreakCollector:
 
     def capture(self, response):
         kind = self._kind(response.url)
-        if kind is None or len(self._pending) >= MAX_PENDING_RESPONSES:
+        if kind is None:
+            return
+        if kind == 'init':
+            self.init_response_count += 1
+            if response.status == 200:
+                self.init_ok_response_count += 1
+        elif kind == 'users':
+            self.user_info_response_count += 1
+        if len(self._pending) >= MAX_PENDING_RESPONSES:
+            self.dropped_response_count += 1
             return
         try:
             declared = response.headers.get('content-length')
@@ -307,7 +338,10 @@ class StreakCollector:
                 return
             raw = await response.body()
             observed_at = datetime.now(timezone.utc)
-            for observation in extract_init_streaks(raw, observed_at=observed_at):
+            self.init_conversation_count += len(conversation_messages(raw))
+            observations = extract_init_streaks(raw, observed_at=observed_at)
+            self.init_observation_count += len(observations)
+            for observation in observations:
                 key = observation['conversation_id']
                 if sequence == self._latest_init_sequence and (key in self._streaks or len(self._streaks) < 2000):
                     self._streaks[key] = observation

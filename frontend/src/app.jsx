@@ -767,7 +767,11 @@ function ContactPicker({open,onClose,account,data,onDone,releasedKeys=new Set(),
   const visible=filterStreakContacts(items,{query,filter:sparkFilter,order:sparkOrder,existing});
   const actionLabel=busy==='page'?'正在加载更多…':busy==='sync'?'正在同步好友…':page.dbHasMore?'加载更多好友':page.activeSync?'继续同步好友':page.canSyncMore?'同步更多好友':'重新同步好友';
   const coverageLabel=page.dbHasMore?`已显示 ${items.length} / ${page.total} 位已同步好友`:`已显示 ${items.length} 位已同步好友`;
-  const coverageHint=page.dbHasMore?'继续加载已同步的好友，搜索会覆盖加载后的列表。':page.syncHasMore===true&&page.syncLimit>=100?'当前同步最多读取最近 100 个会话，可重新同步更新。':page.syncHasMore===false?'本次同步未返回更多会话，可重新同步检查。':'列表来自已同步会话，可继续同步更多好友。';
+  const streakReadCount=Number(page.streakDiagnostics?.matched_observations||0);
+  const streakSyncHint=page.syncStatus==='succeeded'&&page.streakDiagnostics
+    ?streakReadCount>0?`最近一次同步读取到 ${streakReadCount} 位好友的火花。`:'最近一次好友同步成功，但抖音本次没有返回可匹配的火花信息。'
+    :'';
+  const coverageHint=page.dbHasMore?'继续加载已同步的好友，搜索会覆盖加载后的列表。':streakSyncHint|| (page.syncHasMore===true&&page.syncLimit>=100?'当前同步最多读取最近 100 个会话，可重新同步更新。':page.syncHasMore===false?'本次同步未返回更多会话，可重新同步检查。':'列表来自已同步会话，可继续同步更多好友。');
   const close=()=>{controller.close();onClose()};
   return <ContactPanel DesktopDrawer={Drawer} open={open} onClose={close} title="选择目标好友" eyebrow="SELECT CONNECTIONS" wide>
     <div className="drawer-content contact-picker-content">

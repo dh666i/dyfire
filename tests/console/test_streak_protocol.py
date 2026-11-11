@@ -167,6 +167,39 @@ def test_collector_requires_trusted_self_and_account_local_peer_mapping():
     asyncio.run(run())
 
 
+def test_collector_diagnostics_report_only_counts_for_each_matching_stage():
+    async def run():
+        collector = StreakCollector()
+        request = SimpleNamespace(url='https://imapi.douyin.com/v1/message/get_message_by_init')
+        collector.capture_request(request)
+        init = fake_response(request.url, raw=response(conversation()))
+        init.request = request
+        users = fake_response(
+            'https://www.douyin.com/aweme/v1/web/im/user/info/',
+            body={'data': [{'uid': '222', 'sec_uid': 'sec-private', 'nickname': '不应出现在诊断中'}]},
+        )
+        collector.capture(init)
+        collector.capture(users)
+        await collector.finalize('111')
+
+        diagnostic = collector.diagnostics()
+        assert diagnostic == {
+            'init_requests': 1,
+            'init_responses': 1,
+            'init_ok_responses': 1,
+            'init_conversations': 1,
+            'init_observations': 1,
+            'user_info_responses': 1,
+            'uid_mappings': 1,
+            'decode_errors': 0,
+            'dropped_responses': 0,
+        }
+        assert 'sec-private' not in str(diagnostic)
+        assert '不应出现在诊断中' not in str(diagnostic)
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize('url', [
     'https://evil.invalid/v1/message/get_message_by_init',
     'http://imapi.douyin.com/v1/message/get_message_by_init',

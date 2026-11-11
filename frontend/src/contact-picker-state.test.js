@@ -17,6 +17,15 @@ test('unknown cached contacts retain a sync action and accept only supported lim
   assert.equal(exhausted.refreshLimit,20);
 });
 
+test('latest sync exposes bounded streak read counts for clear empty feedback', () => {
+  const page=contactPageMetadata({
+    ...snapshot(100),
+    sync:{status:'succeeded',limit:100,has_more:false,streak_diagnostics:{matched_observations:0,init_responses:1}},
+  });
+  assert.equal(page.syncStatus,'succeeded');
+  assert.deepEqual(page.streakDiagnostics,{matched_observations:0,init_responses:1});
+});
+
 test('selecting from 20 cached rows, clicking sync and completing the job yields 40 without losing selection', async () => {
   const calls=[];
   let clock=0, reads=0;

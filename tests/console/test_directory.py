@@ -100,6 +100,7 @@ class DirectoryTests(unittest.TestCase):
         with session_scope(self.engine) as db:
             original = db.get(DouyinAccount, self.account).encrypted_cookies
         reader = AsyncMock(return_value={'items':[{'name':'同学', 'sec_uid':'uid-a', 'nickname':'小张', 'remark_name':'同学', 'unique_id':'zhang123', 'avatar_url':'https://p3.douyinpic.com/a.jpg'}], 'profile':{'nickname':'本人'}, 'streaks':[{'sec_uid':'uid-a', 'days':374, 'state':'recovering', 'recover_current':1, 'recover_total':3, 'source':'douyin_im', 'platform_text':'重燃中 1/3', 'observed_at':observed_at}], 'has_more':True})
+        reader.return_value['streak_diagnostics'] = {'init_responses': 1, 'matched_observations': 1}
         asyncio.run(process_directory_job(self.engine, self.cipher, reader))
         response = self.client.get(f'/accounts/{self.account}/conversations').json()
         self.assertEqual('succeeded', response['sync']['status'])
@@ -120,7 +121,10 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual('recovering', task_row['spark']['state'])
         with session_scope(self.engine) as db:
             self.assertEqual(original, db.get(DouyinAccount, self.account).encrypted_cookies)
-            self.assertEqual('succeeded', db.get(ContactDirectoryJob, job['id']).status)
+            stored_job = db.get(ContactDirectoryJob, job['id'])
+            self.assertEqual('succeeded', stored_job.status)
+            self.assertEqual({'init_responses': 1, 'matched_observations': 1},
+                             json.loads(stored_job.result_json)['streak_diagnostics'])
 
     def test_conversations_response_is_bounded_and_signals_more(self):
         """Legacy picker responses must not grow with a large directory."""

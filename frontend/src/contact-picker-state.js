@@ -32,6 +32,9 @@ export function contactPageMetadata(value={}, itemCount=0) {
   return {
     dbHasMore: Boolean(value.has_more), nextOffset: number(value.next_offset, itemCount),
     total, syncHasMore, syncLimit, canSyncMore, nextLimit, refreshLimit, activeSync,
+    syncStatus: sync.status || '',
+    streakDiagnostics: sync.streak_diagnostics && typeof sync.streak_diagnostics === 'object'
+      ? sync.streak_diagnostics : null,
   };
 }
 

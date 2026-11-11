@@ -171,7 +171,11 @@ async def process_directory_job(engine, cipher, reader=None):
                 # delivery or nicknames; the collector only returns validated
                 # observations matched by this account's stable sec_uid.
                 record_observations(db, account_id, result.get("streaks", []))
-                job.result_json = json.dumps({"items": result["items"], "has_more": result.get("has_more", False)}, ensure_ascii=False)
+                job.result_json = json.dumps({
+                    "items": result["items"],
+                    "has_more": result.get("has_more", False),
+                    "streak_diagnostics": result.get("streak_diagnostics", {}),
+                }, ensure_ascii=False)
                 job.status = "succeeded"
             job.finished_at = utc_now()
     except Exception as error:

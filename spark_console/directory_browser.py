@@ -222,6 +222,14 @@ async def read_directory(payload_bytes, version, limit, query):
                 conversation_to_sec_uid=conversation_to_sec_uid,
             )
             streaks = _merge_streak_observations(dom_streaks, im_streaks)
+            streak_diagnostics = {
+                **streak_collector.diagnostics(),
+                "dom_signal_rows": len(streak_samples),
+                "dom_observations": len(dom_streaks),
+                "conversation_identity_links": len(conversation_to_sec_uid),
+                "im_observations": len(im_streaks),
+                "matched_observations": len(streaks),
+            }
             items = []
             for row in rows:
                 candidates = [i for i in identities if (row.get("sec_uid") and i.sec_uid == row["sec_uid"])
@@ -247,6 +255,7 @@ async def read_directory(payload_bytes, version, limit, query):
                 import json
                 raise ValueError('当前抖音页面搜索结果未识别；结构诊断：'+json.dumps(structure,ensure_ascii=False))
             return {"items": items, "profile": profile, "streaks": streaks,
+                    "streak_diagnostics": streak_diagnostics,
                     "has_more": len(rows) >= limit and limit < 100}
         finally:
             await browser.close()
