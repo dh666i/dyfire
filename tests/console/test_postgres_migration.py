@@ -218,6 +218,12 @@ def _source(tmp_path: Path, *, populated: bool = True):
             "payment_records": [],
             "operation_settings": [],
             "task_probes": [],
+            # Streak observations are optional platform evidence. Existing
+            # databases may have no observations yet, but the migration must
+            # still carry the new tables as empty application tables.
+            "douyin_streak_snapshots": [],
+            "douyin_streak_observations": [],
+            "douyin_streak_milestones": [],
         }
         assert set(records) | {"worker_lock"} == set(Base.metadata.tables)
         with engine.begin() as connection:
