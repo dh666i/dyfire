@@ -42,7 +42,7 @@ html :is(.fire-main,.drawer,.modal-overlay) .badge i { width:6px; height:6px; fl
 
 /* Single, readable surfaces; only top navigation and the dock use glass. */
 html .fire-main .route-view > .card,
-html .fire-main :is(.studio-layout,.account-grid,.simple-grid,.admin-insights-grid,.mail-settings-grid,.admin-business-grid) > .card {
+html .fire-main :is(.studio-layout,.account-grid,.simple-grid,.admin-insights-grid,.mail-settings-grid,.admin-announcements) > .card {
   border:1px solid var(--ui-surface-border);
   border-radius:var(--radius-card,18px);
   background:var(--ui-surface);
@@ -67,7 +67,7 @@ html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > strong.metric-v
 html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > small { font-size:12px; line-height:1.55; color:var(--ink-soft); }
 html .fire-main .metric-grid:not(.admin-queue-metrics) { gap:14px; margin-bottom:22px; }
 html .fire-main .admin-queue-metrics { background:var(--ui-surface-inset); border-color:transparent; }
-html .fire-main :is(.admin-insights-grid,.account-grid,.mail-settings-grid,.admin-business-grid) { gap:20px; }
+html .fire-main :is(.admin-insights-grid,.account-grid,.mail-settings-grid) { gap:20px; }
 html .fire-main :is(.composer-preview-section,.composer-summary,.schedule-preview,.message-preview,.subscription-preview,.admin-change-preview) {
   border:0;
   border-radius:12px;
@@ -175,7 +175,7 @@ html .fire-main .product-row b { font-size:14px; line-height:1.6; }
   html .fire-main .section-head { gap:10px; margin-bottom:18px; }
   html .fire-main .section-head h2,
   html .fire-main .simple-grid > .card > h2 { font-size:18px; }
-  html .fire-main :is(.admin-insights-grid,.account-grid,.mail-settings-grid,.admin-business-grid) { gap:16px; }
+  html .fire-main :is(.admin-insights-grid,.account-grid,.mail-settings-grid) { gap:16px; }
   html .fire-main .metric-grid:not(.admin-queue-metrics) { gap:10px; margin-bottom:18px; }
   html .fire-main .metric-grid:not(.admin-queue-metrics) > .metric { padding:16px; min-height:112px; gap:9px; border-radius:16px; }
   html .fire-main .metric-grid:not(.admin-queue-metrics) .metric > strong { font-size:28px; }
@@ -211,6 +211,6 @@ html .fire-main .product-row b { font-size:14px; line-height:1.6; }
 @media(forced-colors:active) {
   html .fire-main .task-table,
   html .fire-main .route-view > .card,
-  html .fire-main :is(.studio-layout,.account-grid,.simple-grid,.admin-insights-grid,.mail-settings-grid,.admin-business-grid) > .card { border-color:CanvasText; box-shadow:none; }
+  html .fire-main :is(.studio-layout,.account-grid,.simple-grid,.admin-insights-grid,.mail-settings-grid,.admin-announcements) > .card { border-color:CanvasText; box-shadow:none; }
   html :is(.fire-main,.drawer,.modal-overlay) :is(.input,.quality-button) { border-color:ButtonText; }
 }

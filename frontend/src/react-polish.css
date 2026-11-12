@@ -295,12 +295,13 @@ body.drawer-open .global-utility { visibility: hidden; pointer-events: none; }
 .verification-field { display: grid; gap: 7px; color: var(--ink-soft); font-size: 10px; }
 .verification-actions { display: flex; align-items: center; gap: 12px; }
 .verification-hint { color: var(--ink-soft); font-size: 10px; }
-.cloud-interaction { width: min(520px, 100%); display: grid; gap: 9px; padding: 13px 0 2px; text-align: left; border-top: 1px solid rgba(24,23,23,.14); }
-.cloud-interaction-copy { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 10px; line-height: 1.5; }
+.cloud-interaction { width: min(900px, 100%); display: grid; gap: 9px; padding: 13px 0 2px; text-align: left; border-top: 1px solid rgba(24,23,23,.14); }
+.cloud-interaction-copy { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
 .cloud-interaction-copy .eyebrow { flex: 0 0 auto; color: var(--orange); }
 .cloud-input-row { display: flex; gap: 8px; }
 .cloud-input-row .input { flex: 1; min-width: 0; }
 .cloud-input-row .button { flex: 0 0 auto; }
+.cloud-password-mode { display:flex; align-items:center; gap:7px; color:var(--ink-soft); font-size:12px; white-space:nowrap; }
 .cloud-interaction-status { margin: 0; color: var(--ink-soft); font-size: 10px; }
 .skeleton-stack div { background: linear-gradient(90deg, rgba(24,23,23,.08), rgba(255,255,255,.52), rgba(24,23,23,.08)); background-size: 200% 100%; }
 .toast { border-radius: 0; background: var(--paper-strong); color: var(--ink-dark); border-color: rgba(24,23,23,.2); }

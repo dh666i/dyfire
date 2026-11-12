@@ -693,7 +693,7 @@
     }
   ],
   "last_reviewed": "2026-11-07",
-  "verification_note": "v0.4.0 已部署生产并完成公网验收。0.4.1 额外补齐管理员任务/额度修改前差异预览，并通过针对性 Chromium 测试与前端构建；完整 GitHub quality/release workflow 与生产更新尚待完成。",
+  "verification_note": "本文件保留 2026-11-07 的批次验收快照。0.4.2 已部署并完成四服务及公网健康检查；production 字段为当时的记录，不代表当前线上状态。设备、真实平台、外部邮件及真实吞吐仍按各项证据单列验收。",
   "production": {
     "version": "0.4.2",
     "schema": 25,

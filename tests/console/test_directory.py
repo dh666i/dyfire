@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from spark_console.db import session_scope
 from spark_console.crypto import CookieCipher
 from spark_console.models import (User, DouyinAccount, DouyinAccountIdentity, DouyinAccountProfile, ContactDirectoryJob,
-    DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity, utc_now)
+    DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity, UserSubscription, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.directory import (save_profile, save_contacts, process_directory_job,
@@ -120,6 +120,60 @@ class DirectoryTests(unittest.TestCase):
             self.assertEqual(4, db.scalar(select(func.count()).select_from(ContactDirectoryJob)
                                          .where(ContactDirectoryJob.status == 'queued')))
         self.assertEqual(0, enqueue_due_directory_syncs(self.engine, now=now))
+
+    def test_background_sync_does_not_starve_eligible_accounts_behind_future_membership(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            db.get(DouyinAccount, self.account).validation_state = 'valid'
+            db.add(SparkTask(owner_user_id=self.owner, douyin_account_id=self.account,
+                             target_name='可执行', send_time='12:00', message_template='test', enabled=True))
+            future_user = User(username='future-membership', password_hash='unused', role='user')
+            db.add(future_user)
+            db.flush()
+            future_account = AccountService(db, self.cipher, AuditService(db)).create(
+                future_user.id, '未来账号', b'[{"name":"sid","value":"future"}]'
+            )
+            future_account.validation_state = 'valid'
+            future_account.updated_at = now - timedelta(days=1)
+            db.add(UserSubscription(user_id=future_user.id,
+                                    valid_from=now + timedelta(days=1),
+                                    valid_until=now + timedelta(days=31),
+                                    max_accounts=1, max_tasks=10))
+            db.add(SparkTask(owner_user_id=future_user.id, douyin_account_id=future_account.id,
+                             target_name='暂不可执行', send_time='12:00', message_template='test', enabled=True))
+
+        self.assertEqual(1, enqueue_due_directory_syncs(self.engine, now=now, queue_limit=1))
+        with session_scope(self.engine) as db:
+            job = db.scalar(select(ContactDirectoryJob).where(ContactDirectoryJob.status == 'queued'))
+            self.assertIsNotNone(job)
+            self.assertEqual(self.account, job.account_id)
+
+    def test_background_sync_keeps_free_expired_and_admin_entitlements(self):
+        now = utc_now()
+        eligible_ids = set()
+        with session_scope(self.engine) as db:
+            for kind in ('free', 'expired', 'admin'):
+                user = User(username=f'sync-{kind}', password_hash='unused',
+                            role='admin' if kind == 'admin' else 'user')
+                db.add(user)
+                db.flush()
+                account = AccountService(db, self.cipher, AuditService(db)).create(
+                    user.id, kind, b'[{"name":"sid","value":"test"}]'
+                )
+                account.validation_state = 'valid'
+                eligible_ids.add(account.id)
+                if kind != 'free':
+                    starts = now + timedelta(days=1) if kind == 'admin' else now - timedelta(days=31)
+                    db.add(UserSubscription(user_id=user.id, valid_from=starts,
+                                            valid_until=starts + timedelta(days=30),
+                                            max_accounts=1, max_tasks=10))
+                db.add(SparkTask(owner_user_id=user.id, douyin_account_id=account.id,
+                                 target_name='好友', send_time='12:00', message_template='test', enabled=True))
+
+        self.assertEqual(3, enqueue_due_directory_syncs(self.engine, now=now))
+        with session_scope(self.engine) as db:
+            self.assertEqual(eligible_ids, set(db.scalars(select(ContactDirectoryJob.account_id)
+                                                          .where(ContactDirectoryJob.status == 'queued'))))
 
     def test_manual_or_failed_attempt_suppresses_background_refresh(self):
         now = utc_now()

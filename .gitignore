@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 .vscode/
+.claude/
+.mcp.json
 chrome/
 logs/
 .DS_Store

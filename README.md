@@ -15,6 +15,8 @@
 
 ## 构建与运行
 
+源码校验与构建以 Python 3.12、Node.js 22（与 CI 一致）为基线；Docker 运行环境使用 Ubuntu 24.04 的 Python。运行脚本前先确认 `python --version` 指向正确解释器，尤其是 Windows 上不要误用系统遗留的 Python 3.9。Python 依赖见 `requirements.txt` 和 `requirements-console.txt`，前端使用 `npm ci` 安装锁定依赖。
+
 ```sh
 cd frontend
 npm ci

@@ -13,6 +13,8 @@ import DeliveryTrend from './delivery-trend.jsx';
 import RowActions from './row-actions.jsx';
 import RubberSegment from './components/RubberSegment';
 
+const EMPTY_MAIL_CONFIG=Object.freeze({});
+
 // Only the administrator route requests this module. Shared auth/bootstrap
 // stay in the application shell; all mutation contracts stay unchanged.
 export function createAdminPages({AccountIncidents,asList,initial,redemptionPlaintext,formatAdminDate,pendingMembershipPlan,membershipTaskLimitLabel,membershipOverLimit,membershipDate,UNLIMITED_TASKS,planDurationDays,planMaxTasks,planDurationLabel,planTaskLabel,api,AdminBusinessPanel,useDebounced,Badge,Card,Empty,confirmModal,LoadingState,PageHeader,Metric,MembershipPlanNotice,SupportReference}) {
@@ -22,10 +24,13 @@ function Admin({data,onRefresh}) {
   const path=location.pathname;
   const isTaskGroup=path.startsWith('/admin/tasks/groups/');
   const rawSection=isTaskGroup?'tasks':path.split('/')[2]||'overview';
-  const baseSection=isTaskGroup||['subscriptions','tasks','customers'].includes(rawSection)?'users':rawSection==='today'?'runs':['diagnostics','audit','business'].includes(rawSection)?'operations':rawSection;
+  // The old business route remains an alias so existing bookmarks keep
+  // working, while the only visible operations view is service announcements.
+  const baseSection=isTaskGroup||['subscriptions','tasks','customers'].includes(rawSection)?'users':rawSection==='today'?'runs':['diagnostics','audit','business','announcements'].includes(rawSection)?'operations':rawSection;
   const isMail=baseSection==='settings' && path.endsWith('/mail');
   const groupParts=isTaskGroup?path.split('/').slice(-2):[];
   const requestedView=new URLSearchParams(location.search).get('view');
+  const normalizedOperationsView=requestedView==='business'?'announcements':requestedView;
   const [query,setQuery]=useState('');
   const [users,setUsers]=useState(data.users||[]);
   const [auditRows,setAuditRows]=useState(data.audit||[]);
@@ -49,7 +54,7 @@ function Admin({data,onRefresh}) {
   const [runPagination,setRunPagination]=useState(null);
   const [runDay,setRunDay]=useState(rawSection==='today'?'today':requestedView==='today'?'today':'all');
   const [sendBoard,setSendBoard]=useState(null);
-  const [operationsTab,setOperationsTab]=useState(rawSection==='diagnostics'?'diagnostics':rawSection==='audit'?'audit':rawSection==='business'?'business':['diagnostics','audit','business'].includes(requestedView)?requestedView:'server');
+  const [operationsTab,setOperationsTab]=useState(rawSection==='diagnostics'?'diagnostics':rawSection==='audit'?'audit':['business','announcements'].includes(rawSection)?'announcements':['diagnostics','audit','announcements'].includes(normalizedOperationsView)?normalizedOperationsView:'server');
   const [selectedUsers,setSelectedUsers]=useState(new Set());
   const [selectedTasks,setSelectedTasks]=useState(new Set());
   const [update,setUpdate]=useState(null);
@@ -88,8 +93,9 @@ function Admin({data,onRefresh}) {
     else if(rawSection==='runs')setRunDay(requestedView==='today'?'today':'all');
     if(rawSection==='diagnostics')setOperationsTab('diagnostics');
     else if(rawSection==='audit')setOperationsTab('audit');
-    else if(rawSection==='operations')setOperationsTab(['diagnostics','audit','business'].includes(requestedView)?requestedView:'server');
-  },[rawSection,requestedView]);
+    else if(['business','announcements'].includes(rawSection))setOperationsTab('announcements');
+    else if(rawSection==='operations')setOperationsTab(['diagnostics','audit','announcements'].includes(normalizedOperationsView)?normalizedOperationsView:'server');
+  },[rawSection,normalizedOperationsView]);
   useEffect(()=>{
     const controller=new AbortController();
     setAdminRead(current=>({...current,pending:0,error:''}));
@@ -142,7 +148,7 @@ function Admin({data,onRefresh}) {
   },[isMail]);
   useEffect(()=>{setSelectedUsers(new Set())},[query,userStatusFilter]);
   useEffect(()=>{setSelectedTasks(new Set())},[query,path]);
-  const title={overview:'业务概览',users:'用户管理',subscriptions:'用户管理',tasks:'用户管理','task-group':'用户管理',customers:'用户管理',codes:'兑换码',runs:'执行记录',today:'执行记录',operations:'运维监控',diagnostics:'运维监控',audit:'运维监控',business:'运维监控',settings:'系统设置'}[section]||'管理后台';
+  const title={overview:'业务概览',users:'用户管理',subscriptions:'用户管理',tasks:'用户管理','task-group':'用户管理',customers:'用户管理',codes:'兑换码',runs:'执行记录',today:'执行记录',operations:'运维监控',diagnostics:'运维监控',audit:'运维监控',announcements:'服务公告',settings:'系统设置'}[section]||'管理后台';
   const counts=data.counts||{};
   const copyRedemptionCode=async code=>{
     if(!code)return;
@@ -206,13 +212,15 @@ function Admin({data,onRefresh}) {
     const value=await readWorkspace(userId,{refresh:true});
     if(value&&workspaceRead.current.userId===userId)await refreshUsers();
   };
-  const refreshUsers=()=>api(`/api/admin/bootstrap?q=${encodeURIComponent(query)}&status=${encodeURIComponent(userStatusFilter)}&page=${usersPagination?.page||1}`).then(v=>{setUsers(v.users||[]);setUsersPagination(v.usersPagination||null)}).catch(e=>setFeedback(e.message));
-  const retryRun=async id=>{try{await api(`/api/admin/runs/${id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf})});setAdminToast('已安排补发，请查看后续执行记录');onRefresh();const params=new URLSearchParams({q:runQuery,status:runStatusFilter,page:String(runPage)});if(runDay==='today')params.set('day','today');if(runDay==='range'){params.set('start',runStartDate);params.set('end',runEndDate)}const value=await api(`/api/admin/runs?${params}`);setRunRows(value.items||[]);setRunPagination(value.pagination||null);setSendBoard(runDay==='today'?value.today_board||null:null)}catch(error){setFeedback(error.message)}};
+  // Mutations invalidate the current view. The effect above owns cancellation
+  // and reads the latest filters instead of the mutation's captured filters.
+  const refreshUsers=()=>setReadRevision(value=>value+1);
+  const retryRun=async id=>{try{await api(`/api/admin/runs/${id}/retry`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf})});setAdminToast('已安排补发，请查看后续执行记录');setReadRevision(value=>value+1);onRefresh()}catch(error){setFeedback(error.message)}};
   const toggleSelected=(setter,id)=>setter(current=>{const next=new Set(current);next.has(id)?next.delete(id):next.add(id);return next});
   const runBulk=async(path,body,success)=>{setFeedback('');try{const result=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:data.csrf,...body})});setAdminToast(`${success}（${result.updated||0} 项）`);setSelectedUsers(new Set());setSelectedTasks(new Set());onRefresh();if(baseSection==='users'&&!isTaskGroup)refreshUsers();if(isTaskGroup&&groupParts.length===2)api(`/api/admin/tasks/groups/${groupParts[0]}/${groupParts[1]}?q=${encodeURIComponent(query)}`).then(setGroupDetail);}catch(error){setFeedback(error.message)}};
   const adminHeader=<PageHeader title={title} actions={<Button variant="quiet" onClick={async()=>{const result=await onRefresh();if(!result)setReadRevision(value=>value+1)}}>刷新数据</Button>}/>;
   const runsTabItems=[{value:'today',label:'今日'},{value:'all',label:'全部记录'}];
-  const opsTabItems=[{value:'server',label:'服务器'},{value:'diagnostics',label:'执行诊断'},{value:'audit',label:'审计日志'},{value:'business',label:'公告与经营'}];
+  const opsTabItems=[{value:'server',label:'服务器'},{value:'diagnostics',label:'执行诊断'},{value:'audit',label:'审计日志'},{value:'announcements',label:'服务公告'}];
   return <>{adminHeader}{feedback&&<div className="inline-feedback danger-text" role="alert">{feedback}</div>}<Toast message={adminToast} onClose={()=>setAdminToast('')}/>
     {baseSection==='runs'&&<div className="admin-segment-wrap"><RubberSegment className="admin-segment" items={runsTabItems} value={runDay==='today'?'today':'all'} onChange={tab=>{setRunPage(1);setRunDay(tab==='today'?'today':'all');navigate(`/admin/runs?view=${tab}`)}} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="md" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录视图"/></div>}
     {baseSection==='operations'&&<div className="admin-segment-wrap"><RubberSegment className="admin-segment" items={opsTabItems} value={operationsTab} onChange={tab=>{setOperationsTab(tab);navigate(`/admin/operations?view=${tab}`)}} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="md" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="运维工作台视图"/></div>}
@@ -229,12 +237,12 @@ function Admin({data,onRefresh}) {
       {runDay==='today'&&<TodaySendBoard board={sendBoard}/>}
       <Card><AdminRunFilters query={runQuery} onQueryChange={value=>{setRunPage(1);setRunQuery(value)}} status={runStatusFilter} onStatusChange={value=>{setRunPage(1);setRunStatusFilter(value)}} day={runDay} onDayChange={value=>{setRunPage(1);setRunDay(value)}} start={runStartDate} end={runEndDate} onStartChange={setRunStartDate} onEndChange={setRunEndDate}/><FilterSummary items={[{key:'q',label:'搜索',value:runQuery,onRemove:()=>{setRunQuery('');setRunPage(1)}},{key:'status',label:'结果',value:({success:'已发出',failed:'未发出',submitted_unconfirmed:'待核实',running:'执行中',skipped:'已跳过'})[runStatusFilter],onRemove:()=>{setRunStatusFilter('');setRunPage(1)}},{key:'date',label:'日期',value:runDay==='range'?`${runStartDate||'不限'} 至 ${runEndDate||'不限'}`:'',onRemove:()=>{setRunDay('all');setRunStartDate('');setRunEndDate('');setRunPage(1)}}]} onClear={()=>{setRunQuery('');setRunStatusFilter('');setRunStartDate('');setRunEndDate('');setRunDay('all');setRunPage(1)}}/>{(adminRead.pending>0||adminRead.error)&&<ReadStatus busy={adminRead.pending>0} error={adminRead.error}/>}<AdminRunTable rows={runRows} onRetry={retryRun} onOpenUser={openUser}/><AdminPagination value={runPagination} onChange={setRunPage}/></Card>
     </>}
-    {section==='business'&&<React.Suspense fallback={<LoadingState/>}><AdminBusinessPanel data={data} onFeedback={setFeedback}/></React.Suspense>}
+    {section==='announcements'&&<React.Suspense fallback={<LoadingState/>}><AdminBusinessPanel data={data} onFeedback={setFeedback}/></React.Suspense>}
     {section==='operations'&&<><div className="metric-grid"><Metric label="CPU" value={liveOperations?.system?.cpu?.percent!=null?`${Math.round(liveOperations.system.cpu.percent)}%`:'—'} detail={liveOperations?.system?.scope_label||'服务器实时使用率'}/><Metric label="内存" value={liveOperations?.system?.memory?.percent!=null?`${Math.round(liveOperations.system.memory.percent)}%`:'—'} detail="服务器实时使用率" tone="accent"/><Metric label="磁盘" value={liveOperations?.system?.disk?.percent!=null?`${Math.round(liveOperations.system.disk.percent)}%`:'—'} detail="服务器实时使用率"/><Metric label="Worker" value={liveOperations?.services?.worker?.status==='healthy'?'运行中':liveOperations?.services?.worker?.label||'—'} detail="任务执行服务"/></div><div className="metric-grid admin-queue-metrics"><Metric label="待执行" value={liveOperations?.queue?.due_tasks??'—'} detail="当前到期任务"/><Metric label="运行中" value={liveOperations?.queue?.running_runs??'—'} detail="占用中的执行"/><Metric label="待重试" value={liveOperations?.queue?.retrying_runs??'—'} detail="延迟重试任务" tone="accent"/><Metric label="需关注" value={liveOperations?.queue?.attention_24h??'—'} detail="近 24 小时异常" tone="danger"/></div><ResourceHistory history={operationsHistory} snapshot={liveOperations}/><CapacitySummary business={liveOperations?.business}/></>}
-    {section==='audit'&&<Card><div className="section-head"><h2>审计日志</h2><span className="muted-copy">{auditRows.length} 条记录</span></div><div className="toolbar admin-toolbar"><input className="input compact-search" value={auditQuery} onChange={e=>setAuditQuery(e.target.value)} placeholder="搜索操作、操作者、资源、请求 ID 或 IP"/></div><div className="admin-table"><div className="table-head audit-table-head"><span>操作</span><span>操作者</span><span>资源</span><span>时间</span></div>{auditRows.map(row=><button type="button" className="admin-row audit-row" key={row.id} onClick={()=>setSelectedAudit(row)}><b className="row-primary">{row.event}<small>{row.outcome==='failure'?'失败':row.outcome==='success'?'成功':'历史记录'}{row.error_code?` · ${row.error_code}`:''}</small></b><span className="row-secondary">{row.actor||'系统'}</span><span className="row-secondary">{row.subject_type||'—'}<small>{row.subject_id||''}</small></span><time className="row-status">{row.created_at?new Date(row.created_at).toLocaleString('zh-CN'):'—'}</time></button>)}</div></Card>}
+    {section==='audit'&&<Card><div className="section-head"><h2>审计日志</h2><span className="muted-copy">{auditPagination?.total??auditRows.length} 条记录</span></div><div className="toolbar admin-toolbar"><input className="input compact-search" value={auditQuery} onChange={e=>{setAuditQuery(e.target.value);setAuditPagination(value=>({...value,page:1}))}} placeholder="搜索操作、操作者、资源、请求 ID 或 IP"/></div><div className="admin-table"><div className="table-head audit-table-head"><span>操作</span><span>操作者</span><span>资源</span><span>时间</span></div>{auditRows.map(row=><button type="button" className="admin-row audit-row" key={row.id} onClick={()=>setSelectedAudit(row)}><b className="row-primary">{row.event}<small>{row.outcome==='failure'?'失败':row.outcome==='success'?'成功':'历史记录'}{row.error_code?` · ${row.error_code}`:''}</small></b><span className="row-secondary">{row.actor||'系统'}</span><span className="row-secondary">{row.subject_type||'—'}<small>{row.subject_id||''}</small></span><time className="row-status">{row.created_at?new Date(row.created_at).toLocaleString('zh-CN'):'—'}</time></button>)}</div><AdminPagination value={auditPagination} onChange={page=>setAuditPagination(value=>({...value,page}))}/></Card>}
     {section==='diagnostics'&&<><Card><div className="section-head"><div><h2>执行诊断</h2></div><span className="muted">最近执行</span></div><p className="muted-copy">最近 30 次执行耗时。</p></Card><Card className="runs-card"><div className="run-list">{diagnostics?.items?.length?diagnostics.items.map(item=><div className="run-row" key={item.id}><span className={`run-dot ${item.status==='success'?'success':item.status==='failed'?'failed':''}`}/><div className="grow"><b>{item.name}</b><small>{item.stage||'—'} · 尝试 {item.attempt||1}</small></div><Badge tone={item.status==='success'?'good':item.status==='failed'?'danger':'warn'}>{({success:'已发出',failed:'失败',error:'失败',running:'执行中',queued:'排队中',pending:'待执行',skipped:'已跳过',submitted_unconfirmed:'待核实',retrying:'等待重试'})[item.status]||'待核实'}</Badge><span className="run-error">{item.error_summary||`总耗时 ${item.total??'—'} 秒`}</span></div>):<Empty title="暂无诊断记录"/>}</div></Card></>}
     {section==='settings'&&!isMail&&<UpdatePanel update={update} data={{...data,mail:mailConfig}} onFeedback={setFeedback}/>}
-    {isMail&&<MailAdmin data={{...data,mail:mailConfig}} onSaved={()=>{setAdminToast('邮件配置已保存');setMailConfig(current=>({...current,enabled:true}));onRefresh()}}/>}
+    {isMail&&<MailAdmin data={{...data,mail:mailConfig}} onSaved={saved=>{setAdminToast('邮件配置已保存');setMailConfig(current=>({...current,enabled:saved.enabled}));onRefresh()}}/>}
     <AdminTaskEditor key={selectedTask?.id||'no-task'} task={selectedTask} csrf={data.csrf} onClose={()=>setSelectedTask(null)} onSaved={()=>{setSelectedTask(null);setAdminToast('任务已保存');if(userWorkspace)refreshWorkspace().catch(e=>setFeedback(e.message));onRefresh()}}/>
     <AdminUserWorkspace key={userWorkspace?.user?.id||'no-user'} workspace={userWorkspace} plans={data.plans||[]} csrf={data.csrf} actorId={data.user?.id} onClose={closeWorkspace} onRefresh={refreshWorkspace} onTaskEdit={task=>setSelectedTask({...task,username:userWorkspace?.user?.username,account:userWorkspace?.accounts?.find(a=>a.id===task.accountId)?.name,account_id:task.accountId,target_sec_uid:task.sec_uid,message_kind:task.kind==='续火花表情'?'douyin_sticker':'text'})}/>
     <AuditDetailDrawer event={selectedAudit} onClose={()=>setSelectedAudit(null)}/>
@@ -244,11 +252,19 @@ function UpdatePanel({update,data,onFeedback}) {
   return <><UpdateReleasePanel {...{update,data,onFeedback,api,Card,Badge,confirmModal}}/><Card><div className="section-head"><div><h2>邮件服务</h2></div><Badge tone={data.mail?.enabled?'good':'neutral'}>{data.mail?.enabled?'已启用':'未启用'}</Badge></div><div className="quick-links"><Link to="/notifications" className="text-action">打开用户通知设置<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link><Link to="/admin/settings/mail" className="text-action">打开完整邮件设置<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div></Card></>;
 }
 function MailAdmin({data,onSaved}) {
-  const config=data.mail||{};
-  const [form,setForm]=useState({host:config.host||'',port:config.port||465,mode:config.mode||'ssl',username:config.username||'',password:'',sender:config.sender||'',sender_name:config.sender_name||'火花守护',enabled:!!config.enabled,events:config.events||[]});
+  const config=data.mail||EMPTY_MAIL_CONFIG;
+  const configForm=value=>({host:value.host||'',port:value.port||465,mode:value.mode||'ssl',username:value.username||'',password:'',sender:value.sender||'',sender_name:value.sender_name||'火花守护',enabled:!!value.enabled,events:value.events||[]});
+  const [form,setForm]=useState(()=>configForm(config));
+  const editedFields=useRef(new Set());
+  useEffect(()=>{
+    const incoming=configForm(config);
+    // Settings arrive after the route mounts. Hydrate untouched fields while
+    // preserving any draft the administrator has already started typing.
+    setForm(current=>Object.fromEntries(Object.entries(incoming).map(([key,value])=>[key,editedFields.current.has(key)?current[key]:value])));
+  },[config]);
   const [status,setStatus]=useState('');
-  const change=(key,value)=>setForm(current=>({...current,[key]:value}));
-  const send=async action=>{setStatus('正在处理…');try{const value=await api(`/admin/settings/mail/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,csrf_token:data.csrf})});setStatus(value.message||'操作完成');if(action==='save')onSaved()}catch(e){setStatus(e.message)}};
+  const change=(key,value)=>{editedFields.current.add(key);setForm(current=>({...current,[key]:value}))};
+  const send=async action=>{setStatus('正在处理…');try{const value=await api(`/admin/settings/mail/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,csrf_token:data.csrf})});setStatus(value.message||'操作完成');if(action==='save')onSaved({enabled:form.enabled})}catch(e){setStatus(e.message)}};
   return <div className="mail-settings-grid"><Card><div className="section-head"><div><h2>发信服务</h2></div><Badge tone={form.enabled?'good':'neutral'}>{form.enabled?'已启用':'未启用'}</Badge></div><div className="form-stack"><label>SMTP 主机<input className="input" value={form.host} onChange={e=>change('host',e.target.value)} placeholder="smtp.example.com"/></label><div className="form-grid"><label>端口<input className="input" type="number" value={form.port} onChange={e=>change('port',e.target.value)}/></label><label>加密方式<select className="input" value={form.mode} onChange={e=>change('mode',e.target.value)}><option value="ssl">SSL/TLS</option><option value="starttls">STARTTLS</option></select></label></div><label>SMTP 用户名<input className="input" value={form.username} onChange={e=>change('username',e.target.value)}/></label><label>SMTP 授权码<input className="input" type="password" value={form.password} onChange={e=>change('password',e.target.value)} placeholder={config.password_configured?'已配置，留空保持不变':'填写授权码'}/></label><div className="form-grid"><label>发件邮箱<input className="input" value={form.sender} onChange={e=>change('sender',e.target.value)}/></label><label>发件人名称<input className="input" value={form.sender_name} onChange={e=>change('sender_name',e.target.value)}/></label></div><label className="check-line"><input type="checkbox" role="switch" className="ui-switch" checked={form.enabled} onChange={e=>change('enabled',e.target.checked)}/>启用邮件通知服务</label>{status&&<div className="inline-feedback">{status}</div>}<div className="setting-actions"><Button onClick={()=>send('save')}>保存设置</Button><Button variant="quiet" onClick={()=>send('test')}>测试连接</Button></div></div></Card><Card><h2>发送记录</h2><p className="muted" role="status">{config.worker?.online?'投递服务在线':'投递服务未连接'} · 待处理 {config.queue?.pending||0} 封{config.queue?.oldest_age_seconds>180?'，队列处理延迟':''}</p><div className="run-list mail-deliveries">{(config.deliveries||[]).map(item=><div className="run-row" key={item.id}><span className={`run-dot ${item.status==='accepted'?'success':item.status==='failed'?'failed':''}`}/><div className="grow"><b>{item.event}</b><small>{item.recipient} · {item.created_at?new Date(item.created_at).toLocaleString('zh-CN'):''}</small></div><Badge tone={item.status==='accepted'?'good':item.status==='failed'?'danger':'warn'}>{item.status}</Badge></div>)}</div></Card></div>;
 }
   function AdminRuns({rows=[]}) { return <div className="run-list admin-runs">{rows.length?rows.map(r=><div className="run-row" key={r.id}><span className={`run-dot ${r.tone||''}`}/><div className="grow"><b>{r.target}</b><small>{r.owner} · {r.time}</small></div><Badge tone={r.tone||'neutral'}>{r.status}</Badge></div>):<Empty title="暂无记录"/>}</div>; }

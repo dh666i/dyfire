@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 import signal
@@ -36,6 +37,14 @@ from spark_console.services.subscriptions import SubscriptionService
 
 logger = logging.getLogger(__name__)
 AUTH_HEARTBEAT_INTERVAL_SECONDS = 10
+
+
+async def _run_background_action(action) -> bool:
+    """Run one rotated maintenance action regardless of sync/async return type."""
+    result = action()
+    if inspect.isawaitable(result):
+        result = await result
+    return bool(result)
 
 ERROR_CODES = {
     QrLoadFailed: "qr_load_failed",
@@ -373,7 +382,7 @@ async def run_loop() -> None:
             # directory reads cannot permanently starve one another.
             first=background_turn%len(actions);background_turn+=1
             for offset in range(len(actions)):
-                if await actions[(first+offset)%len(actions)]():return True
+                if await _run_background_action(actions[(first+offset)%len(actions)]):return True
             return False
         await dispatch(worker,stopping,background,slots=settings.auth_browser_slots,poll_seconds=settings.auth_poll_seconds)
     finally:

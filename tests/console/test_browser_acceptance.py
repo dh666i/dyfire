@@ -313,12 +313,24 @@ def test_cloud_refresh_keeps_last_frame_and_blocks_stale_clicks(browser_site):
         modal=page.get_by_role('dialog',name='复核原抖音账号')
         expect(modal.locator('.scan-stage')).to_have_class(re.compile('frame-ready'))
         expect(modal.locator('.scan-frame-image[aria-hidden=false]')).to_have_attribute('src',re.compile('revision=good'))
+        input_field=modal.get_by_label('发送到云端的输入内容')
+        expect(input_field).to_be_visible()
+        password_toggle=modal.locator('.cloud-password-mode input')
+        password_toggle.check();expect(input_field).to_have_attribute('type','password')
+        password_toggle.uncheck();expect(input_field).to_have_attribute('type','text')
+        input_field.fill('13800138000')
+        modal.get_by_role('button',name='发送到云端',exact=True).click()
+        expect(modal.locator('.cloud-interaction-status')).to_have_text('已提交，等待云端回执')
+        assert len(interactions)==1 and '13800138000' in interactions[0]
         state['frame_revision']='unavailable'
-        expect(modal.locator('.cloud-frame-refresh')).to_be_visible(timeout=6000)
+        expect(modal.locator('.cloud-frame-refresh')).to_have_count(0)
+        expect(modal.get_by_text('正在更新云端画面，暂时保留上一帧。', exact=True)).to_have_count(0)
+        page.wait_for_timeout(1800)
+        expect(modal.locator('.cloud-frame-refresh')).to_have_count(0)
         image=modal.locator('.scan-frame-image[aria-hidden=false]')
         expect(image).to_have_attribute('src',re.compile('revision=good'))
         assert image.evaluate('(el)=>el.complete && el.naturalWidth===1280')
-        image.click();assert not interactions
+        image.click();assert len(interactions)==1
         expect(modal.locator('.scan-loading-overlay')).not_to_be_visible()
         _capture_site_detail(page,'account-recovery-stale-frame')
     finally:context.close()

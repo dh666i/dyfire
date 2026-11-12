@@ -177,7 +177,7 @@ def test_rollback_allows_default_candidate_and_rejects_invalid_payload(setup):
     assert json.loads((root / 'requests/request.json').read_text())['version'] == ''
 
     (root / 'requests/request.json').unlink()
-    response = client.post('/api/admin/updates/check', data='[]', headers=headers)
+    response = client.post('/api/admin/updates/check', content='[]', headers=headers)
     assert response.status_code == 400
 
 

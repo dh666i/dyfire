@@ -1,7 +1,7 @@
 import asyncio
 import tempfile
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -17,7 +17,7 @@ from spark_console.auth_scanner import (
     ScannedAccount,
     VerificationRequired,
 )
-from spark_console.auth_worker import AuthWorker, _heartbeat_loop
+from spark_console.auth_worker import AuthWorker, _heartbeat_loop, _run_background_action
 from spark_console.config import Settings
 from spark_console.crypto import CookieCipher
 from spark_console.db import create_engine_for, create_schema, session_scope
@@ -319,6 +319,24 @@ class _StopAwareScanner:
         while not cancelled():
             await asyncio.sleep(0)
         raise ScanCancelled()
+
+
+class BackgroundActionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_supports_sync_enqueue_and_async_browser_actions(self):
+        for handled in (False, True):
+            with self.subTest(handled=handled):
+                enqueue = Mock(return_value=handled)
+                browser_action = AsyncMock(return_value=handled)
+                self.assertIs(handled, await _run_background_action(enqueue))
+                self.assertIs(handled, await _run_background_action(browser_action))
+                enqueue.assert_called_once_with()
+                browser_action.assert_awaited_once_with()
+
+    async def test_action_failure_and_cancellation_reach_dispatcher(self):
+        with self.assertRaisesRegex(RuntimeError, 'queue unavailable'):
+            await _run_background_action(Mock(side_effect=RuntimeError('queue unavailable')))
+        with self.assertRaises(asyncio.CancelledError):
+            await _run_background_action(AsyncMock(side_effect=asyncio.CancelledError))
 
 
 class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):

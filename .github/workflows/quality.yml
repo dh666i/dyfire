@@ -94,9 +94,10 @@ jobs:
       - run: npm run build
         working-directory: frontend
       - name: Run complete isolated suite across deterministic shards
-        # Root platform probes need real account data and may send messages.
+        # Only the explicitly listed root-level unit tests are isolated. Never
+        # add live platform probes or tests that can send messages to this job.
         # The collection list is audited after every shard completes.
-        run: python -m pytest -p scripts.ci_shard tests/console tests/test_deployment_paths.py tests/test_postgres_profile.py -q --junitxml=.artifacts/ci-shard/test-results.xml
+        run: python -m pytest -p scripts.ci_shard tests/console tests/test_avatars.py tests/test_stickers.py tests/test_tasks.py tests/test_web_chat.py tests/test_deployment_paths.py tests/test_postgres_profile.py -q --junitxml=.artifacts/ci-shard/test-results.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:

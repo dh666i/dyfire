@@ -9,7 +9,8 @@ html .fire-main .route-view[data-page^="/admin/"] {
 
 /* One quiet container per section, without nested outlines or heavy shadows. */
 html .fire-main .route-view[data-page^="/admin/"] > .card,
-html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) > .card {
+html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-announcements,.mail-settings-grid) > .card,
+html .fire-main .route-view[data-page^="/admin/"] > .admin-announcements {
   border:0;
   border-radius:22px;
   background:var(--admin-surface);
@@ -19,7 +20,7 @@ html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admi
 html .fire-main .route-view[data-page^="/admin/"] .card::before,
 html .fire-main .route-view[data-page^="/admin/"] .card::after { display:none; }
 html .fire-main .route-view[data-page^="/admin/"] > .card + .card { margin-top:24px; }
-html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) { gap:24px; }
+html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.mail-settings-grid) { gap:24px; }
 html .fire-main .route-view[data-page^="/admin/"] .section-head { margin-bottom:22px; }
 html .fire-main .route-view[data-page^="/admin/"] .section-head .eyebrow { color:var(--ink-soft); }
 
@@ -151,12 +152,8 @@ html .fire-main .route-view[data-page^="/admin/"] .update-release-notes pre { fo
 html .fire-main .route-view[data-page^="/admin/"] .update-rollback { margin-top:24px; padding:0; border:0; }
 html .fire-main .route-view[data-page^="/admin/"] .update-rollback label { font-size:13px; line-height:1.6; color:var(--ink-soft); }
 html .fire-main .route-view[data-page^="/admin/"] .update-progress { border:0; padding:14px 16px; border-radius:14px; background:var(--admin-selected); color:var(--ink-dark); }
-html .fire-main .route-view[data-page^="/admin/"] .admin-business-list { margin-top:24px; }
+html .fire-main .route-view[data-page^="/admin/"] .admin-announcement-list { margin-top:24px; }
 html .fire-main .route-view[data-page^="/admin/"] .announcement-row { padding:16px 12px; margin-block:6px; }
-html .fire-main .route-view[data-page^="/admin/"] :is(.recorded-income,.cost-estimate-result) { border:0; padding:16px; border-radius:14px; background:var(--admin-soft); color:var(--ink-soft); }
-html .fire-main .route-view[data-page^="/admin/"] .recorded-income { margin-top:20px; gap:12px; }
-html .fire-main .route-view[data-page^="/admin/"] :is(.recorded-income,.cost-estimate-result) b { color:var(--ink-dark); }
-html .fire-main .route-view[data-page^="/admin/"] .cost-estimate-result small { color:var(--ink-soft); line-height:1.7; }
 html .fire-main .route-view[data-page^="/admin/"] .form-actions > span { color:var(--ink-soft); font-size:12px; line-height:1.7; }
 html .fire-main .route-view[data-page^="/admin/"] .quick-links a {
   min-height:44px;
@@ -178,9 +175,10 @@ html .fire-main .route-view[data-page^="/admin/"] .quick-links a {
 
 @media(max-width:700px) {
   html .fire-main .route-view[data-page^="/admin/"] > .card,
-  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) > .card { border-radius:18px; }
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-announcements,.mail-settings-grid) > .card,
+  html .fire-main .route-view[data-page^="/admin/"] > .admin-announcements { border-radius:18px; }
   html .fire-main .route-view[data-page^="/admin/"] > .card + .card { margin-top:20px; }
-  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.admin-business-grid,.mail-settings-grid) { gap:20px; }
+  html .fire-main .route-view[data-page^="/admin/"] :is(.admin-insights-grid,.mail-settings-grid) { gap:20px; }
   html .fire-main .route-view[data-page^="/admin/"] .metric-grid { padding:2px; margin-bottom:20px; border-radius:18px; }
   html .fire-main .route-view[data-page^="/admin/"] .metric-grid > .card.metric { border:0; padding-inline:14px; }
   html .fire-main .route-view[data-page^="/admin/"] .admin-queue-metrics > .card.metric { padding-inline:10px; }

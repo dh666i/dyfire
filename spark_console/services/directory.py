@@ -1,14 +1,14 @@
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, update, delete, exists, not_, func, text
+from sqlalchemy import select, update, delete, exists, not_, or_, func, text
 from sqlalchemy.orm import aliased
 from core.avatars import safe_avatar_url
 from core.chat_errors import WebChatLoginRequiredError
 from spark_console.db import session_scope
 from spark_console.models import (AccountOperation, ContactDirectoryJob, DouyinAccount, DouyinAccountIdentity,
     DouyinAccountProfile, DouyinContactAvatar, DouyinContactIdentity, DouyinConversation,
-    DouyinLoginSession, SparkTask, SparkTaskTargetIdentity, TaskRun, User, utc_now)
+    DouyinLoginSession, SparkTask, SparkTaskTargetIdentity, TaskRun, User, UserSubscription, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.subscriptions import SubscriptionService
@@ -135,6 +135,7 @@ def enqueue_due_directory_syncs(engine, *, now=None, queue_limit=AUTO_DIRECTORY_
         candidates = db.execute(
             select(DouyinAccount.id, DouyinAccount.owner_user_id)
             .join(User, User.id == DouyinAccount.owner_user_id)
+            .outerjoin(UserSubscription, UserSubscription.user_id == User.id)
             .where(
                 exists().where(
                     SparkTask.douyin_account_id == DouyinAccount.id,
@@ -142,6 +143,16 @@ def enqueue_due_directory_syncs(engine, *, now=None, queue_limit=AUTO_DIRECTORY_
                 ),
                 DouyinAccount.validation_state == 'valid',
                 User.status == 'active',
+                # Match the entitlement boundary used by process_directory_job:
+                # administrators, free-tier users, expired memberships, and
+                # currently active memberships may refresh. A future-dated
+                # subscription must not occupy the bounded candidate window.
+                or_(
+                    User.role == 'admin',
+                    UserSubscription.user_id.is_(None),
+                    UserSubscription.valid_until <= now,
+                    UserSubscription.valid_from <= now,
+                ),
                 not_(exists().where(
                     ContactDirectoryJob.owner_user_id == DouyinAccount.owner_user_id,
                     ContactDirectoryJob.status.in_(('queued', 'running')),
@@ -173,9 +184,6 @@ def enqueue_due_directory_syncs(engine, *, now=None, queue_limit=AUTO_DIRECTORY_
 
         queued = 0
         for account_id, owner_user_id in candidates:
-            # Respect the existing free-tier and subscription entitlement rules.
-            if not SubscriptionService(db, AuditService(db)).has_task_access(owner_user_id):
-                continue
             db.add(ContactDirectoryJob(
                 account_id=account_id,
                 owner_user_id=owner_user_id,
