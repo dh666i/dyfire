@@ -156,6 +156,20 @@ def same_manifest(raw, image):
     return any(hashlib.sha256(data).hexdigest() == wanted for data in (raw, raw.removesuffix(b'\n')))
 
 
+def load_release_notes(version):
+    source = Path('docs') / f'release-{version}.md'
+    if not source.is_file():
+        raise ValueError(f'Missing versioned release notes: {source}')
+    notes = source.read_text(encoding='utf-8').strip()
+    if 'dyfire-manifest' in notes:
+        raise ValueError('Release notes must not contain a deployment manifest')
+    required = ('## 新增', '## 修复', '## 兼容性与升级')
+    missing = [heading for heading in required if heading not in notes]
+    if missing:
+        raise ValueError('Release notes must include sections: ' + ', '.join(missing))
+    return notes
+
+
 def existing_release_matches(candidate):
     manifest = manifest_from_candidate(candidate)
     tag = 'v' + candidate['version']
@@ -172,13 +186,7 @@ def existing_release_matches(candidate):
 def publish(candidate, notes_file):
     manifest = manifest_from_candidate(candidate)
     tag = 'v' + candidate['version']
-    source = Path('docs') / f"release-{candidate['version']}.md"
-    if source.exists():
-        notes = source.read_text(encoding='utf-8').rstrip() + '\n\n'
-        if 'dyfire-manifest' in notes:
-            raise ValueError('Release notes must not contain a deployment manifest')
-    else:
-        notes = f"Dyfire {candidate['version']}\n\n同一提交的完整测试、容器验收与安全扫描通过后，直接发布已验证的 Web 和浏览器镜像；发行阶段不重新构建。\n\n"
+    notes = load_release_notes(candidate['version']) + '\n\n'
     notes += '<!-- dyfire-manifest ' + json.dumps(manifest) + ' -->\n'
     notes_file.write_text(notes, encoding='utf-8')
     subprocess.run(['gh', 'release', 'create', tag, '--repo', REPO, '--verify-tag',

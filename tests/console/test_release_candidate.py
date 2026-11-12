@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from scripts.release_candidate import (
-    IMAGE, assemble, existing_release_matches, manifest_from_candidate,
+    IMAGE, assemble, existing_release_matches, load_release_notes, manifest_from_candidate,
     promote, publish, same_manifest, trusted_run, validate_candidate,
 )
 from scripts.ci_shard import shard_number, verify_shards
@@ -152,7 +152,8 @@ def test_promote_never_overwrites_an_existing_different_manifest():
 def test_publish_uses_versioned_release_notes_with_only_the_verified_manifest(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'docs').mkdir()
-    prose = '# Dyfire 0.4.6\n\n只更新改变的组件。\n'
+    prose = ('# Dyfire 0.4.6\n\n## 新增\n\n无。\n\n## 修复\n\n无。\n\n'
+             '## 兼容性与升级\n\n无需手动迁移。\n')
     (tmp_path / 'docs/release-0.4.6.md').write_text(prose, encoding='utf-8')
     destination = tmp_path / 'notes.md'
     with patch('scripts.release_candidate.subprocess.run') as run:
@@ -173,6 +174,22 @@ def test_publish_rejects_manifest_in_release_notes(tmp_path, monkeypatch):
         with pytest.raises(ValueError, match='must not contain a deployment manifest'):
             publish(candidate(), tmp_path / 'notes.md')
     run.assert_not_called()
+
+
+def test_publish_requires_complete_versioned_release_notes(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'docs').mkdir()
+    destination = tmp_path / 'notes.md'
+    with patch('scripts.release_candidate.subprocess.run') as run:
+        with pytest.raises(ValueError, match='Missing versioned release notes'):
+            publish(candidate(), destination)
+        run.assert_not_called()
+
+    (tmp_path / 'docs/release-0.4.6.md').write_text(
+        '# Dyfire 0.4.6\n\n## 新增\n\n无。\n', encoding='utf-8'
+    )
+    with pytest.raises(ValueError, match='must include sections'):
+        load_release_notes(VERSION)
 
 
 def shard_records():

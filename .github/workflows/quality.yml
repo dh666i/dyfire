@@ -26,6 +26,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - run: python scripts/check_version.py
+      - run: python scripts/check_release_notes.py
       - run: python scripts/export_contracts.py --check
       - run: python scripts/runtime_images.py validate
       - run: node scripts/dedupe_css.mjs --check
