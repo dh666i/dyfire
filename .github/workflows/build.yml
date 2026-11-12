@@ -83,7 +83,7 @@ jobs:
         run: |
           image="$(python -c "import json; print(json.load(open('.artifacts/candidate/component.json'))['image'])")"
           python scripts/check_image_reuse.py --component "$COMPONENT" --image "$image" --output .artifacts/candidate/image-layer-reuse.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: candidate-${{ matrix.component }}
           path: .artifacts/candidate/
@@ -104,7 +104,7 @@ jobs:
           pattern: candidate-*
           path: .artifacts/components
       - run: python -m scripts.release_candidate assemble --directory .artifacts/components --output .artifacts/release-candidate/candidate.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-candidate
           path: .artifacts/release-candidate/candidate.json
