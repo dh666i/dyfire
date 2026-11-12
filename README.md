@@ -39,6 +39,8 @@ python -m pytest tests/console tests/test_avatars.py tests/test_stickers.py test
 
 本地 Docker 部署、运行时镜像和数据迁移细节见[部署指南](deploy/README.md)。GitHub Actions 会在合并和发布前执行静态检查、依赖安全扫描、浏览器验收及隔离测试。
 
+需要演练 SQLite 到 PostgreSQL 的迁移时，可通过 `--profile postgres` 启动隔离数据库。先运行只读预检，再在停写并完成备份后显式添加 `--apply`；不要把这个 profile 直接接到线上发送服务。完整步骤见部署指南。
+
 ## 安全与数据
 
 账号登录资料属于敏感数据。自行部署时请限制主机与数据目录访问，使用 HTTPS，妥善保管密钥和数据库，并在提交前确认没有真实账号 Cookie、密码、令牌或生产配置。仓库中的环境变量示例仅供本地配置参考，不能直接作为生产凭据。
