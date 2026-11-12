@@ -66,7 +66,7 @@ jobs:
           from scripts.release_runtime_image import resolve
           index = os.environ['INDEX_IMAGE']
           Path('runtime-' + os.environ['COMPONENT'] + '.json').write_text(json.dumps({'image': resolve(index), 'index_image': index}))
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: runtime-${{ matrix.component }}
           path: runtime-${{ matrix.component }}.json
@@ -93,7 +93,7 @@ jobs:
               '--browser-index', browser['index_image'], '--source-sha', os.environ['GITHUB_SHA']], check=True)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
               out.write('Verified runtime lock is attached as runtime-images-lock. Review and commit it to deploy/runtime-images.json before the next application release. No production deployment was performed.\n')
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: runtime-images-lock
           path: runtime-images.json

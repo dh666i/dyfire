@@ -35,7 +35,7 @@ jobs:
       - run: pip-audit --strict
       - run: npm audit --audit-level=high
         working-directory: frontend
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: validated-frontend
           path: frontend/dist/
@@ -98,7 +98,7 @@ jobs:
         # add live platform probes or tests that can send messages to this job.
         # The collection list is audited after every shard completes.
         run: python -m pytest -p scripts.ci_shard tests/console tests/test_avatars.py tests/test_stickers.py tests/test_tasks.py tests/test_web_chat.py tests/test_deployment_paths.py tests/test_postgres_profile.py -q --junitxml=.artifacts/ci-shard/test-results.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: quality-shard-${{ matrix.shard }}
@@ -106,7 +106,7 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
       - name: Preserve isolated browser failure evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: browser-failure-evidence-${{ matrix.shard }}
