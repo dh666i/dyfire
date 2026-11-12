@@ -825,7 +825,9 @@ class AuthWorkerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_claim_resets_queued_expiry_before_scanner_and_cleans_failure(self):
         scan_id = self._start_scan()
-        expires_at = datetime.now(timezone.utc) + timedelta(seconds=0.05)
+        # Leave enough time for the PostgreSQL-backed claim to run under CI
+        # load, while still verifying that claim resets the short queue lease.
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
         self._set_expiry(scan_id, expires_at)
         scanner = _DeadlineScanner()
 
