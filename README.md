@@ -1,6 +1,4 @@
-# Dyfire
-
-![Dyfire Spark Mark](spark_console/static/spark-mark.svg)
+# <img src="spark_console/static/spark-mark.svg" alt="" width="36" height="36" align="center" /> Dyfire
 
 **Dyfire 是一个用于管理抖音好友续火任务的开源控制台。**它提供账号绑定、好友同步、定时任务、执行记录和管理员管理界面，并以独立服务处理网页、账号验证、任务执行和监控。
 
