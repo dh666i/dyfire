@@ -33,6 +33,7 @@ test('stale evidence is labeled as past state and excluded from currently active
 
 test('friend filter retains unknown values last in day sort and matches duplicate protection identity',()=>{
   const items=[{name:'未读',sec_uid:'unknown'}, {name:'同名',sec_uid:'existing',spark:snapshot(7)}, {name:'同名',sec_uid:'new',spark:snapshot(190)}, {name:'恢复',remark_name:'好友',sec_uid:'recover',spark:snapshot(39,'recovering')}, {name:'熄灭',sec_uid:'broken',spark:snapshot(0,'broken')}];
+  assert.deepEqual(filterStreakContacts(items).map(x=>x.sec_uid),['existing','new','recover','unknown','broken']);
   assert.deepEqual(filterStreakContacts(items,{order:'days_desc'}).map(x=>x.sec_uid),['new','recover','existing','broken','unknown']);
   assert.deepEqual(filterStreakContacts(items,{query:'同名',filter:'without_task',existing:new Set(['existing'])}).map(x=>x.sec_uid),['new']);
   assert.deepEqual(filterStreakContacts(items,{filter:'needs_attention'}).map(x=>x.sec_uid),['recover','broken']);

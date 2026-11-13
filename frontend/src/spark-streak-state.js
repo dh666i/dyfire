@@ -61,6 +61,7 @@ export function filterStreakContacts(items, {query='', filter='all', order='defa
     if (filter === 'needs_attention') return ['broken','recovering'].includes(snapshot.state);
     return true;
   });
+  if (order === 'default') filtered.sort((a,b) => Number((streakSnapshot(b.spark).days ?? 0) > 0) - Number((streakSnapshot(a.spark).days ?? 0) > 0));
   if (order === 'days_desc') filtered.sort((a,b) => (streakSnapshot(b.spark).days ?? -1) - (streakSnapshot(a.spark).days ?? -1));
   if (order === 'name') filtered.sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN'));
   return filtered;
