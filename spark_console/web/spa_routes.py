@@ -224,16 +224,24 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
             shanghai = ZoneInfo("Asia/Shanghai")
             local_now = now.astimezone(shanghai)
             today_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+            today_criteria = (
+                SparkTask.owner_user_id == user.id,
+                TaskRun.scheduled_for >= today_start,
+                TaskRun.scheduled_for < today_start + timedelta(days=1),
+            )
             runs = db.scalars(
                 select(TaskRun)
                 .join(SparkTask)
-                .where(
-                    SparkTask.owner_user_id == user.id,
-                    TaskRun.scheduled_for >= today_start,
-                )
+                .where(*today_criteria)
                 .order_by(TaskRun.scheduled_for.desc())
                 .limit(80)
             ).all()
+            daily_counts = None
+            if len(runs) == 80:
+                daily_counts = dict(db.execute(
+                    select(TaskRun.status, func.count()).join(SparkTask)
+                    .where(*today_criteria).group_by(TaskRun.status)
+                ).all())
             recent_run_rows = db.execute(
                 select(TaskRun, SparkTask)
                 .join(SparkTask)
@@ -357,6 +365,8 @@ def build_spa_router(engine, auth: WebAuth, settings=None, cipher=None):
                     "has_prev": False,
                     "has_next": task_total > len(tasks),
                 },
+                "runs_date": local_now.date().isoformat(),
+                "daily_run_counts": daily_counts,
                 "runs": [
                     {
                         "id": r.id,

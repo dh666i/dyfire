@@ -389,7 +389,10 @@ def test_quality_account_select_and_friend_panel(browser_site,width,theme):
         page.route('**/api/app/bootstrap',lambda route:route.fulfill(json=value))
         def contacts(route):
             reads.append(route.request.url)
-            route.fulfill(json={'items':[{'name':'新好友','sec_uid':'new-contact'}, {'name':'用于检查手机端换行与阅读的长名称好友','sec_uid':'long-contact'}], 'total':2, 'has_more':False, 'can_sync_more':False})
+            query = parse_qs(urlparse(route.request.url).query).get('q', [''])[0]
+            rows = [{'name':'新好友','sec_uid':'new-contact'}, {'name':'用于检查手机端换行与阅读的长名称好友','sec_uid':'long-contact'}]
+            matches = [row for row in rows if query in row['name']]
+            route.fulfill(json={'items':matches, 'total':len(matches), 'directory_total':len(rows), 'has_more':False, 'can_sync_more':False})
         page.route('**/accounts/*/conversations?*',contacts)
         page.goto(base+'/studio',wait_until='networkidle')
         account_control=page.get_by_role('combobox',name='发送账号')
@@ -1125,6 +1128,7 @@ def test_daily_overview_keeps_unconfirmed_separate_and_preserves_result_navigati
     try:
         value=_context_navigation_payload(context,base)
         statuses=['success','success','running','submitted_unconfirmed','submitted_unconfirmed','submitted_unconfirmed','failed']
+        value['runs_date']='2026-11-13'
         labels={'success':'已发出','running':'执行中','submitted_unconfirmed':'待核实','failed':'未发出'}
         value['runs']=[{'id':f'daily-run-{index}','taskId':f'daily-task-{index}',
             'status':status,'label':labels[status],'name':f'{labels[status]}验收好友{index}',
@@ -1133,8 +1137,9 @@ def test_daily_overview_keeps_unconfirmed_separate_and_preserves_result_navigati
         page=context.new_page();reads=[]
         page.route('**/api/app/bootstrap',lambda route:route.fulfill(json=value))
         def runs(route):
-            status=parse_qs(urlparse(route.request.url).query).get('status',[''])[0]
-            reads.append(status)
+            params=parse_qs(urlparse(route.request.url).query)
+            status=params.get('status',[''])[0]
+            reads.append((status, params.get('day')))
             route.fulfill(json={'items':[run for run in value['runs'] if not status or run['status']==status]})
         page.route('**/api/studio/runs?*',runs)
         page.goto(base+'/dashboard',wait_until='networkidle')
@@ -1148,19 +1153,22 @@ def test_daily_overview_keeps_unconfirmed_separate_and_preserves_result_navigati
         expect(overview.get_by_role('img',name='今日记录：2 次已发出，1 次执行中，3 次待核实，1 次未发出',exact=True)).to_be_visible()
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         overview.locator('.daily-stat.is-failed').click()
-        page.wait_for_url('**/runs?status=failed')
+        page.wait_for_url('**/runs?status=failed&day=2026-11-13')
         expect(page.get_by_role('radio',name='未发出',exact=True)).to_be_checked()
         expect(page.locator('.run-row')).to_have_count(1)
         expect(page.locator('.run-row')).to_contain_text('未发出验收好友6')
-        assert reads and reads[-1]=='failed',reads
+        assert reads and reads[-1]==('failed',['2026-11-13']),reads
         page.reload(wait_until='networkidle')
         expect(page.get_by_role('radio',name='未发出',exact=True)).to_be_checked()
         expect(page.locator('.run-row')).to_have_count(1)
         page.get_by_role('radio',name='待核实',exact=True).click()
         expect(page.locator('.run-row')).to_have_count(3)
         expect(page.get_by_role('radio',name='待核实',exact=True)).to_be_checked()
-        assert reads[-1]=='submitted_unconfirmed',reads
+        assert reads[-1]==('submitted_unconfirmed',['2026-11-13']),reads
         assert parse_qs(urlparse(page.url).query).get('status')==['submitted_unconfirmed']
+        with page.expect_response(lambda response:'/api/studio/runs?' in response.url and 'day=' not in response.url):
+            page.get_by_role('button',name='移除北京时间筛选：2026-11-13').click()
+        assert reads[-1]==('submitted_unconfirmed',None)
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
     finally:context.close()
 

@@ -199,14 +199,14 @@ def task_snapshot_map(db, tasks, identities=None):
     return result
 
 
-def contact_snapshot_map(db, account_id, sec_uids=None):
+def contact_snapshot_map(db, account_id, sec_uids=None, *, now=None):
     """Account-local stable-identity map for existing bounded contact responses."""
     if sec_uids is None:
         sec_uids = db.scalars(select(DouyinStreakSnapshot.sec_uid).where(
             DouyinStreakSnapshot.account_id == account_id
         ).order_by(DouyinStreakSnapshot.sec_uid).limit(1000)).all()
     pairs = [(account_id, uid) for uid in list(sec_uids)[:1000] if uid]
-    snapshots = _snapshot_map(db, pairs)
+    snapshots = _snapshot_map(db, pairs, now=now)
     return {uid: snapshots.get((account_id, uid), unknown_snapshot()) for _, uid in pairs}
 
 

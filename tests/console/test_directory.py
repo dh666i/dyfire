@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from spark_console.db import session_scope
 from spark_console.crypto import CookieCipher
 from spark_console.models import (User, DouyinAccount, DouyinAccountIdentity, DouyinAccountProfile, ContactDirectoryJob,
-    DouyinContactIdentity, DouyinConversation, SparkTask, SparkTaskTargetIdentity, UserSubscription, utc_now)
+    DouyinContactIdentity, DouyinConversation, DouyinStreakSnapshot, SparkTask, SparkTaskTargetIdentity, UserSubscription, utc_now)
 from spark_console.services.accounts import AccountService
 from spark_console.services.audits import AuditService
 from spark_console.services.directory import (save_profile, save_contacts, process_directory_job,
@@ -332,6 +332,54 @@ class DirectoryTests(unittest.TestCase):
         self.assertEqual(50, len(third_body["items"]))
         self.assertFalse(third_body["has_more"])
         self.assertEqual(250, third_body["next_offset"])
+
+    def test_picker_searches_all_synced_names_and_aliases_before_paging(self):
+        with session_scope(self.engine) as db:
+            db.add_all(DouyinConversation(account_id=self.account, display_name=f"A{n:03d}")
+                       for n in range(105))
+            db.add_all([
+                DouyinContactIdentity(account_id=self.account, sec_uid="id-a", nickname="普通昵称",
+                                      remark_name="阿琪", unique_id="Friend_7", short_id="5678"),
+                DouyinConversation(account_id=self.account, display_name="普通昵称"),
+                DouyinConversation(account_id=self.account, display_name="阿琪旧友"),
+            ])
+        url = f"/accounts/{self.account}/conversations"
+        self.assertNotIn("id-a", [i["sec_uid"] for i in self.client.get(url).json()["items"]])
+        for q in ("昵称", " friend_7 ", "678"):
+            body = self.client.get(url, params={"q": q}).json()
+            self.assertEqual(["id-a"], [row["sec_uid"] for row in body["items"]])
+            self.assertEqual((1, 107, 100), (body["total"], body["directory_total"], body["sync_next_limit"]))
+        first = self.client.get(url, params={"q":"阿琪", "limit":1}).json()
+        second = self.client.get(url, params={"q":"阿琪", "limit":1, "offset":1}).json()
+        self.assertEqual((2, True, False), (first["total"], first["has_more"], second["has_more"]))
+        self.assertEqual(["id-a", None], [page["items"][0]["sec_uid"] for page in (first, second)])
+        self.assertEqual([], self.client.get(url, params={"q":"%"}).json()["items"])
+
+    def test_picker_orders_observed_streaks_before_pagination(self):
+        now = utc_now()
+        with session_scope(self.engine) as db:
+            db.add_all(DouyinConversation(account_id=self.account, display_name=f"A{n:03d}")
+                       for n in range(110))
+            for uid, name, days, state, hours in [
+                ("z2", "Z", 12, "active", 1), ("z1", "Z", None, "active", 24),
+                ("w", "W", 7, "unknown", 2), ("x", "X", 120, "active", 25),
+                ("b", "B", 365, "broken", 1), ("c", "C", 99, "recovering", 1),
+            ]:
+                db.add(DouyinContactIdentity(account_id=self.account, sec_uid=uid, nickname=name))
+                db.add(DouyinStreakSnapshot(account_id=self.account, sec_uid=uid, days=days,
+                                            state=state, observed_at=now - timedelta(hours=hours),
+                                            source="douyin_im"))
+        with patch("spark_console.web.app.utc_now", return_value=now):
+            url = f"/accounts/{self.account}/conversations"
+            first = self.client.get(url).json()
+            second = self.client.get(url, params={"offset": first["next_offset"]}).json()
+        items = first["items"] + second["items"]
+        self.assertEqual(["z1", "z2", "w", "x"], [item["sec_uid"] for item in items[:4]])
+        self.assertIsNone(items[0]["spark"]["days"])
+        self.assertFalse(items[0]["spark"]["stale"])
+        self.assertTrue(items[3]["spark"]["stale"])
+        self.assertEqual([f"A{n:03d}" for n in range(110)], [item["name"] for item in items[4:-2]])
+        self.assertEqual(["b", "c"], [item["sec_uid"] for item in items[-2:]])
 
     def test_missing_sync_history_keeps_cached_directory_sync_available(self):
         """Retained contacts must remain discoverable after job cleanup."""

@@ -24,6 +24,7 @@ from spark_console.models import (
     DouyinContactIdentity,
     DouyinContactAvatar,
     DouyinConversation,
+    DouyinStreakSnapshot,
     SparkTask,
     SparkTaskTargetIdentity,
     TaskRun,
@@ -49,7 +50,7 @@ from spark_console.web.directory_routes import build_directory_router
 from spark_console.web.health_routes import build_health_router
 from spark_console.services.account_health import views as health_views
 from spark_console.services.directory import profile_map, task_avatar_map, job_view
-from spark_console.services.streaks import contact_snapshot_map, unknown_snapshot
+from spark_console.services.streaks import STALE_AFTER, contact_snapshot_map, unknown_snapshot
 from spark_console.models import ContactDirectoryJob
 from spark_console.web.auth import WebAuth
 from spark_console.web.admin_routes import build_admin_router, render_admin_codes
@@ -747,6 +748,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
         account_id: str,
         offset: int = Query(default=0, ge=0, le=1_000_000),
         limit: int = Query(default=ACCOUNT_CONVERSATION_PAGE_SIZE, ge=1, le=ACCOUNT_CONVERSATION_PAGE_SIZE),
+        q: str = Query(default="", max_length=160),
     ):
         with session_scope(engine) as db:
             user, _record = auth.current(request, db)
@@ -760,40 +762,26 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 .where(DouyinConversation.account_id == account_id)
                 .order_by(DouyinConversation.display_name)
             ).all()
-            contacts = db.scalars(
-                select(DouyinContactIdentity)
+            now = utc_now()
+            snap = DouyinStreakSnapshot
+            spark_rank = case(
+                (and_(snap.state == "active", snap.observed_at >= now - STALE_AFTER), 0),
+                (snap.state == "active", 1),
+                (and_(snap.state == "unknown", snap.days > 0), 1),
+                else_=2,
+            )
+            contact_rows = db.execute(
+                select(DouyinContactIdentity, spark_rank)
+                .outerjoin(snap, and_(
+                    snap.account_id == DouyinContactIdentity.account_id,
+                    snap.sec_uid == DouyinContactIdentity.sec_uid,
+                ))
                 .where(DouyinContactIdentity.account_id == account_id)
-                .order_by(DouyinContactIdentity.discovered_at.desc(), DouyinContactIdentity.sec_uid)
             ).all()
-            contact_ids = [contact.sec_uid for contact in contacts]
-            avatars = {
-                item.sec_uid: safe_avatar_url(item.avatar_url)
-                for item in db.scalars(
-                    select(DouyinContactAvatar).where(
-                        DouyinContactAvatar.account_id == account_id,
-                        DouyinContactAvatar.sec_uid.in_(contact_ids),
-                    )
-                )
-            } if contact_ids else {}
-            conversation_count = int(
-                db.scalar(
-                    select(func.count(DouyinConversation.display_name)).where(
-                        DouyinConversation.account_id == account_id
-                    )
-                )
-                or 0
-            )
-            contact_count = int(
-                db.scalar(
-                    select(func.count(DouyinContactIdentity.sec_uid)).where(
-                        DouyinContactIdentity.account_id == account_id
-                    )
-                )
-                or 0
-            )
+            ranks = {contact.sec_uid: rank for contact, rank in contact_rows}
             aliases = {
                 value
-                for contact in contacts
+                for contact, _ in contact_rows
                 for value in (
                     contact.remark_name,
                     contact.nickname,
@@ -813,9 +801,8 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                     "remark_name": contact.remark_name,
                     "unique_id": contact.unique_id,
                     "short_id": contact.short_id,
-                    **({"avatar_url": avatars[contact.sec_uid]} if avatars.get(contact.sec_uid) else {}),
                 }
-                for contact in contacts
+                for contact, _ in contact_rows
                 if contact.remark_name
                 or contact.nickname
                 or contact.unique_id
@@ -830,13 +817,27 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 ContactDirectoryJob.query == "", ContactDirectoryJob.status == "succeeded").order_by(ContactDirectoryJob.finished_at.desc()).limit(1))
             active = db.scalar(select(ContactDirectoryJob).where(ContactDirectoryJob.account_id == account_id,
                 ContactDirectoryJob.status.in_(['queued', 'running'])).order_by(ContactDirectoryJob.created_at.desc()).limit(1))
-            sorted_items = sorted(items, key=lambda item: item["name"])
+            query = q.strip().casefold()
+            matches = (item for item in items if not query or any(
+                query in str(item.get(field) or "").casefold()
+                for field in ("name", "nickname", "remark_name", "unique_id", "short_id")
+            ))
+            sorted_items = sorted(matches, key=lambda item: (
+                ranks.get(item["sec_uid"], 2), item["name"], item["sec_uid"] or "",
+            ))
             page = sorted_items[offset:offset + limit]
-            snapshots = contact_snapshot_map(
-                db, account_id, [item["sec_uid"] for item in page if item.get("sec_uid")]
-            )
+            page_ids = [item["sec_uid"] for item in page if item["sec_uid"]]
+            avatars = {
+                item.sec_uid: safe_avatar_url(item.avatar_url)
+                for item in db.scalars(select(DouyinContactAvatar).where(
+                    DouyinContactAvatar.account_id == account_id,
+                    DouyinContactAvatar.sec_uid.in_(page_ids),
+                ))
+            } if page_ids else {}
+            snapshots = contact_snapshot_map(db, account_id, page_ids, now=now)
             page = [
-                {**item, "spark": snapshots.get(item.get("sec_uid"), unknown_snapshot())}
+                {**item, "spark": snapshots.get(item["sec_uid"], unknown_snapshot()),
+                 **({"avatar_url": avatars[item["sec_uid"]]} if avatars.get(item["sec_uid"]) else {})}
                 for item in page
             ]
             next_offset = offset + len(page)
@@ -853,7 +854,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
             )
             sync_next_limit = None
             if can_sync_more:
-                known_limit = sync_limit if sync_has_more is True else max(sync_limit, len(sorted_items))
+                known_limit = sync_limit if sync_has_more is True else max(sync_limit, len(items))
                 # Cached aliases need not total a multiple of 20. Only send
                 # a limit accepted by the directory-job endpoint, including
                 # one final 100-contact probe when completeness is unknown.
@@ -863,6 +864,7 @@ def create_app(settings: Settings, engine: Engine) -> FastAPI:
                 "limit": limit,
                 "next_offset": next_offset,
                 "total": len(sorted_items),
+                "directory_total": len(items),
                 "has_more": next_offset < len(sorted_items),
                 "sync_has_more": sync_has_more,
                 "sync_limit": sync_limit,

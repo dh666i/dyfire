@@ -159,3 +159,53 @@ def test_streak_detail_retry_and_pagination_do_not_infer_missing_days(browser_si
         expect(unknown).not_to_contain_text(re.compile(r'128|999|0 天'))
     finally:
         context.close()
+
+
+@pytest.mark.parametrize('motion', ['reduce', 'no-preference'])
+def test_sync_keeps_reading_position_and_highlights_only_changed_streaks(browser_site, motion):
+    browser, base, tokens = browser_site
+    context = browser.new_context(viewport={'width':390,'height':844}, reduced_motion=motion)
+    context.add_cookies([{'name':'spark_session','value':tokens['user'],'url':base}])
+    try:
+        data, _, _, _ = _data(context, base)
+        page = context.new_page()
+        page.add_init_script("""(() => {
+          window.changedBadges = [];
+          const animate = Element.prototype.animate;
+          Element.prototype.animate = function(...args) {
+            if (this.matches('.streak-indicator')) window.changedBadges.push(this.closest('label').dataset.contactId);
+            return animate.apply(this, args);
+          };
+        })()""")
+        page.route('**/api/app/bootstrap', lambda route: route.fulfill(json=data))
+        refreshed = False
+        def sync(route):
+            nonlocal refreshed
+            refreshed = True
+            route.fulfill(json={'id':'j','status':'succeeded'})
+        def directory(route):
+            observed = datetime.now(timezone.utc).isoformat()
+            rows = [{'sec_uid':f'friend-{i}','name':f'好友{i:02d}'} for i in range(50)]
+            for i in (0, 1, 47):
+                if i != 47 or refreshed:
+                    rows[i]['spark'] = {'state':'active','observed_at':observed,'days': 6 if refreshed and i==1 else 5}
+            rows.sort(key=lambda row: not row.get('spark'))
+            route.fulfill(json={'total':50,'items':rows,'has_more':False,'can_sync_more':False})
+        page.route('**/accounts/*/conversations?*',directory)
+        page.route('**/accounts/*/directory-jobs',sync)
+        page.goto(base+'/studio',wait_until='networkidle')
+        page.locator('.friend-trigger').click()
+        panel = page.get_by_role('dialog',name='选择目标好友',exact=True)
+        reference = panel.locator('[data-contact-id="friend-20"]')
+        reference.evaluate("""row => {
+          const box = row.closest('.contact-picker-content');
+          box.scrollTop += row.getBoundingClientRect().top - box.getBoundingClientRect().top + 4;
+        }""")
+        position = lambda: reference.evaluate("row => row.getBoundingClientRect().top - row.closest('.contact-picker-content').getBoundingClientRect().top")
+        before = position()
+        panel.get_by_role('button',name='重新同步好友').click()
+        expect(panel.locator('[data-contact-id="friend-1"] .streak-indicator')).to_contain_text('6 天')
+        assert abs(position() - before) <= 2
+        assert page.evaluate('window.changedBadges.sort()') == ([] if motion == 'reduce' else ['friend-1','friend-47'])
+    finally:
+        context.close()

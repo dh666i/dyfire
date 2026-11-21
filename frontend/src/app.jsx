@@ -35,6 +35,7 @@ import {Button, LiveNumber, SiteSelect, StatusIcon} from './ui-controls.jsx';
 import {FeedbackHost} from './ui-feedback.jsx';
 import {Drawer} from './ui-dialog.jsx';
 import {ContactPanel} from './ui-panels.jsx';
+import {SyncedContactList} from './synced-contact-list.jsx';
 import './ui-system.css';
 import './ui-continuity.css';
 import './ui-mobile.css';
@@ -163,6 +164,20 @@ const previewUserChanges=new Map();
 const previewMembershipChanges=new Map();
 const previewRemovedTasks=new Set();
 const previewDate=days=>new Date(Date.now()+days*86400000).toISOString();
+const previewObservedAt=previewDate(-0.02);
+const previewContacts=[
+  {account_id:'preview-account',sec_uid:'preview-friend-1',name:'小琪',nickname:'小琪',remark_name:'工作伙伴',spark:{state:'active',days:36,observed_at:previewObservedAt}},
+  {account_id:'preview-account',sec_uid:'preview-friend-2',name:'阿杰',nickname:'阿杰',spark:{state:'broken',days:8,observed_at:previewObservedAt}},
+  {account_id:'preview-account',sec_uid:'preview-friend-3',name:'郭琪',nickname:'郭琪',remark_name:'郭琪'},
+  {account_id:'preview-account-2',sec_uid:'preview-friend-4',name:'小林',nickname:'林林',spark:{state:'active',days:12,stale:true,observed_at:previewDate(-3)}},
+  {account_id:'preview-account-3',sec_uid:'preview-friend-5',name:'小雨',nickname:'小雨',remark_name:'同事',spark:{state:'active',days:62,observed_at:previewObservedAt}},
+  {account_id:'preview-account-3',sec_uid:'preview-friend-6',name:'阿南',nickname:'阿南',spark:{state:'recovering',days:7,observed_at:previewObservedAt,recover_current:1,recover_total:3}},
+  {account_id:'preview-account',sec_uid:'preview-friend-7',name:'小禾',nickname:'小禾',spark:{state:'active',days:24,observed_at:previewObservedAt}},
+  {account_id:'preview-account',sec_uid:'preview-friend-8',name:'阿遥',nickname:'阿遥'},
+];
+function findPreviewSpark(accountId,uid) {
+  return previewContacts.find(contact=>contact.account_id===accountId&&contact.sec_uid===uid)?.spark??null;
+}
 let previewScan = null;
 let previewCreatedTasks = [];
 let previewAttention = [{id:'preview-attention-1',title:'发送待确认 · 小林',detail:'请先核对抖音聊天记录，不要直接重发。',url:'/runs',at:'2026-09-28T09:45:00+08:00',tone:'warning',read:false}];
@@ -190,7 +205,7 @@ function previewData() {
   ];
   return {
     user:{name:'演示用户', role:previewAdmin?'admin':'user'}, csrf:'preview-csrf',
-    accounts:[account,secondAccount,thirdAccount], tasks:[...previewCreatedTasks,...tasks].filter(task=>!previewRemovedTasks.has(task.id)).map(task=>({...task,...previewTaskChanges.get(task.id)})), runs:runs.map((run,index)=>({...run,taskId:tasks[index].id,time:index===5?'今天 08:20':run.time})), recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':run.status==='running'?'warn':'danger'})),
+    accounts:[account,secondAccount,thirdAccount], tasks:[...previewCreatedTasks,...tasks].filter(task=>!previewRemovedTasks.has(task.id)).map(task=>({...task,spark:findPreviewSpark(task.accountId,task.sec_uid),...previewTaskChanges.get(task.id)})), runs:runs.map((run,index)=>({...run,taskId:tasks[index].id,time:index===5?'今天 08:20':run.time})), recentRuns:runs.map((run,index)=>({id:run.id,target:run.name,owner:'演示用户',time:run.time,status:run.label,tone:run.status==='success'?'good':run.status==='running'?'warn':'danger'})),
     membership:{active:true, can_add_task:true, max_accounts:3, max_tasks:UNLIMITED_TASKS, task_limit_label:'不限好友任务', task_count:6, enabled_task_count:5, task_overage:0, days_remaining:27, valid_until:previewDate(27), status_label:'月度畅享 · 使用中'},
     plans:[{id:'monthly',name:'月度畅享',price_yuan:'5',duration_days:30,duration_label:'1 个月',billing_label:'月',max_accounts:1,max_tasks:UNLIMITED_TASKS,task_limit_label:'不限好友任务'},{id:'half_year',name:'半年畅享',price_yuan:'20',duration_days:180,duration_label:'6 个月',billing_label:'半年',max_accounts:1,max_tasks:UNLIMITED_TASKS,task_limit_label:'不限好友任务'}],
     activity:{period_days:365,total:activityDays.reduce((sum,day)=>sum+day.count,0),days:activityDays},
@@ -284,15 +299,33 @@ function mockApi(path, options={}) {
   if (path === '/api/admin/diagnostics') return Promise.resolve({items:data.runs.map((run,index)=>({id:run.id,name:run.name,status:run.status,stage:run.stage,attempt:1,total:index===2?18:7,error_summary:run.error||''}))});
   if (path.startsWith('/admin/operations/history')) return Promise.resolve({hours:24,state:'fresh',bucket_seconds:3600,start:Math.floor(Date.now()/1000)-86400,latest_at:Math.floor(Date.now()/1000),points:Array.from({length:24},(_,i)=>({at:Math.floor(Date.now()/1000)-(23-i)*3600,cpu:18+(i%5)*3,memory:42+(i%4)*2,disk:37,load:0.2,logins:0,sends:0})),cpu_peak:30,memory_peak:48});
   if (path.startsWith('/api/admin/tasks/groups/')) return Promise.resolve({items:data.tasks.map(task=>({...task,account:'我的抖音账号',username:'演示用户'}))});
-  if (path.includes('/conversations')) return Promise.resolve({items:[
-    {name:'小琪',nickname:'小琪',remark_name:'工作伙伴',sec_uid:'preview-friend-1'},
-    {name:'阿杰',nickname:'阿杰',remark_name:'',sec_uid:'preview-friend-2'},
-    {name:'郭琪',nickname:'郭琪',remark_name:'郭琪',sec_uid:'preview-friend-3'},
-    {name:'小林',nickname:'林林',remark_name:'',sec_uid:'preview-friend-4'},
-    {name:'小雨',nickname:'小雨',remark_name:'同事',sec_uid:'preview-friend-5'},
-    {name:'阿南',nickname:'阿南',remark_name:'',sec_uid:'preview-friend-6'},
-  ]});
-  if (path.startsWith('/api/studio/runs')) {const params=new URLSearchParams(path.split('?')[1]);const status=params.get('status'),q=params.get('q')||'';const rows=data.runs.filter(run=>(!status||run.status===status)&&run.name.includes(q));const pages=Math.max(1,Math.ceil(rows.length/12)),page=Math.min(pages,Math.max(1,Number(params.get('page'))||1));return Promise.resolve({items:rows.slice((page-1)*12,page*12),total:rows.length,page,pages});}
+  const directory=path.match(/^\/accounts\/([^/]+)\/conversations(?:\?|$)/);
+  if(directory){
+    const contacts=previewContacts.filter(contact=>contact.account_id===directory[1]);
+    const params=new URLSearchParams(path.split('?')[1]);
+    const matches=filterStreakContacts(contacts,{query:params.get('q')||''});
+    const offset=Number(params.get('offset'))||0, limit=Number(params.get('limit'))||100;
+    const items=matches.slice(offset,offset+limit), next=offset+items.length;
+    return Promise.resolve({items,total:matches.length,directory_total:contacts.length,next_offset:next,has_more:next<matches.length,
+      sync:{status:'succeeded',limit:20,has_more:false,streak_diagnostics:{matched_observations:contacts.filter(item=>item.spark).length}}});
+  }
+  if(/^\/accounts\/[^/]+\/directory-jobs$/.test(path)&&options.method==='POST'){
+    return Promise.resolve({status:'succeeded'});
+  }
+  if(path.startsWith('/api/streaks/history?')){
+    const params=new URLSearchParams(path.split('?')[1]);
+    const current=findPreviewSpark(params.get('account_id'),params.get('sec_uid'));
+    return Promise.resolve({current,items:current?[current]:[],milestones:[],has_more:false,next_offset:current?1:0});
+  }
+  if (path.startsWith('/api/studio/runs')) {
+    const params = new URLSearchParams(path.split('?')[1]);
+    const day = params.get('day'), status = params.get('status'), q = params.get('q') || '';
+    const beijingDay = offset => new Date(Date.now() + offset * 86400000).toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
+    const history = [...data.runs.map(run=>({...run,day:beijingDay(0)})), {...data.runs[2], id:'preview-yesterday-failed', time:'昨天 08:50', day:beijingDay(-1)}];
+    const rows = history.filter(run=>(!day || run.day===day) && (!status || run.status===status) && run.name.includes(q));
+    const pages = Math.max(1,Math.ceil(rows.length/12)), page = Math.min(pages,Math.max(1,Number(params.get('page'))||1));
+    return Promise.resolve({items:rows.slice((page-1)*12,page*12),total:rows.length,page,pages});
+  }
   if (/^\/tasks\/[^/]+\/(edit|toggle|delete)$/.test(path)) {
     const [, , id,action]=path.split('/');const task=data.tasks.find(row=>row.id===id);const body=options.body;
     if(action==='edit')previewTaskChanges.set(id,{...previewTaskChanges.get(id),time:body.get('send_time'),kind:body.get('message_kind')==='text'?'文字消息':'续火花表情',message:body.get('message_template')});
@@ -672,7 +705,7 @@ function Dashboard({data,onRefresh}) {
   return <div className="fire-home home-refined">
     <React.Suspense fallback={null}><AnnouncementInbox data={data}/></React.Suspense>
     <div className="fire-home-toolbar"><div className="home-title"><span className="fire-date">{new Date().toLocaleDateString('zh-CN',{timeZone:'Asia/Shanghai',month:'long',day:'numeric',weekday:'long'})} · 北京时间</span><h1>今天的续火</h1></div><div className="fire-home-actions"><Button variant="quiet" onClick={()=>navigate('/runs')}>执行记录</Button><Button onClick={create}>{accounts.length?'新建任务':'绑定账号'}</Button></div></div>
-    <DailyOverview accounts={accounts} runs={runs} tasks={tasks} limits={data.resource_limits} onAccountTasks={(account,event)=>accountNavigate(account,event?.currentTarget?.closest('.daily-account-row'))} onCreate={create}/>
+    <DailyOverview accounts={accounts} runs={runs} runDay={data.runs_date} totals={data.daily_run_counts} limits={data.resource_limits} onAccountTasks={(account,event)=>accountNavigate(account,event?.currentTarget?.closest('.daily-account-row'))} onCreate={create}/>
     <OnboardingGuide data={data} membership={membership} accounts={accounts} tasks={tasks} onNavigate={navigate}/>
     <div className="fire-home-main"><section><div className="home-task-heading"><h2>续火花任务</h2><Link to="/studio" className="text-action">全部任务<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div><div className={`fire-friend-grid${friends.length<=3?' is-compact':''}`}>{friends.length?friends.slice(0,9).map(task=><FriendCard key={task.id} task={task} last={runByTaskId.get(task.id)} state={friendState(task,runByTaskId.get(task.id))} onEdit={setEditTask} onStreak={setSparkTarget}/>):<Empty title="还没有今日续火任务" text="创建任务后会显示今日执行状态。"/>}{friends.length<3&&<button type="button" data-reveal="section" className="fire-friend-card fire-friend-add" onClick={create}><span>＋</span><b>添加目标好友</b><small>从已同步会话中选择</small></button>}</div></section></div>
     <div className="fire-home-bottom"><ActivityHeatmap activity={data.activity}/><section data-reveal="section" className="home-membership"><div><h2>{membershipIsFreeTier(membership)?'免费版':'我的订阅'}</h2><p>启用任务 {membershipTaskUsage(membership)??membership.task_count??data.resource_limits?.tasks_enabled_total??tasks.filter(task=>task.enabled).length} / {membership.task_limit_label||membership.max_tasks||1}</p></div><strong>{membership.active?(membership.days_remaining??'∞'):membershipIsFreeTier(membership)?'1':'—'}<small>{membership.active?'天有效':membershipIsFreeTier(membership)?'个免费任务':'未开通'}</small></strong><Button variant="quiet" onClick={()=>navigate('/subscription')}>{membership.active?'管理订阅':membershipIsFreeTier(membership)?'升级订阅':'查看套餐'}</Button><MembershipPlanNotice membership={membership} compact/>{!membership.active&&!membershipIsFreeTier(membership)&&<button type="button" className="fire-support-link" onClick={()=>setSupportOpen(true)}>联系客服开通</button>}</section></div>
@@ -763,30 +796,30 @@ function ContactPicker({open,onClose,account,data,onDone,releasedKeys=new Set(),
   const {items,selected,loading,busy,error,page}=state;
   const existing=new Set(asList(data?.tasks).filter(t=>t?.accountId===account?.id).map(contactKey));
   releasedKeys.forEach(key=>existing.delete(key));
-  const visible=filterStreakContacts(items,{query,filter:sparkFilter,order:sparkOrder,existing});
+  const visible=filterStreakContacts(items,{filter:sparkFilter,order:sparkOrder,existing});
   const actionLabel=busy==='page'?'正在加载更多…':busy==='sync'?'正在同步好友…':page.dbHasMore?'加载更多好友':page.activeSync?'继续同步好友':page.canSyncMore?'同步更多好友':'重新同步好友';
-  const coverageLabel=page.dbHasMore?`已显示 ${items.length} / ${page.total} 位已同步好友`:`已显示 ${items.length} 位已同步好友`;
+  const coverageLabel=loading&&query.trim()?'正在搜索已同步会话…':query.trim()?`匹配 ${page.total} 位好友，已显示 ${items.length} 位`:page.dbHasMore?`已显示 ${items.length} / ${page.total} 位已同步好友`:`已显示 ${items.length} 位已同步好友`;
   const streakHint=page.syncStatus==='succeeded'?streakSyncHint(page.streakDiagnostics):'';
-  const coverageHint=page.dbHasMore?'继续加载已同步的好友，搜索会覆盖加载后的列表。':streakHint|| (page.syncHasMore===true&&page.syncLimit>=100?'当前同步最多读取最近 100 个会话，可重新同步更新。':page.syncHasMore===false?'本次同步未返回更多会话，可重新同步检查。':'列表来自已同步会话，可继续同步更多好友。');
+  const coverageHint=page.dbHasMore?'还有更多已同步会话可加载。':streakHint|| (page.syncHasMore===true&&page.syncLimit>=100?'当前同步最多读取最近 100 个会话，可重新同步更新。':page.syncHasMore===false?'本次同步未返回更多会话，可重新同步检查。':'列表来自已同步会话，可继续同步更多好友。');
   const close=()=>{controller.close();onClose()};
   return <ContactPanel DesktopDrawer={Drawer} open={open} onClose={close} title="选择目标好友" eyebrow="SELECT CONNECTIONS" wide>
     <div className="drawer-content contact-picker-content">
-      <input className="input search-input" aria-label="搜索已同步好友" value={query} onChange={e=>setQuery(e.target.value)} placeholder="输入昵称或备注，搜索已加载会话"/>
+      <input className="input search-input" aria-label="搜索已同步好友" value={query} maxLength={160} onChange={e=>{setQuery(e.target.value);void controller.setQuery(e.target.value)}} placeholder="搜索全部已同步会话的昵称、备注或抖音号"/>
       <div className="streak-picker-filters"><SiteSelect label="筛选好友火花与任务" value={sparkFilter} onValueChange={setSparkFilter} items={[{value:'all',label:'全部好友'},{value:'has_streak',label:'有火花天数'},{value:'active',label:'火花已点亮'},{value:'needs_attention',label:'熄灭或重燃中'},{value:'without_task',label:'尚未创建任务'}]}/><SiteSelect label="好友排序" value={sparkOrder} onValueChange={setSparkOrder} items={[{value:'default',label:'有火花优先'},{value:'days_desc',label:'火花天数从高到低'},{value:'name',label:'按好友昵称'}]}/></div>
       {limitMessage&&<div className="inline-feedback" role="status">{limitMessage} <Link to="/subscription" className="text-action">查看套餐<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div>}
       <div className="drawer-tools"><span>{selected.size} 人已选{Number.isFinite(selectionLimit)?` / ${selectionLimit} 个可用额度`:''}</span><button type="button" onClick={()=>{const keys=visible.filter(i=>!existing.has(contactKey(i))&&!selected.has(contactKey(i))).map(contactKey);const next=Number.isFinite(selectionLimit)?keys.slice(0,Math.max(0,selectionLimit-selected.size)):keys;if(Number.isFinite(selectionLimit)&&keys.length>next.length)onLimitReached?.();controller.selectMany(next)}} disabled={loading||Number.isFinite(selectionLimit)&&selectionLimit<=selected.size}>全选当前结果</button><button type="button" onClick={()=>controller.clearSelection()} disabled={loading}>清空</button></div>
       {(loading||busy==='page'||busy==='sync')&&items.length>0&&<div className="contact-picker-loading" role="status" aria-live="polite"><span className="loading-spinner" aria-hidden="true"/>{busy==='sync'?'正在同步好友…':'正在加载更多好友…'}</div>}
-      {loading&&!items.length?<div className="skeleton-stack"><div/><div/><div/></div>:<div className="contact-list"><MotionList className="contact-motion-list">{visible.map((item,i)=>{
+      {loading&&!items.length?<div className="skeleton-stack"><div/><div/><div/></div>:<SyncedContactList items={visible} scope={JSON.stringify([account?.id,query,sparkFilter,sparkOrder])} syncing={busy==='sync'} revision={state.syncRevision}>{visible.map((item,i)=>{
         const id=contactKey(item)||`contact-${i}`;const name=displayName(item?.name,'未命名好友');const disabled=existing.has(id);
         const atLimit=Number.isFinite(selectionLimit)&&selected.size>=selectionLimit&&!selected.has(id);
-        return <label className={`contact-row ${selected.has(id)?'is-selected ':''}${disabled||atLimit?'disabled':''}`} key={id} data-motion-state={selected.has(id)?'selected':'idle'}><input type="checkbox" disabled={disabled||atLimit} checked={selected.has(id)} onChange={e=>{if(e.target.checked&&atLimit){onLimitReached?.();return}controller.select(id,e.target.checked)}}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><span className="contact-name-line"><b>{name}</b><SparkIndicator compact spark={item.spark}/></span><small>{disabled?'已有续火任务':atLimit?'额度已用完':item?.remark_name||item?.nickname||'已同步会话'}</small></span></label>
-      })}</MotionList></div>}
-      {!loading&&!error&&!visible.length&&<Empty title={query||sparkFilter!=='all'?'没有匹配的已加载会话':'还没有已同步好友'} text={query||sparkFilter!=='all'?'筛选与排序仅覆盖已加载会话，可以调整条件或同步更多好友。':'点击下方同步按钮，读取这个账号的最近好友会话。'}/>}
+        return <label className={`contact-row ${selected.has(id)?'is-selected ':''}${disabled||atLimit?'disabled':''}`} key={id} data-contact-id={id} data-motion-state={selected.has(id)?'selected':'idle'}><input type="checkbox" disabled={disabled||atLimit} checked={selected.has(id)} onChange={e=>{if(e.target.checked&&atLimit){onLimitReached?.();return}controller.select(id,e.target.checked)}}/><span className="avatar">{item?.avatar_url?<img src={item.avatar_url} alt=""/>:initial(name)}</span><span className="grow"><span className="contact-name-line"><b>{name}</b><SparkIndicator compact spark={item.spark}/></span><small>{disabled?'已有续火任务':atLimit?'额度已用完':item?.remark_name||item?.nickname||'已同步会话'}</small></span></label>
+      })}</SyncedContactList>}
+      {!loading&&!error&&!visible.length&&<Empty title={query||sparkFilter!=='all'?'没有匹配的好友':'还没有已同步好友'} text={sparkFilter!=='all'?'调整筛选条件，或加载更多会话。':query?'可换用昵称、备注或抖音号，或先同步更多好友。':'点击下方同步按钮，读取这个账号的最近好友会话。'}/>}
     </div>
     <footer className="drawer-foot contact-picker-footer">
       <div className="contact-picker-coverage" aria-live="polite"><b>{coverageLabel}</b><small>{busy==='sync'?'同步可能需要几分钟，关闭后可重新打开查看进度。':coverageHint}</small></div>
       {error&&<div className="contact-picker-error" role="alert"><span>{error}</span>{!items.length&&<button type="button" disabled={loading||Boolean(busy)} onClick={()=>controller.retry()}>重新加载</button>}</div>}
-      <div className="contact-picker-actions"><span>{selected.size} 位好友</span><Button type="button" variant="quiet" disabled={loading||Boolean(busy)} onClick={()=>controller.next()}>{actionLabel}</Button><Button type="button" disabled={!selected.size} onClick={()=>{onDone([...selected].map(id=>items.find(i=>contactKey(i)===id)).filter(Boolean));close()}}>完成选择</Button></div>
+      <div className="contact-picker-actions"><span>{selected.size} 位好友</span><Button type="button" variant="quiet" disabled={loading||Boolean(busy)} onClick={()=>controller.next()}>{actionLabel}</Button><Button type="button" disabled={!selected.size} onClick={()=>{onDone(controller.getSelectedItems());close()}}>完成选择</Button></div>
     </footer>
   </ContactPanel>;
 }
@@ -970,7 +1003,7 @@ function Studio({data,onRefresh,preEditId,onEditClose}) {
       <FilterSummary items={[{key:'search',label:'好友',value:search,onRemove:()=>setSearch('')},{key:'state',label:'状态',value:filter==='all'?'':filter==='active'?'已启用':'已暂停',onRemove:()=>setFilter('all')}]} onClear={()=>{setSearch('');setFilter('all')}}/>
       {contextLoading&&shown.length>0&&<ReadStatus busy/>}
       {taskListError&&<div className="inline-feedback danger-text" role="alert">{taskListError}<Button variant="quiet" onClick={onRefresh}>重新读取</Button></div>}
-      {contextLoading&&!shown.length?<ListSkeleton label="正在读取此账号的任务…"/>:taskListError&&!shown.length?null:shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div><MotionList className="task-motion-list">{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';const menuOpen=openTaskMenu===task?.id;return <div id={`task-row-${task.id}`} className="task-row" data-feedback={rowFeedback.states[task.id]?.kind} aria-busy={rowFeedback.states[task.id]?.kind==='pending'||undefined} data-motion-state={task?.enabled?'enabled':'paused'} key={task?.id||`${name}-${index}`}><span className="person-cell"><motion.span layoutId={reduced?undefined:`task-avatar-${task.id}`} className="avatar" transition={{duration:.32,ease:[.22,1,.36,1]}}>{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</motion.span><span><span className="person-name-line"><motion.b layoutId={reduced?undefined:`task-name-${task.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{name}</motion.b><SparkSummary compact showTime={false} spark={task.spark} name={name} onClick={()=>setSparkTarget(task)}/></span><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><span className="task-status"><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><small>{friendState(task,asList(data.runs).find(run=>run.taskId===task.id)).label}</small></span><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} disabled={rowFeedback.states[task.id]?.kind==='pending'} onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={()=>toggleTask(task)}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><div className="task-row-menu"><RowActionMenu label={`${name} 更多操作`} open={menuOpen} onOpenChange={open=>setOpenTaskMenu(open?task.id:null)} triggerClassName="task-row-menu-btn" popupClassName="task-action-popup" keepMounted><TaskProbeAction taskId={task.id} csrf={data.csrf} label="运行前自检" menuItem/><RowActionItem className="row-menu-item is-danger" onClick={()=>deleteTask(task)}>删除任务</RowActionItem></RowActionMenu></div></span><RowFeedback value={rowFeedback.states[task.id]}/></div>})}</MotionList></div>:<Empty title={search||filter!=='all'?'没有匹配的任务':'还没有续火任务'} text={search||filter!=='all'?'调整搜索条件，或清除筛选查看全部任务。':'先选择账号和好友，创建第一条每日计划。'} action={search||filter!=='all'?<Button variant="quiet" onClick={()=>{setSearch('');setFilter('all')}}>清除筛选</Button>:null}/>}
+      {contextLoading&&!shown.length?<ListSkeleton label="正在读取此账号的任务…"/>:taskListError&&!shown.length?null:shown.length?<div className="task-table"><div className="table-head"><span>目标好友</span><span>发送时间</span><span>状态</span><span>操作</span></div><MotionList className="task-motion-list">{shown.map((task,index)=>{const name=displayName(task?.name,'未命名好友');const actionClass='icon-action';const menuOpen=openTaskMenu===task?.id;return <div id={`task-row-${task.id}`} className="task-row" data-feedback={rowFeedback.states[task.id]?.kind} aria-busy={rowFeedback.states[task.id]?.kind==='pending'||undefined} data-motion-state={task?.enabled?'enabled':'paused'} key={task?.id||`${name}-${index}`}><span className="person-cell"><motion.span layoutId={reduced?undefined:`task-avatar-${task.id}`} className="avatar" transition={{duration:.32,ease:[.22,1,.36,1]}}>{task?.avatar?<img src={task.avatar} alt=""/>:initial(name)}</motion.span><span><span className="person-name-line"><motion.b layoutId={reduced?undefined:`task-name-${task.id}`} transition={{duration:.32,ease:[.22,1,.36,1]}}>{name}</motion.b><SparkSummary inline spark={task.spark} name={name} onClick={()=>setSparkTarget(task)}/></span><small>{displayText(task?.kind,'续火花表情')}</small></span></span><time>{displayText(task?.time,'—')}<small>每天</small></time><span className="task-status"><Badge tone={task?.enabled?'good':'neutral'}>{task?.enabled?'已启用':'已暂停'}</Badge><small>{friendState(task,asList(data.runs).find(run=>run.taskId===task.id)).label}</small></span><span className="row-actions"><Button className={actionClass} variant="quiet" title="编辑任务" aria-label={`编辑 ${name}`} disabled={rowFeedback.states[task.id]?.kind==='pending'} onClick={()=>{setOpenTaskMenu(null);setEditTask(task)}}><ActionEditIcon/></Button><Button className={actionClass} variant="quiet" title={task?.enabled?'暂停任务':'恢复任务'} aria-label={`${task?.enabled?'暂停':'恢复'} ${name}`} onClick={()=>toggleTask(task)}>{task?.enabled?<ActionPauseIcon/>:<ActionPlayIcon/>}</Button><div className="task-row-menu"><RowActionMenu label={`${name} 更多操作`} open={menuOpen} onOpenChange={open=>setOpenTaskMenu(open?task.id:null)} triggerClassName="task-row-menu-btn" popupClassName="task-action-popup" keepMounted><TaskProbeAction taskId={task.id} csrf={data.csrf} label="运行前自检" menuItem/><RowActionItem className="row-menu-item is-danger" onClick={()=>deleteTask(task)}>删除任务</RowActionItem></RowActionMenu></div></span><RowFeedback value={rowFeedback.states[task.id]}/></div>})}</MotionList></div>:<Empty title={search||filter!=='all'?'没有匹配的任务':'还没有续火任务'} text={search||filter!=='all'?'调整搜索条件，或清除筛选查看全部任务。':'先选择账号和好友，创建第一条每日计划。'} action={search||filter!=='all'?<Button variant="quiet" onClick={()=>{setSearch('');setFilter('all')}}>清除筛选</Button>:null}/>}
       {taskPagination?.has_next&&<div className="setting-actions"><Button variant="quiet" disabled={loadingMoreTasks} onClick={loadMoreTasks}>{loadingMoreTasks?'正在加载…':`加载更多任务（已显示 ${tasks.length} / ${taskPagination.total}）`}</Button></div>}
     </section><Card className="composer-card" id="task-composer">
       <div className="section-head"><div><span className="eyebrow">NEW CONNECTION</span><h2>新建续火任务</h2></div></div>
@@ -1073,8 +1106,8 @@ function Accounts({data,onRefresh}) {
 function Runs({data}) {
   const location=useLocation();
   const requestedFilter=new URLSearchParams(location.search).get('status')||'';
-  const initialFilter=['success','failed','submitted_unconfirmed','running'].includes(requestedFilter)?requestedFilter:'';
-  const [rows,setRows]=useState(asList(data?.runs));
+  const initialFilter=['success','failed','submitted_unconfirmed','running','other'].includes(requestedFilter)?requestedFilter:'';
+  const [rows,setRows]=useState([]);
   const navigate=useNavigate();
   const [filter,setFilterState]=useState(initialFilter);
   useEffect(()=>setFilterState(initialFilter),[initialFilter]);
@@ -1082,23 +1115,32 @@ function Runs({data}) {
   const [expanded,setExpanded]=useState(null);
   const [runsError,setRunsError]=useState('');
   const nameFilter=new URLSearchParams(location.search).get('q')||'';
+  const dayFilter = new URLSearchParams(location.search).get('day') || '';
+  const removeDay = () => {
+    const params = new URLSearchParams(location.search);
+    params.delete('day');
+    setRunPage(1);
+    navigate({pathname:'/runs',search:params.toString()},{replace:true});
+  };
   const setNameFilter=value=>{setRunPage(1);const params=new URLSearchParams(location.search);if(value)params.set('q',value);else params.delete('q');navigate({pathname:'/runs',search:params.toString()},{replace:true})};
   const [runPage,setRunPage]=useState(1), [runPagination,setRunPagination]=useState(null), [reading,setReading]=useState(true);
   const runQuery=useDebounced(nameFilter);
-  useEffect(()=>setExpanded(null),[filter,runQuery,runPage]);
+  useEffect(()=>setExpanded(null),[filter,runQuery,dayFilter,runPage]);
   useEffect(()=>{
     const controller=new AbortController();setReading(true);setRunsError('');
     const params=new URLSearchParams({status:filter,page:String(runPage),q:runQuery});
+    if (dayFilter) params.set('day',dayFilter);
     api(`/api/studio/runs?${params}`,{signal:controller.signal}).then(value=>{
       if(controller.signal.aborted)return;
       setRows(asList(value.items));setExpanded(current=>value.items?.some(item=>item.id===current)?current:null);setRunPagination({total:value.total??value.items?.length??0,page:value.page??runPage,pages:value.pages??1});
     }).catch(error=>{if(error.name!=='AbortError')setRunsError(error.message)}).finally(()=>{if(!controller.signal.aborted)setReading(false)});
     return()=>controller.abort();
-  },[filter,runQuery,runPage,data?.runs]);
+  },[filter,runQuery,dayFilter,runPage,data?.runs]);
   const displayedRows=rows;
   const tone=r=>r.status==='success'?'good':r.status==='failed'?'danger':r.status==='submitted_unconfirmed'?'warn':r.status==='running'?'running':'neutral';
   const runFilterItems=[{value:'',label:'全部'},{value:'success',label:'已发出'},{value:'failed',label:'未发出'},{value:'running',label:'执行中'},{value:'submitted_unconfirmed',label:'待核实'}];
-  return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="runs-summary" aria-label="当前页执行统计"><span className="muted-copy">当前页</span><span className="runs-summary-item good"><b>{rows.filter(r=>r.status==='success').length}</b> 已发出</span><span className="runs-summary-item warn"><b>{rows.filter(r=>r.status==='submitted_unconfirmed').length}</b> 待核实</span><span className="runs-summary-item danger"><b>{rows.filter(r=>r.status==='failed').length}</b> 未发出</span></div><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="md" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><input className="input compact-search" value={nameFilter} onChange={e=>{setNameFilter(e.target.value);setRunPage(1)}} placeholder="按好友名搜索"/><span className="runs-count">{reading?'读取中…':`${runPagination?.total??rows.length} 条记录`}</span></div><FilterSummary items={[{key:'q',label:'好友',value:nameFilter,onRemove:()=>setNameFilter('')},{key:'status',label:'结果',value:filter?runFilterItems.find(item=>item.value===filter)?.label:'',onRemove:()=>setFilter('')}]} onClear={()=>{setFilterState('');setRunPage(1);navigate('/runs',{replace:true})}}/>{runsError&&<div className="inline-feedback danger-text" role="alert">{runsError}</div>}<Card className="runs-card" aria-busy={reading}>{reading&&!rows.length?<ListSkeleton label="正在读取执行记录…"/>:displayedRows.length?<div className="run-list"><MotionList className="run-motion-list">{displayedRows.map(r=>{const open=expanded===r.id;const detailId=`run-detail-${r.id}`;return <div className={`run-row ${open?'is-expanded':''}`} data-motion-state={r.status||'unknown'} key={r.id} role="button" tabIndex="0" aria-expanded={open} aria-controls={detailId} aria-label={`${r.name||'执行记录'}，${r.label||r.status||'状态未知'}。按 Enter 或空格查看详情`} onClick={event=>{if(event.target.closest('button,a,input,select'))return;setExpanded(open?null:r.id)}} onKeyDown={e=>{if(e.target.closest?.('button,a,input,textarea,select'))return;if(e.key==='Enter'||e.key===' '){e.preventDefault();setExpanded(open?null:r.id)}}}><span className={`run-dot ${r.status}`} aria-hidden="true"/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small><MotionDisclosure open={open} id={detailId} className="run-detail"><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||(r.status==='success'?'本次执行已确认完成。':'系统仍在处理，请等待结果。')}</span>{['account_verification_required','account_login_required','login_expired'].includes(r.error_code)&&data.tasks?.find(task=>task.id===r.taskId)?.accountId&&<Link className="text-action run-recovery-link" to={`/accounts#account-${data.tasks.find(task=>task.id===r.taskId).accountId}`}>查看账号并处理验证<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link>}{r.support_id&&<SupportReference value={r.support_id}/>} {open&&r.status==='submitted_unconfirmed'&&r.taskId&&<TaskProbeAction taskId={r.taskId} runId={r.id} csrf={data?.csrf} label="核对这次发送（只读）"/>}{r.timeline?.map(item=><span key={`timeline-${item.sequence}`}><b>{item.occurred_at} · {item.stage}</b> {item.detail||item.event}</span>)}{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</MotionDisclosure></div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||(r.status==='success'?'已确认发送完成':r.status==='submitted_unconfirmed'?'发送结果待核实':'等待执行结果')}</span></div>})}</MotionList></div>:<Empty title={filter||nameFilter?'没有匹配的执行记录':'还没有执行记录'} text={filter||nameFilter?'试试其他结果类型，或清除搜索条件。':'任务开始运行后，结果会出现在这里。'} action={filter||nameFilter?<Button variant="quiet" onClick={()=>{setFilterState('');setRunPage(1);navigate('/runs',{replace:true})}}>清除筛选</Button>:null}/>}</Card>{runPagination&&runPagination.pages>1&&<div className="admin-pagination"><span>共 {runPagination.total} 条 · 第 {runPagination.page} / {runPagination.pages} 页</span><div><Button variant="quiet" disabled={reading||runPagination.page<=1} onClick={()=>setRunPage(runPagination.page-1)}>上一页</Button><Button variant="quiet" disabled={reading||runPagination.page>=runPagination.pages} onClick={()=>setRunPage(runPagination.page+1)}>下一页</Button></div></div>}</>;
+  if (filter==='other') runFilterItems.push({value:'other',label:'其他状态'});
+  return <><PageHeader eyebrow="04 / DELIVERY LOG" title="执行记录" text="每次发送都保留可核对的状态、阶段和尝试历史。"/><div className="runs-summary" aria-label="当前页执行统计"><span className="muted-copy">当前页</span><span className="runs-summary-item good"><b>{rows.filter(r=>r.status==='success').length}</b> 已发出</span><span className="runs-summary-item warn"><b>{rows.filter(r=>r.status==='submitted_unconfirmed').length}</b> 待核实</span><span className="runs-summary-item danger"><b>{rows.filter(r=>r.status==='failed').length}</b> 未发出</span></div><div className="toolbar runs-toolbar"><RubberSegment className="admin-segment" items={runFilterItems} value={filter} onChange={setFilter} trackColor="rgba(255,255,255,.035)" thumbColor="#ff6b25" textColor="#a88f83" activeTextColor="#20100a" size="md" radius={999} inset={3} equalSlots={false} draggable={false} aria-label="执行记录筛选"/><input className="input compact-search" value={nameFilter} onChange={e=>{setNameFilter(e.target.value);setRunPage(1)}} placeholder="按好友名搜索"/><span className="runs-count">{reading?'读取中…':`${runPagination?.total??rows.length} 条记录`}</span></div><FilterSummary items={[{key:'day',label:'北京时间',value:dayFilter,onRemove:removeDay},{key:'q',label:'好友',value:nameFilter,onRemove:()=>setNameFilter('')},{key:'status',label:'结果',value:filter?runFilterItems.find(item=>item.value===filter)?.label:'',onRemove:()=>setFilter('')}]} onClear={()=>{setFilterState('');setRunPage(1);navigate('/runs',{replace:true})}}/>{runsError&&<div className="inline-feedback danger-text" role="alert">{runsError}</div>}<Card className="runs-card" aria-busy={reading}>{reading&&!rows.length?<ListSkeleton label="正在读取执行记录…"/>:displayedRows.length?<div className="run-list"><MotionList className="run-motion-list">{displayedRows.map(r=>{const open=expanded===r.id;const detailId=`run-detail-${r.id}`;return <div className={`run-row ${open?'is-expanded':''}`} data-motion-state={r.status||'unknown'} key={r.id} role="button" tabIndex="0" aria-expanded={open} aria-controls={detailId} aria-label={`${r.name||'执行记录'}，${r.label||r.status||'状态未知'}。按 Enter 或空格查看详情`} onClick={event=>{if(event.target.closest('button,a,input,select'))return;setExpanded(open?null:r.id)}} onKeyDown={e=>{if(e.target.closest?.('button,a,input,textarea,select'))return;if(e.key==='Enter'||e.key===' '){e.preventDefault();setExpanded(open?null:r.id)}}}><span className={`run-dot ${r.status}`} aria-hidden="true"/><div className="grow"><b>{r.name}</b><small>{r.time} · {r.kind||r.stage}</small><MotionDisclosure open={open} id={detailId} className="run-detail"><span>执行阶段：{r.stage||'—'}</span><span>{r.error||r.guidance?.text||(r.status==='success'?'本次执行已确认完成。':'系统仍在处理，请等待结果。')}</span>{['account_verification_required','account_login_required','login_expired'].includes(r.error_code)&&data.tasks?.find(task=>task.id===r.taskId)?.accountId&&<Link className="text-action run-recovery-link" to={`/accounts#account-${data.tasks.find(task=>task.id===r.taskId).accountId}`}>查看账号并处理验证<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link>}{r.support_id&&<SupportReference value={r.support_id}/>} {open&&r.status==='submitted_unconfirmed'&&r.taskId&&<TaskProbeAction taskId={r.taskId} runId={r.id} csrf={data?.csrf} label="核对这次发送（只读）"/>}{r.timeline?.map(item=><span key={`timeline-${item.sequence}`}><b>{item.occurred_at} · {item.stage}</b> {item.detail||item.event}</span>)}{r.attempts?.map(a=><span key={a.number}>第 {a.number} 次：{a.reason||a.stage||'—'}</span>)}</MotionDisclosure></div><Badge tone={tone(r)}>{r.label||r.status}</Badge><span className="run-error">{r.error||r.guidance?.text||(r.status==='success'?'已确认发送完成':r.status==='submitted_unconfirmed'?'发送结果待核实':'等待执行结果')}</span></div>})}</MotionList></div>:<Empty title={filter||nameFilter||dayFilter?'没有匹配的执行记录':'还没有执行记录'} text={filter||nameFilter||dayFilter?'试试其他结果类型，或清除搜索条件。':'任务开始运行后，结果会出现在这里。'} action={filter||nameFilter||dayFilter?<Button variant="quiet" onClick={()=>{setFilterState('');setRunPage(1);navigate('/runs',{replace:true})}}>清除筛选</Button>:null}/>}</Card>{runPagination&&runPagination.pages>1&&<div className="admin-pagination"><span>共 {runPagination.total} 条 · 第 {runPagination.page} / {runPagination.pages} 页</span><div><Button variant="quiet" disabled={reading||runPagination.page<=1} onClick={()=>setRunPage(runPagination.page-1)}>上一页</Button><Button variant="quiet" disabled={reading||runPagination.page>=runPagination.pages} onClick={()=>setRunPage(runPagination.page+1)}>下一页</Button></div></div>}</>;
 }
 
 function TaskEditDrawer({task, data, open, onClose, onRefresh, onSaved}) {
@@ -1188,16 +1230,117 @@ function TaskEdit({data,id,onRefresh}) {
 }
 
 function Notifications({data}) {
-  const [state,setState]=useState(null); const [status,setStatus]=useState(''); const [email,setEmail]=useState(''); const [enabled,setEnabled]=useState(false); const [events,setEvents]=useState([]); const [quietEnabled,setQuietEnabled]=useState(false); const [quietStart,setQuietStart]=useState(23); const [quietEnd,setQuietEnd]=useState(8); const [notifyInterval,setNotifyInterval]=useState(60); const [code,setCode]=useState(''); const [busy,setBusy]=useState(false);
-  const load=async()=>{const v=await api('/api/notifications');setState(v||{});setEmail(v?.preference?.email||'');setEnabled(!!v?.preference?.enabled);setEvents(asList(v?.policy?.events));setQuietEnabled(!!v?.policy?.quiet_enabled);setQuietStart(Number(v?.policy?.quiet_start??23));setQuietEnd(Number(v?.policy?.quiet_end??8));setNotifyInterval(Number(v?.policy?.interval_minutes??60));return v};
-  useEffect(()=>{load().catch(e=>setStatus(e.message))},[]);
-  const csrf=()=>state?.csrf||data?.csrf||'';
-  const save=async()=>{setBusy(true);setStatus('正在保存…');try{const result=await api('/notifications/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf(),email,enabled})});setStatus(result?.message||'接收设置已保存');await load()}catch(e){setStatus(e.message)}finally{setBusy(false)}};
-  const sendVerification=async()=>{setBusy(true);setStatus('正在保存邮箱并发送验证码…');try{if(email.trim().toLowerCase()!==(state?.preference?.email||'').trim().toLowerCase()){await api('/notifications/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf(),email,enabled:false})});await load()}const result=await api('/notifications/verify-send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf()})});setStatus(result?.message||'验证邮件已排队')}catch(e){setStatus(e.message)}finally{setBusy(false)}};
-  const verify=async e=>{e.preventDefault();setBusy(true);setStatus('正在验证…');try{const result=await api('/notifications/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf(),code:code.trim()})});setStatus(result?.message||'邮箱验证成功');setCode('');await load()}catch(e){setStatus(e.message)}finally{setBusy(false)}};
-  const savePolicy=async()=>{setBusy(true);setStatus('正在保存通知策略…');try{const result=await api('/notifications/policy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:csrf(),events,quiet_start:Number(quietStart),quiet_end:Number(quietEnd),quiet_enabled:quietEnabled,interval_minutes:Number(notifyInterval)})});setStatus(result?.message||'通知偏好已保存')}catch(e){setStatus(e.message)}finally{setBusy(false)}};
+  const [state,setState]=useState(null);
+  const [loadError,setLoadError]=useState('');
+  const [loadAttempt,setLoadAttempt]=useState(0);
+  const [email,setEmail]=useState('');
+  const [enabled,setEnabled]=useState(false);
+  const [code,setCode]=useState('');
+  const [policy,setPolicy]=useState(null);
+  const [emailAction,setEmailAction]=useState('');
+  const [emailFeedback,setEmailFeedback]=useState(null);
+  const [savingPolicy,setSavingPolicy]=useState(false);
+  const [policyFeedback,setPolicyFeedback]=useState(null);
+
+  function applyEmail(value) {
+    setState(value);
+    setEmail(value.preference?.email||'');
+    setEnabled(Boolean(value.preference?.enabled));
+  }
+  useEffect(()=>{
+    const controller=new AbortController();
+    setLoadError('');
+    api('/api/notifications',{signal:controller.signal}).then(value=>{
+      if(controller.signal.aborted)return;
+      applyEmail(value);
+      setPolicy({events:asList(value.policy?.events),quiet_enabled:Boolean(value.policy?.quiet_enabled),
+        quiet_start:Number(value.policy?.quiet_start??23),quiet_end:Number(value.policy?.quiet_end??8),
+        interval_minutes:Number(value.policy?.interval_minutes??60)});
+    }).catch(error=>{if(!controller.signal.aborted)setLoadError(error.message)});
+    return ()=>controller.abort();
+  },[loadAttempt]);
+  function post(action,payload={}) {
+    return api('/notifications/'+action,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({csrf_token:state?.csrf||data?.csrf||'',...payload})});
+  }
+  const emailChanged=email.trim().toLowerCase()!==(state?.preference?.email||'').trim().toLowerCase();
+  const verified=!emailChanged&&Boolean(state?.preference?.verified);
+  async function runEmail(action) {
+    if(emailAction)return;
+    setEmailAction(action);
+    setEmailFeedback(null);
+    try {
+      let result;
+      if(action==='save'||(action==='verify-send'&&emailChanged)) {
+        result=await post('save',{email,enabled:verified&&enabled});
+        if(emailChanged) {
+          setEnabled(false);
+          setCode('');
+          setState(old=>({...old,preference:{email:email.trim(),verified:false,enabled:false}}));
+        }
+      }
+      if(action==='verify-send')result=await post(action);
+      if(action==='verify'){
+        result=await post(action,{code:code.trim()});
+        setCode('');
+      }
+      const message=result?.message||'操作已完成';
+      setEmailFeedback({message});
+      if(action==='save'||action==='verify'){
+        try{applyEmail(await api('/api/notifications'))}
+        catch{setEmailFeedback({message:message+' 邮箱状态暂未刷新，请重新读取。',needsRefresh:true})}
+      }
+    }catch(error){setEmailFeedback({error:true,message:error.message})}
+    finally{setEmailAction('')}
+  }
+  async function refreshEmail() {
+    setEmailAction('refresh');
+    try{applyEmail(await api('/api/notifications'));setEmailFeedback({message:'邮箱状态已更新'})}
+    catch(error){setEmailFeedback({error:true,message:error.message,needsRefresh:true})}
+    finally{setEmailAction('')}
+  }
+  function editPolicy(changes) {
+    setPolicy(old=>({...old,...changes}));
+    setPolicyFeedback(null);
+  }
+  async function savePolicy() {
+    if(savingPolicy)return;
+    setSavingPolicy(true);setPolicyFeedback(null);
+    try{const result=await post('policy',policy);setPolicyFeedback({message:result?.message||'提醒偏好已保存'})}
+    catch(error){setPolicyFeedback({error:true,message:error.message})}
+    finally{setSavingPolicy(false)}
+  }
+  const header=<PageHeader eyebrow="07 / NOTIFICATIONS" title="通知设置" text="管理接收邮箱、提醒类型、免打扰时段和重复提醒频率。"/>;
+  if(!state||!policy)return <>{header}{loadError?<Card><p role="alert">{loadError}</p><Button variant="quiet" onClick={()=>setLoadAttempt(n=>n+1)}>重新读取通知设置</Button></Card>:<ListSkeleton label="正在读取通知设置…"/>}</>;
   const hours=Array.from({length:24},(_,hour)=><option key={hour} value={hour}>{String(hour).padStart(2,'0')}:00</option>);
-  return <><PageHeader eyebrow="07 / NOTIFICATIONS" title="通知设置" text="管理接收邮箱、提醒类型、免打扰时段和重复提醒频率。"/><div className="simple-grid"><Card><h2>接收邮箱</h2><div className="form-stack"><div className="notification-email-field"><label>邮箱地址<input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email"/></label>{!state?.preference?.verified&&<Button variant="quiet" disabled={busy||!email||!state?.mail_ready} onClick={sendVerification}>发送验证邮件</Button>}</div><label className="check-line"><input type="checkbox" role="switch" className="ui-switch" checked={enabled} onChange={e=>setEnabled(e.target.checked)} disabled={!state?.preference?.verified}/>接收通知邮件</label>{state?.preference?.verified?<Badge tone="good">邮箱已验证</Badge>:<small className="muted">保存邮箱后发送验证码，输入验证码即可完成验证。</small>}{!state?.mail_ready&&<small className="muted">邮件服务尚未启用，请联系管理员。</small>}{!state?.preference?.verified&&<form className="notification-verify-row" onSubmit={verify}><label className="notification-code-field">邮箱验证码<input className="input" value={code} onChange={e=>setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6 位验证码"/></label><Button type="submit" busy={busy} disabled={code.trim().length<4}>验证邮箱</Button></form>}{status&&<div className={`inline-feedback${/失败|错误|无效|超时|异常/.test(status)?' danger-text':' success-text'}`} role={/失败|错误|无效|超时|异常/.test(status)?'alert':'status'}>{status}</div>}<Button disabled={busy||!email} onClick={save}>{busy?'请稍候…':'保存邮箱设置'}</Button></div></Card><Card><h2>提醒偏好</h2><div className="form-stack"><div className="notification-event-options">{[['account_alert','账号需要验证'],['account_recovered','账号恢复正常'],['task_failed','任务执行异常'],['expiry','订阅即将到期']].map(([id,label])=><label className="check-line" key={id}><input type="checkbox" checked={events.includes(id)} onChange={e=>setEvents(v=>e.target.checked?[...new Set([...v,id])]:v.filter(x=>x!==id))}/>{label}</label>)}</div><label className="check-line"><input type="checkbox" role="switch" className="ui-switch" checked={quietEnabled} onChange={e=>setQuietEnabled(e.target.checked)}/>开启每日免打扰</label><div className="form-grid"><label>开始时间<Select className="input" value={quietStart} onChange={e=>setQuietStart(e.target.value)}>{hours}</Select></label><label>结束时间<Select className="input" value={quietEnd} onChange={e=>setQuietEnd(e.target.value)}>{hours}</Select></label></div><label>重复提醒间隔<Select className="input" value={notifyInterval} onChange={e=>setNotifyInterval(e.target.value)}><option value={15}>15 分钟</option><option value={60}>1 小时</option><option value={180}>3 小时</option></Select></label><small className="muted">免打扰时段内延迟提醒；验证邮件不受此设置影响。</small><Button variant="quiet" disabled={busy} onClick={savePolicy}>保存提醒偏好</Button></div></Card></div></>;
+  return <>{header}<div className="simple-grid">
+    <Card><h2>接收邮箱</h2><div className="form-stack">
+      <div className="notification-email-field">
+        <label>邮箱地址<input className="input" type="email" value={email} disabled={Boolean(emailAction)} onChange={e=>{setEmail(e.target.value);setCode('');setEmailFeedback(null)}} placeholder="you@example.com" autoComplete="email"/></label>
+        {!verified&&<Button variant="quiet" busy={emailAction==='verify-send'} busyLabel="发送中…" disabled={Boolean(emailAction)||!email.trim()||!state.mail_ready} onClick={()=>runEmail('verify-send')}>发送验证邮件</Button>}
+      </div>
+      <label className="check-line"><input type="checkbox" role="switch" className="ui-switch" checked={verified&&enabled} disabled={!verified||Boolean(emailAction)} onChange={e=>{setEnabled(e.target.checked);setEmailFeedback(null)}}/>接收通知邮件</label>
+      {verified?<Badge tone="good">邮箱已验证</Badge>:<small className="muted">保存邮箱后发送验证码，输入验证码即可完成验证。</small>}
+      {!state.mail_ready&&<small className="muted">邮件服务尚未启用，请联系管理员。</small>}
+      {!verified&&<form className="notification-verify-row" onSubmit={e=>{e.preventDefault();runEmail('verify')}}>
+        <label className="notification-code-field">邮箱验证码<input className="input" value={code} onChange={e=>setCode(e.target.value)} disabled={emailChanged||Boolean(emailAction)} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6 位验证码"/></label>
+        <Button type="submit" busy={emailAction==='verify'} busyLabel="验证中…" disabled={emailChanged||Boolean(emailAction)||!/^\d{6}$/.test(code.trim())}>验证邮箱</Button>
+      </form>}
+      <Button busy={emailAction==='save'} busyLabel="保存中…" disabled={Boolean(emailAction)||!email.trim()} onClick={()=>runEmail('save')}>保存邮箱设置</Button>
+      {emailFeedback&&<div className={'inline-feedback '+(emailFeedback.error?'danger-text':'success-text')} role={emailFeedback.error?'alert':'status'}>{emailFeedback.message}</div>}
+      {emailFeedback?.needsRefresh&&<Button variant="quiet" busy={emailAction==='refresh'} onClick={refreshEmail}>重新读取邮箱状态</Button>}
+    </div></Card>
+    <Card><h2>提醒偏好</h2><div className="form-stack">
+      <div className="notification-event-options">{[['account_alert','账号需要验证'],['account_recovered','账号恢复正常'],['task_failed','任务执行异常'],['expiry','订阅即将到期']].map(([id,label])=>
+        <label className="check-line" key={id}><input type="checkbox" disabled={savingPolicy} checked={policy.events.includes(id)} onChange={e=>editPolicy({events:e.target.checked?[...policy.events,id]:policy.events.filter(v=>v!==id)})}/>{label}</label>)}</div>
+      <label className="check-line"><input type="checkbox" role="switch" className="ui-switch" checked={policy.quiet_enabled} disabled={savingPolicy} onChange={e=>editPolicy({quiet_enabled:e.target.checked})}/>开启每日免打扰</label>
+      <div className="form-grid"><label>开始时间<Select className="input" disabled={savingPolicy} value={policy.quiet_start} onChange={e=>editPolicy({quiet_start:Number(e.target.value)})}>{hours}</Select></label><label>结束时间<Select className="input" disabled={savingPolicy} value={policy.quiet_end} onChange={e=>editPolicy({quiet_end:Number(e.target.value)})}>{hours}</Select></label></div>
+      <label>重复提醒间隔<Select className="input" disabled={savingPolicy} value={policy.interval_minutes} onChange={e=>editPolicy({interval_minutes:Number(e.target.value)})}><option value={15}>15 分钟</option><option value={60}>1 小时</option><option value={180}>3 小时</option></Select></label>
+      <small className="muted">免打扰时段内延迟提醒；验证邮件不受此设置影响。</small>
+      <Button variant="quiet" busy={savingPolicy} busyLabel="保存中…" onClick={savePolicy}>保存提醒偏好</Button>
+      {policyFeedback&&<div className={'inline-feedback '+(policyFeedback.error?'danger-text':'success-text')} role={policyFeedback.error?'alert':'status'}>{policyFeedback.message}</div>}
+    </div></Card>
+  </div></>;
 }
 
 function MembershipPlanNotice({membership, compact=false}) {
@@ -1231,14 +1374,36 @@ function SimplePage({data,type,onRefresh}) {
   const load=async()=>{reads.current.controller?.abort();const controller=new AbortController();reads.current.controller=controller;const generation=++reads.current.generation;setLoading(true);try{const value=await api(type==='subscription'?'/api/subscription':type==='account-center'?'/api/account-center':'/api/attention',{signal:controller.signal});if(generation===reads.current.generation)setRemote(value)}catch(e){if(e.name!=='AbortError'&&generation===reads.current.generation)setNotice(e.message)}finally{if(generation===reads.current.generation)setLoading(false)}};
   useEffect(()=>{setNotice('');if(['subscription','account-center','attention'].includes(type))load()},[type]);
   const membership=remote?.membership||data.membership||{};
-  const previewRedemption=async()=>{if(!code.trim())return setNotice('请输入兑换码');setPreviewing(true);setNotice('正在读取兑换内容…');try{const form=new FormData();form.append('csrf_token',remote?.csrf||data.csrf||'');form.append('code',code.trim());const value=await api('/subscription/preview',{method:'POST',body:form});setRedemptionPreview(value.preview||null);setNotice(value.message||'请核对兑换内容')}catch(error){setRedemptionPreview(null);setNotice(error.message)}finally{setPreviewing(false)}};
+  const previewRequest=useRef(null);
+  useEffect(()=>()=>{previewRequest.current?.abort()},[]);
+  function editCode(value) {
+    previewRequest.current?.abort();
+    setCode(value);setRedemptionPreview(null);setPreviewing(false);setNotice('');
+  }
+  async function previewRedemption(requestedCode) {
+    previewRequest.current?.abort();
+    const controller=new AbortController();
+    previewRequest.current=controller;
+    setPreviewing(true);setRedemptionPreview(null);setNotice('正在读取兑换内容…');
+    try{
+      const form=new FormData();
+      form.append('csrf_token',remote?.csrf||data.csrf||'');
+      form.append('code',requestedCode);
+      const value=await api('/subscription/preview',{method:'POST',body:form,signal:controller.signal});
+      if(controller.signal.aborted)return;
+      if(!value.preview)throw new Error('未读取到兑换内容，请重新检查');
+      setRedemptionPreview({...value.preview,code:requestedCode});
+      setNotice(value.message||'请核对兑换内容');
+    }catch(error){if(!controller.signal.aborted)setNotice(error.message)}
+    finally{if(!controller.signal.aborted)setPreviewing(false)}
+  }
   const redeem=async e=>{
     e.preventDefault();if(redeeming||previewing)return;
     if(!code.trim())return setNotice('请输入兑换码');
-    if(!redemptionPreview){await previewRedemption();return}
+    if(redemptionPreview?.code!==code.trim()){await previewRedemption(code.trim());return}
     setRedeeming(true);setNotice('正在验证兑换码…');
     try{
-      const value=await api('/api/subscription/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:remote?.csrf||data.csrf||'',code:code.trim()})});
+      const value=await api('/api/subscription/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:remote?.csrf||data.csrf||'',code:redemptionPreview.code})});
       if(!value?.ok)throw new Error(value?.message||'兑换失败');
       setCode('');setRedemptionPreview(null);setNotice(value.message||'兑换成功，订阅额度已更新。');
       // Refresh both this page and the shared task/account entitlement data.
@@ -1251,7 +1416,7 @@ function SimplePage({data,type,onRefresh}) {
   const markRead=async itemId=>{setBusy(true);try{const value=await api('/api/attention/read',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({csrf_token:remote?.csrf||data.csrf||'',item_id:itemId})});setRemote(v=>({...v,items:value.items||[]}))}catch(e){setNotice(e.message)}finally{setBusy(false)}};
   const date=value=>value?new Date(value).toLocaleString('zh-CN',{dateStyle:'medium',timeStyle:'short'}):'—';
   let body;
-  if(type==='subscription') body=<><Card className="subscription-current"><h2>{membership.status_label||'尚未开通'}</h2><p>{membership.active?`有效期至 ${date(membership.valid_until)}。已绑定 ${membership.account_count??data.accounts?.length??0} 个账号，启用任务 ${membershipTaskUsage(membership)??membership.task_count??data.tasks?.length??0} / ${membership.task_limit_label||membership.max_tasks||'不限'}。`:membershipIsFreeTier(membership)?`免费版可绑定 ${membership.max_accounts||1} 个抖音账号，并创建 ${membership.task_limit_label||membership.max_tasks||1} 个好友任务。需要更多任务时兑换订阅即可。`:'联系客服购买后获取兑换码，或直接输入已有兑换码。'}</p><MembershipPlanNotice membership={membership}/><form className="redeem-form" onSubmit={redeem}><label className="redemption-field"><span>兑换码</span><input className="input redemption-input" value={code} onChange={e=>{setCode(e.target.value);setRedemptionPreview(null)}} placeholder="输入管理员提供的兑换码" autoComplete="off" disabled={redeeming}/></label><Button type="submit" busy={redeeming||previewing} disabled={!code.trim()}>{redemptionPreview?'确认兑换':'检查兑换码'}</Button></form>{redemptionPreview&&<div className="subscription-preview" role="status"><b>兑换预览</b><span>增加 {redemptionPreview.duration_days} 天 · {redemptionPreview.max_accounts} 个账号 · {redemptionPreview.max_tasks>=UNLIMITED_TASKS?'不限':redemptionPreview.max_tasks} 个任务</span><small>{redemptionPreview.quota_effect==='after_current_term'?'新额度将在当前订阅到期后生效':'额度立即生效'} · 预计到期 {date(redemptionPreview.valid_until)}</small></div>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}<button type="button" className="support-inline-link" onClick={()=>setSupportOpen(true)}>没有兑换码？联系客服购买并开通</button></Card><Card className="subscription-plans"><h2>可选套餐</h2><div className="form-stack">{(remote?.plans||data.plans||[]).map(plan=><div className="product-row" key={plan.id}><div><b>{plan.name} · ¥{plan.price_yuan} / {planBillingLabel(plan)}</b><p>{planDurationLabel(plan)} · {planTaskLabel(plan)}</p></div></div>)}</div></Card><ContactSupportCard plans={data.plans||[]} onOpen={()=>setSupportOpen(true)}/><Card className="subscription-history"><h2>开通记录</h2>{remote?.grants?.length?<div className="form-stack">{remote.grants.map(grant=><div className="product-row" key={grant.id}><div><b>{grant.source==='redemption_code'?'兑换码开通':'管理员开通'}</b><p>{date(grant.valid_from)} 至 {date(grant.valid_until)}</p></div></div>)}</div>:<p className="muted">{loading?'正在读取记录…':'暂无开通记录。'}</p>}</Card></>;
+  if(type==='subscription') body=<><Card className="subscription-current"><h2>{membership.status_label||'尚未开通'}</h2><p>{membership.active?`有效期至 ${date(membership.valid_until)}。已绑定 ${membership.account_count??data.accounts?.length??0} 个账号，启用任务 ${membershipTaskUsage(membership)??membership.task_count??data.tasks?.length??0} / ${membership.task_limit_label||membership.max_tasks||'不限'}。`:membershipIsFreeTier(membership)?`免费版可绑定 ${membership.max_accounts||1} 个抖音账号，并创建 ${membership.task_limit_label||membership.max_tasks||1} 个好友任务。需要更多任务时兑换订阅即可。`:'联系客服购买后获取兑换码，或直接输入已有兑换码。'}</p><MembershipPlanNotice membership={membership}/><form className="redeem-form" onSubmit={redeem}><label className="redemption-field"><span>兑换码</span><input className="input redemption-input" value={code} onChange={e=>editCode(e.target.value)} placeholder="输入管理员提供的兑换码" autoComplete="off" disabled={redeeming}/></label><Button type="submit" busy={redeeming||previewing} disabled={!code.trim()}>{redemptionPreview?'确认兑换':'检查兑换码'}</Button></form>{redemptionPreview&&<div className="subscription-preview" role="status"><b>兑换预览</b><span>增加 {redemptionPreview.duration_days} 天 · {redemptionPreview.max_accounts} 个账号 · {redemptionPreview.max_tasks>=UNLIMITED_TASKS?'不限':redemptionPreview.max_tasks} 个任务</span><small>{redemptionPreview.quota_effect==='after_current_term'?'新额度将在当前订阅到期后生效':'额度立即生效'} · 预计到期 {date(redemptionPreview.valid_until)}</small></div>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}<button type="button" className="support-inline-link" onClick={()=>setSupportOpen(true)}>没有兑换码？联系客服购买并开通</button></Card><Card className="subscription-plans"><h2>可选套餐</h2><div className="form-stack">{(remote?.plans||data.plans||[]).map(plan=><div className="product-row" key={plan.id}><div><b>{plan.name} · ¥{plan.price_yuan} / {planBillingLabel(plan)}</b><p>{planDurationLabel(plan)} · {planTaskLabel(plan)}</p></div></div>)}</div></Card><ContactSupportCard plans={data.plans||[]} onOpen={()=>setSupportOpen(true)}/><Card className="subscription-history"><h2>开通记录</h2>{remote?.grants?.length?<div className="form-stack">{remote.grants.map(grant=><div className="product-row" key={grant.id}><div><b>{grant.source==='redemption_code'?'兑换码开通':'管理员开通'}</b><p>{date(grant.valid_from)} 至 {date(grant.valid_until)}</p></div></div>)}</div>:<p className="muted">{loading?'正在读取记录…':'暂无开通记录。'}</p>}</Card></>;
   else if(type==='account-center') body=<><Card><h2>{data.user?.name||'账户'}</h2><p>账户密码和网站登录会话由服务器保护。退出网站会话不会影响云端抖音账号和续火任务。</p><div className="quick-links"><Link to="/change-password" className="text-action">修改网站密码<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link><Link to="/notifications" className="text-action">通知设置<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link><Link to="/subscription" className="text-action">查看会员<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div><form method="post" action="/logout"><input type="hidden" name="csrf_token" value={remote?.csrf||data.csrf||''}/><Button type="submit" variant="quiet">退出当前设备</Button></form></Card><Card><div className="section-head"><div><h2>有效登录会话</h2></div><Button variant="quiet" disabled={busy||loading||!(remote?.sessions||[]).some(s=>!s.current)} onClick={revokeSessions}>退出其他设备</Button></div>{remote?.sessions?.length?<div className="form-stack">{remote.sessions.map(session=><div className="product-row" key={session.id}><div><b>{session.current?'当前设备':'其他登录设备'}</b><p>登录于 {date(session.created_at)} · 到期 {date(session.expires_at)}</p></div>{session.current&&<Badge tone="good">正在使用</Badge>}</div>)}</div>:<p className="muted">{loading?'正在读取会话…':'没有有效会话。'}</p>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}</Card></>;
   else if(type==='attention') {const items=asList(remote?.items);body=<><Card><div className="section-head"><div><h2>站内通知 · {items.filter(item=>!item.read).length} 条未读</h2></div><Button variant="quiet" disabled={busy||!items.some(item=>!item.read)} onClick={()=>markRead('all')}>全部标为已读</Button></div><p className="muted-copy">同一任务的同类异常会合并展示。标为已读不会更改执行结果，也不会触发重发。</p>{items.length?<div className="form-stack">{items.map(item=><article className={`product-row ${item.read?'is-read':''}`} key={item.id}><div className="grow"><b>{item.title}</b><p>{item.detail}</p><small>{date(item.at)} · {item.read?'已读':'未读'}</small></div><div className="row-actions"><Link to={item.url} className="text-action">查看详情<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link>{!item.read&&<Button variant="quiet" disabled={busy} onClick={()=>markRead(item.id)}>标为已读</Button>}</div></article>)}</div>:<p className="muted">{loading?'正在读取待处理事项…':'暂时没有新的通知。'}</p>}{notice&&<div className="inline-feedback" role="status">{notice}</div>}</Card></>}
   else body=<><Card><h2>第一次使用</h2><ol><li>先绑定 1 个抖音账号，免费版也可以直接开始。</li><li>在手机上确认扫码，并完成抖音要求的安全验证。</li><li>同步已有会话后，可在已同步范围按昵称或备注选择好友；这不代表抖音全部好友。免费版可创建 1 个好友任务。</li><li>需要更多好友任务时，再开通订阅；确认北京时间和消息类型后创建每日计划。</li><li>查看执行记录。待核实的消息请先到抖音聊天确认，不要直接补发。</li></ol><Button variant="quiet" onClick={()=>navigate('/accounts')}>去绑定账号</Button></Card><Card><h2>常见问题</h2><div className="form-stack"><AnimatedDetails><summary>扫码慢、密码验证或手机号验证怎么办？</summary><p>先查看排队和验证提示，按抖音当前页面要求操作并等待结果。不要连续提交验证码。云端出现冷却提示时等待平台解除。</p></AnimatedDetails><AnimatedDetails><summary>“已发出”“待核实”“未发出”有什么区别？</summary><p>已发出表示系统确认发送完成；待核实表示已提交但未取得可靠确认，请先核对聊天记录；未发出表示这次没有发出去，可根据执行详情决定是否补发。</p></AnimatedDetails><AnimatedDetails><summary>账号恢复后会补发错过的消息吗？</summary><p>不会。恢复后继续执行后续计划，不补发历史消息。手动暂停的任务需要你手动恢复。</p></AnimatedDetails><AnimatedDetails><summary>续费和任务额度如何计算？</summary><p>未到期时续费从原到期时间顺延；已到期时从本次开通时间起算。到期后保留 1 个免费好友任务执行，重新订阅后恢复全部任务额度。</p></AnimatedDetails><AnimatedDetails><summary>不限好友是否表示同时发送？</summary><p>不限好友指套餐允许设置的目标数量。同一抖音账号的发送、登录和同步按顺序执行，集中在同一时间的任务可能排队。建议分散发送时间；系统保留已购买额度，不会因任务较多自动降低套餐权益。抖音仍可能要求用户本人完成安全验证。</p></AnimatedDetails><AnimatedDetails><summary>反馈问题时需要提供什么？</summary><p>通过原购买渠道联系管理员，说明用户名、发生时间、页面、期望与实际结果；执行问题请附诊断编号。不要发送密码、验证码、登录 Cookie 或邮件授权码。</p><Link to="/attention" className="text-action">查看待处理事项<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></AnimatedDetails></div></Card></>;
@@ -1295,7 +1460,7 @@ function App() {
   else if(path==='/runs')page=<Runs data={data}/>;
   else if(path.startsWith('/tasks/')&&path.endsWith('/edit'))page=<TaskEdit data={data} id={path.split('/')[2]} onRefresh={refresh}/>;
   else if(path==='/notifications')page=<Notifications data={data}/>;
-  else if(path==='/subscription'||path==='/account-center'||path==='/attention'||path==='/help')page=<SimplePage data={data} type={path.slice(1)} onRefresh={refresh}/>;
+  else if(path==='/subscription'||path==='/account-center'||path==='/attention'||path==='/help')page=<SimplePage key={path} data={data} type={path.slice(1)} onRefresh={refresh}/>;
   else page=<Dashboard data={data}/>;
   return <AppShell data={data}><div className="workspace-read-status"><ReadStatus busy={readState.busy} error={error} lastUpdated={readState.updated}/></div>{error&&<div className="refresh-notice" role="alert"><span>暂时无法更新，当前显示上次读取的内容。{error}</span><Button variant="quiet" onClick={refresh}>重试读取</Button></div>}{page}</AppShell>;
 }

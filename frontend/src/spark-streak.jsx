@@ -4,10 +4,6 @@ import {Button, StatusIcon} from './ui-controls.jsx';
 import {streakHistoryPath, streakMilestones, streakSnapshot, streakStateLabel, streakSummary, streakTime} from './spark-streak-state.js';
 import './spark-streak.css';
 
-function FlameIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M13 3c1 5-3 6-3 9-1-1-2-2-2-4-3 3-4 6-3 9a7.5 7.5 0 0 0 14-1c1-5-3-9-6-13Z"/><path d="M12 14c-1 2-3 3-2 5a2.5 2.5 0 0 0 4-2"/></svg>;
-}
-
 export function SparkMark({state='unknown'}) {
   return <img className="streak-summary-mark" data-streak-state={state} src="/static/spark-flame.png" alt="" aria-hidden="true"/>;
 }
@@ -15,16 +11,19 @@ export function SparkMark({state='unknown'}) {
 export function SparkIndicator({spark, compact=false}) {
   const snapshot = streakSnapshot(spark);
   const state = snapshot.stale ? 'stale' : snapshot.state;
-  return <span className={`streak-indicator${compact ? ' streak-indicator-compact' : ''}`} data-streak-state={state}>
+  return <span className={`streak-indicator${compact ? ' streak-indicator-compact' : ''}`} data-streak-state={state} title={streakSummary(snapshot)}>
     <SparkMark state={state}/>
-    <span>{snapshot.days === null ? '天数待同步' : <><b>{snapshot.days}</b> 天</>}</span>
-    <span className="streak-indicator-state">{streakStateLabel(snapshot)}</span>
+    {snapshot.days !== null && <span><b>{snapshot.days}</b> 天</span>}
+    <span className={compact ? 'sr-only' : 'streak-indicator-state'}>{streakStateLabel(snapshot)}{snapshot.days === null && ' · 天数待同步'}</span>
   </span>;
 }
 
-export function SparkSummary({spark,name,onClick,compact=false,showTime=true}) {
+export function SparkSummary({spark,name,onClick,inline=false,compact=false,showTime=true}) {
   const snapshot = streakSnapshot(spark);
   const state = snapshot.stale ? 'stale' : snapshot.state;
+  if (inline) {
+    return <button type="button" className="task-streak-button" aria-label={`查看 ${name || '好友'} 的火花详情`} aria-description={streakSummary(snapshot)} onClick={onClick}><SparkIndicator compact spark={snapshot}/></button>;
+  }
   const content = <><span className="streak-summary-main"><SparkMark state={state}/><span>{snapshot.days === null ? '天数待同步' : <><b>{snapshot.days}</b> 天</>}</span><span className="streak-summary-state">{streakStateLabel(snapshot)}</span></span>{showTime&&<span className="streak-summary-time">{snapshot.observed_at ? `同步于 ${streakTime(snapshot.observed_at)}${snapshot.stale ? ' · 待更新' : ''}` : '尚未读取平台火花'}</span>}</>;
   const className = `streak-summary${compact ? ' streak-summary-compact' : ''}`;
   return onClick ? <button type="button" className={className} data-streak-state={snapshot.stale?'stale':snapshot.state} aria-label={`查看 ${name || '好友'} 的火花详情`} onClick={onClick}>{content}<StatusIcon kind="chevronRight" className="streak-summary-chevron"/></button> : <span className={className} data-streak-state={snapshot.stale?'stale':snapshot.state}>{content}</span>;
@@ -69,7 +68,7 @@ export function SparkDetail({target,onClose,request}) {
   const recoverTotal=Number.isSafeInteger(snapshot.recover_total)&&snapshot.recover_total>0?snapshot.recover_total:null;
   return <Drawer open={Boolean(target)} title={`${target?.name || '好友'} · 火花`} onClose={onClose} centered size="streak">
     <div className="drawer-content streak-detail">
-      <div className="streak-detail-hero" data-streak-state={snapshot.stale?'stale':snapshot.state}><span className="streak-hero-icon"><FlameIcon/></span><div><span className="streak-detail-kicker">抖音火花</span><strong>{snapshot.days === null ? '暂未获取天数' : <>{snapshot.days}<small> 天</small></>}</strong><span className="streak-state-label">{streakStateLabel(snapshot)}</span></div></div>
+      <div className="streak-detail-hero" data-streak-state={snapshot.stale?'stale':snapshot.state}><span className="streak-hero-icon"><SparkMark state={snapshot.stale?'stale':snapshot.state}/></span><div><span className="streak-detail-kicker">抖音火花</span><strong>{snapshot.days === null ? '暂未获取天数' : <>{snapshot.days}<small> 天</small></>}</strong><span className="streak-state-label">{streakStateLabel(snapshot)}</span></div></div>
       <p className="streak-observed">{snapshot.observed_at ? `最近同步 ${streakTime(snapshot.observed_at,true)}${snapshot.stale?' · 等待更新':''}` : '同步好友会话后，显示平台实际读取到的火花。'}</p>
       <p className="streak-detail-note">任务发送结果与火花状态分别记录，已发出消息不代表火花已续上。</p>
       {!path&&<p className="streak-detail-note">此好友尚未匹配到完整会话，请先在选择好友中重新同步。</p>}

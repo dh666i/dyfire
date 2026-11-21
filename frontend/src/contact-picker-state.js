@@ -25,10 +25,11 @@ export function contactPageMetadata(value={}, itemCount=0) {
   // Douyin directory, so users must still have a way to request a fresh sync.
   const canSyncMore = activeSync ? false : typeof value.can_sync_more === 'boolean'
     ? value.can_sync_more : syncHasMore == null || (syncHasMore && syncLimit < 100);
-  const inferredLimit = SYNC_LIMITS.find(limit => limit > Math.max(total, syncLimit)) || 100;
+  const directoryTotal = number(value.directory_total, total);
+  const inferredLimit = SYNC_LIMITS.find(limit => limit > Math.max(directoryTotal, syncLimit)) || 100;
   const nextLimit = SYNC_LIMITS.includes(Number(value.sync_next_limit))
     ? Number(value.sync_next_limit) : inferredLimit;
-  const refreshLimit = SYNC_LIMITS.find(limit => limit >= Math.max(total, syncLimit, 20)) || 100;
+  const refreshLimit = SYNC_LIMITS.find(limit => limit >= Math.max(directoryTotal, syncLimit, 20)) || 100;
   return {
     dbHasMore: Boolean(value.has_more), nextOffset: number(value.next_offset, itemCount),
     total, syncHasMore, syncLimit, canSyncMore, nextLimit, refreshLimit, activeSync,
@@ -47,11 +48,11 @@ function abortableDelay(ms, signal) {
   });
 }
 
-const emptyState = () => ({items:[], selected:new Set(), loading:false, busy:'', error:'', page:contactPageMetadata()});
+const emptyState = () => ({items:[], selected:new Set(), query:'', syncRevision:0, loading:false, busy:'', error:'', page:contactPageMetadata()});
 
 // The controller owns the asynchronous picker session. Closing or switching
 // accounts invalidates every response, including transports that ignore abort.
-export function createContactPickerController({request, wait=abortableDelay, now=Date.now, pollMs=1500, jobTimeoutMs=300000}) {
+export function createContactPickerController({request, wait=abortableDelay, now=Date.now, pollMs=1500, jobTimeoutMs=300000, searchDelayMs=180}) {
   let state = emptyState();
   let session = null;
   const listeners = new Set();
@@ -59,14 +60,42 @@ export function createContactPickerController({request, wait=abortableDelay, now
   const current = token => token === session && !token.controller.signal.aborted;
   const path = token => `/accounts/${encodeURIComponent(token.accountId)}`;
   const get = (token, suffix, options={}) => request(`${path(token)}${suffix}`, {...options, signal:token.controller.signal});
-  const applyPage = (token, value) => {
-    if (!current(token)) return;
-    emit({items:mergeContacts(state.items, list(value?.items)), page:contactPageMetadata(value, list(value?.items).length)});
-  };
-  const readPage = async (token, offset=0) => {
-    const value = await get(token, `/conversations?offset=${offset}&limit=100`);
-    applyPage(token, value);
-    return value;
+  const readPage = async (token, {append=false, delay=0, keepLength=0}={}) => {
+    token.pageRead?.abort();
+    const read = new AbortController();
+    token.pageRead = read;
+    const reading = () => current(token) && token.pageRead === read && !read.signal.aborted;
+    const query = state.query;
+    let offset = append ? state.page.nextOffset : 0;
+    const items = [];
+    try {
+      if (delay) await wait(delay, read.signal);
+      let page;
+      do {
+        if (!reading()) return false;
+        const params = new URLSearchParams({offset:String(offset),limit:'100'});
+        if (query) params.set('q', query);
+        const value = await request(`${path(token)}/conversations?${params}`, {signal:read.signal});
+        if (!reading()) return false;
+        const rows = list(value?.items);
+        items.push(...rows);
+        page = contactPageMetadata(value, offset + rows.length);
+        if (page.nextOffset <= offset) break;
+        offset = page.nextOffset;
+      } while (page.dbHasMore && items.length < keepLength);
+      for (const item of items) token.contacts.set(contactKey(item), item);
+      const syncRevision = state.syncRevision + Number(token.synced);
+      token.synced = false;
+      emit({items:mergeContacts(append ? state.items : [], items), page, syncRevision,
+        loading:false, busy:token.syncing ? 'sync' : '', error:''});
+      return true;
+    } catch (error) {
+      if (reading()) {
+        emit({loading:false,busy:token.syncing ? 'sync' : ''});
+        report(token, error);
+      }
+      return false;
+    }
   };
   const followJob = async (token, job) => {
     let status = job;
@@ -83,41 +112,58 @@ export function createContactPickerController({request, wait=abortableDelay, now
       emit({page:{...state.page, activeSync:null, canSyncMore:state.page.syncHasMore == null || (state.page.syncHasMore && state.page.syncLimit < 100)}});
       throw new Error(status?.error || '好友同步未完成，请重试');
     }
-    await readPage(token);
+    token.synced = true;
+    await readPage(token, {keepLength:state.items.length});
   };
   const report = (token, error) => {
     if (current(token) && error?.name !== 'AbortError') emit({error:error?.message || '好友加载失败，请重试'});
   };
-  const resume = async (token, job) => {
+  const sync = async (token, job) => {
+    if (token.syncing) return;
+    token.syncing = true;
     emit({busy:'sync', error:''});
-    try { await followJob(token, job); }
-    catch (error) { report(token, error); }
-    finally { if (current(token)) emit({busy:''}); }
-  };
-  const load = async () => {
-    const token = session;
-    if (!token || state.loading || state.busy) return;
-    emit({loading:true, error:''});
     try {
-      await readPage(token);
-      if (!current(token)) return;
-      emit({loading:false});
-      if (state.page.activeSync) await resume(token, state.page.activeSync);
-    } catch (error) { report(token, error); }
-    finally { if (current(token)) emit({loading:false}); }
+      if (!job) {
+        const limit = state.page.canSyncMore ? state.page.nextLimit : state.page.refreshLimit;
+        job = await get(token, '/directory-jobs', {
+          method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({csrf_token:token.csrf, limit:String(limit), query:''}),
+        });
+        if (!current(token)) return;
+        if (job?.id && ACTIVE_STATUSES.has(job.status)) emit({page:{...state.page, activeSync:job}});
+      }
+      await followJob(token, job);
+    }
+    catch (error) { report(token, error); }
+    finally { token.syncing = false; if (current(token)) emit({busy:''}); }
   };
-  const close = () => { session?.controller.abort(); session = null; };
+  const load = async (delay=0) => {
+    const token = session;
+    if (!token) return;
+    emit({loading:true, busy:token.syncing ? 'sync' : '', error:''});
+    if (await readPage(token, {delay}) && current(token) && state.page.activeSync) {
+      await sync(token, state.page.activeSync);
+    }
+  };
+  const close = () => { session?.pageRead?.abort(); session?.controller.abort(); session = null; };
   return {
     getState: () => state,
     subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); },
     close,
     open: (accountId, csrf='') => {
       close();
-      session = {accountId, csrf, controller:new AbortController()};
+      session = {accountId, csrf, controller:new AbortController(), contacts:new Map(), synced:false, syncing:false};
       emit(emptyState());
       return load();
     },
     retry: load,
+    setQuery: value => {
+      const query = value.trim();
+      if (!session || query === state.query) return;
+      emit({query, items:[], page:contactPageMetadata()});
+      return load(query ? searchDelayMs : 0);
+    },
+    getSelectedItems: () => [...state.selected].map(key => session?.contacts.get(key)).filter(Boolean),
     select: (key, checked) => {
       const selected = new Set(state.selected);
       checked ? selected.add(key) : selected.delete(key);
@@ -128,24 +174,10 @@ export function createContactPickerController({request, wait=abortableDelay, now
     next: async () => {
       const token = session;
       if (!token || state.loading || state.busy) return;
-      const page = state.page;
-      emit({busy:page.dbHasMore ? 'page' : 'sync', error:''});
-      try {
-        if (page.dbHasMore) await readPage(token, page.nextOffset);
-        else if (page.activeSync) await followJob(token, page.activeSync);
-        else {
-          const limit = page.canSyncMore ? page.nextLimit : page.refreshLimit;
-          const job = await get(token, '/directory-jobs', {
-            method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
-            body:new URLSearchParams({csrf_token:token.csrf, limit:String(limit), query:''}),
-          });
-          if (current(token)) {
-            if (job?.id && ACTIVE_STATUSES.has(job.status)) emit({page:{...state.page, activeSync:job}});
-            await followJob(token, job);
-          }
-        }
-      } catch (error) { report(token, error); }
-      finally { if (current(token)) emit({busy:''}); }
+      if (token.synced) return load();
+      if (!state.page.dbHasMore) return sync(token, state.page.activeSync);
+      emit({busy:'page', error:''});
+      await readPage(token, {append:true});
     },
   };
 }

@@ -30,22 +30,15 @@ html .home-refined .fire-friend-card.fire-friend-with-streak { grid-template-col
 .home-refined .fire-friend-with-streak>.streak-summary .streak-summary-state { margin-left:0; font-size:10px; }
 .fire-friend-main:focus-visible { outline:2px solid var(--orange); outline-offset:5px; border-radius:10px; }
 .fire-friend-main .badge { max-width:none; }
-.person-cell .streak-summary-compact { margin-top:2px; padding:4px 18px 4px 0; background:transparent; }
-.person-cell .streak-summary-compact .streak-summary-main { gap:4px; }
-.person-cell .streak-summary-compact .streak-summary-main>span { font-size:11px; }
-.person-cell .streak-summary-compact .streak-summary-time { font-size:10px; }
-.person-cell .streak-summary-compact .streak-summary-chevron { right:0; }
 .streak-picker-filters { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
 html .drawer .streak-picker-filters .input { min-width:0; font-size:12px; }
-.person-name-line,.contact-name-line { display:flex; align-items:center; gap:8px; min-width:0; }
-.person-name-line> b,.contact-name-line> b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.person-name-line .streak-summary-compact { display:inline-flex; flex:0 0 auto; align-items:center; margin:0; padding:0; background:transparent; border-radius:0; }
-.person-name-line .streak-summary-compact .streak-summary-main { flex-wrap:nowrap; gap:4px; white-space:nowrap; }
-.person-name-line .streak-summary-compact .streak-summary-main>span:nth-child(2) { font-size:11px; }
-.person-name-line .streak-summary-compact .streak-summary-main>b { font-size:12px; }
-.person-name-line .streak-summary-compact .streak-summary-state { margin-left:1px; font-size:10px; }
-.person-name-line .streak-summary-compact .streak-summary-mark { width:14px; height:14px; flex-basis:14px; }
-.person-name-line .streak-summary-compact .streak-summary-chevron { display:none; }
+.person-name-line,.contact-name-line { display:flex; align-items:center; gap:5px; min-width:0; }
+html .fire-main .task-row .person-name-line > b,
+html .drawer .contact-row .contact-name-line > b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.person-name-line .task-streak-button { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; min-width:24px; min-height:24px; padding:0 2px; margin:0; border:0; border-radius:5px; background:transparent; font:inherit; cursor:pointer; }
+.task-streak-button:focus-visible { outline:2px solid var(--orange); outline-offset:2px; }
+@media(hover:hover) { .task-streak-button:hover { background:var(--ui-surface-inset); } }
+.streak-indicator-compact .sr-only { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .contact-name-line .streak-indicator-compact { flex:0 0 auto; }
 .streak-indicator { display:inline-flex; align-items:center; gap:4px; min-width:0; color:var(--ink-soft); font-size:11px; line-height:1.4; white-space:nowrap; }
 .streak-indicator b { color:var(--ink-dark); font-weight:500; font-variant-numeric:tabular-nums; }
@@ -58,7 +51,7 @@ html .drawer .streak-picker-filters .input { min-width:0; font-size:12px; }
 .streak-detail { display:grid; gap:20px; font-family:var(--ui-font); }
 .streak-detail-hero { display:flex; align-items:center; gap:18px; padding:16px 0 4px; }
 .streak-hero-icon { display:grid; place-items:center; width:64px; height:64px; flex:0 0 64px; border-radius:20px; background:color-mix(in srgb,var(--orange) 11%,transparent); color:var(--orange-soft); }
-.streak-hero-icon svg { width:34px; height:34px; }
+.streak-hero-icon .streak-summary-mark { width:34px; height:34px; }
 .streak-detail-hero>div { display:grid; gap:5px; min-width:0; }
 .streak-detail-kicker { color:var(--ink-soft); font-size:12px; }
 .streak-detail-hero strong { color:var(--ink-dark); font-size:32px; font-weight:500; line-height:1.3; font-variant-numeric:tabular-nums; }

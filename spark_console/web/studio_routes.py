@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Literal
@@ -248,18 +248,26 @@ def build_studio_router(engine, auth, cipher):
         return {'deleted': True, 'id': task_id}
 
     @router.get('/api/studio/runs')
-    def runs(request: Request, page: int = Query(1,ge=1), q: str = Query('',max_length=100), status: str = ''):
+    def runs(request: Request, page: int = Query(1,ge=1), q: str = Query('',max_length=100), status: str = '', day: date | None = None):
         from spark_console.web.app import run_view_status, run_guidance, shanghai_time, RUN_STAGE_LABELS
         from spark_console.run_attempts import for_runs as attempts_for_runs
         from spark_console.run_events import for_runs as events_for_runs
         with session_scope(engine) as db:
             user,_ = auth.current(request,db)
             criteria=[SparkTask.owner_user_id==user.id]
+            if day is not None:
+                if day == date.min or day == date.max:
+                    raise HTTPException(422, '记录日期超出范围')
+                start = datetime.combine(day, datetime.min.time(), ZoneInfo('Asia/Shanghai')).astimezone(timezone.utc)
+                criteria.extend((TaskRun.scheduled_for >= start, TaskRun.scheduled_for < start + timedelta(days=1)))
             if q: criteria.append(SparkTask.target_name.contains(q,autoescape=True))
             if status:
-                if status not in ('success','failed','submitted_unconfirmed','running','skipped'):
+                if status == 'other':
+                    criteria.append(TaskRun.status.not_in(('success','failed','submitted_unconfirmed','running')))
+                elif status not in ('success','failed','submitted_unconfirmed','running','skipped'):
                     raise HTTPException(400,'记录状态无效')
-                criteria.append(TaskRun.status==status)
+                else:
+                    criteria.append(TaskRun.status==status)
             total=db.scalar(select(func.count()).select_from(TaskRun).join(SparkTask).where(*criteria)) or 0
             pages=max(1,(total+11)//12);page=min(page,pages)
             rows=db.execute(select(TaskRun,SparkTask).join(SparkTask).where(*criteria).order_by(TaskRun.scheduled_for.desc(),TaskRun.id.desc()).offset((page-1)*12).limit(12)).all()

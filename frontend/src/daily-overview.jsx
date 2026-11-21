@@ -7,11 +7,18 @@ const healthy=account=>!account.health?.blocked&&(account.health?.state==='valid
 const needsVerification=account=>['verification','invalid','relogin'].includes(account.health?.state)||['verification','invalid'].includes(account.validation_state);
 
 // All figures describe the supplied execution records, never an estimated rate.
-export default function DailyOverview({accounts=[],runs=[],limits={},onAccountTasks,onCreate}) {
+export default function DailyOverview({accounts=[],runs=[],runDay,totals,limits={},onAccountTasks,onCreate}) {
   const counts={success:0,running:0,unconfirmed:0,failed:0,other:0};
-  for(const run of runs) {
-    const key=run.status==='success'?'success':run.status==='running'?'running':run.status==='submitted_unconfirmed'?'unconfirmed':run.status==='failed'?'failed':'other';
-    counts[key]++;
+  const statusCounts = totals ?? runs.reduce((result,run) => {
+    result[run.status] = (result[run.status] ?? 0) + 1;
+    return result;
+  }, {});
+  const runCount = Object.values(statusCounts).reduce((sum,count)=>sum+count,0);
+  const day = runDay || new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
+  const records = status => `/runs?${new URLSearchParams(status ? {status,day} : {day})}`;
+  for(const [status,count] of Object.entries(statusCounts)) {
+    const key=status==='success'?'success':status==='running'?'running':status==='submitted_unconfirmed'?'unconfirmed':status==='failed'?'failed':'other';
+    counts[key] += count;
   }
   const valid=accounts.filter(healthy).length;
   const attention=accounts.filter(account=>!healthy(account));
@@ -20,13 +27,13 @@ export default function DailyOverview({accounts=[],runs=[],limits={},onAccountTa
   const accountTotal=limits.accounts_total??accounts.length;
   return <section className="daily-overview" aria-label="今日续火概览" data-reveal="section">
     <div className="daily-execution">
-      <div className="daily-section-head"><span className="daily-label">{runs.length>=80?'今日最近 80 次执行':'今日执行'}</span><Link className="text-action" to="/runs">查看记录<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div>
-      <div className="daily-main-number"><strong><LiveNumber value={counts.success}/></strong><div><span>次已确认发送</span><small>{runs.length?`共 ${runs.length} 次执行记录`:'任务执行后，结果会显示在这里'}</small></div></div>
+      <div className="daily-section-head"><span className="daily-label">今日执行</span><Link className="text-action" to={records()}>查看记录<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div>
+      <div className="daily-main-number"><strong><LiveNumber value={counts.success}/></strong><div><span>次已确认发送</span><small>{runCount?`共 ${runCount} 次执行记录`:'任务执行后，结果会显示在这里'}</small></div></div>
       <div className="daily-progress" role="img" aria-label={`今日记录：${statuses.map(([key,label])=>`${counts[key]} 次${label}`).join('，')}${counts.other?`，${counts.other} 次其他状态`:''}`}>
         {Object.entries(counts).map(([key,count])=>count>0&&<span key={key} className={`is-${key}`} style={{flex:count}}/>)}
       </div>
-      <div className="daily-statuses">{statuses.map(([key,label])=><Link key={key} className={`daily-stat is-${key}`} aria-label={`${label} ${counts[key]} 次`} to={`/runs?status=${key==='unconfirmed'?'submitted_unconfirmed':key}`}><span><i/>{label}</span><b><LiveNumber value={counts[key]}/></b></Link>)}</div>
-      {counts.other>0&&<Link className="daily-other text-action" to="/runs">另有 {counts.other} 次其他状态，查看记录<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link>}
+      <div className="daily-statuses">{statuses.map(([key,label])=><Link key={key} className={`daily-stat is-${key}`} aria-label={`${label} ${counts[key]} 次`} to={records(key==='unconfirmed'?'submitted_unconfirmed':key)}><span><i/>{label}</span><b><LiveNumber value={counts[key]}/></b></Link>)}</div>
+      {counts.other>0&&<Link className="daily-other text-action" to={records('other')}>另有 {counts.other} 次其他状态，查看记录<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link>}
     </div>
     <div className="daily-accounts">
       <div className="daily-section-head"><h2>抖音账号</h2><Link className="text-action" to="/accounts">管理账号<StatusIcon kind="chevronRight" className="navigation-chevron"/></Link></div>
@@ -41,7 +48,7 @@ export default function DailyOverview({accounts=[],runs=[],limits={},onAccountTa
     <div className={`daily-attention${attention.length||counts.failed||counts.unconfirmed?' has-attention':''}`}>
       <StatusIcon kind={attention.length||counts.failed||counts.unconfirmed?'warning':'success'}/>
       <div><b>{attention.length?`${attention.length} 个账号需关注`:counts.unconfirmed?'有发送结果等待核实':counts.failed?'有任务未发出':accounts.length?'当前没有待处理的异常':'先绑定账号，再创建任务'}</b><span>{attention.length?(verification.length===attention.length?'完成账号验证后，后续计划会继续执行。':'查看账号的最新检查结果和处理方式。'):counts.unconfirmed?'请先确认聊天记录，避免重复发送。':counts.failed?'打开执行记录查看原因和处理方式。':accounts.length?'执行状态和需要处理的事项会集中显示在这里。':'支持从已同步会话选择好友。'}</span></div>
-      {(attention.length>0||counts.failed>0||counts.unconfirmed>0)&&<Link className="daily-attention-action" to={attention.length?`/accounts#account-${attention[0].id}`:counts.unconfirmed?'/runs?status=submitted_unconfirmed':'/runs?status=failed'}>去处理</Link>}
+      {(attention.length>0||counts.failed>0||counts.unconfirmed>0)&&<Link className="daily-attention-action" to={attention.length?`/accounts#account-${attention[0].id}`:records(counts.unconfirmed?'submitted_unconfirmed':'failed')}>去处理</Link>}
     </div>
   </section>;
 }

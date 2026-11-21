@@ -80,6 +80,37 @@ def test_create_owned_and_idempotent_enabled(site):
     assert client.get('/api/studio/runs?status=bogus').status_code==400
 
 
+def test_daily_runs_match_beijing_date_across_pages_and_overview_cap(site):
+    from spark_console.models import TaskRun
+    from spark_console.today_sends import SHANGHAI, day_bounds
+
+    client, (owned, _) = site
+    headers = {'X-CSRF-Token': client.get('/api/studio').json()['csrf']}
+    task_id = client.post('/api/studio/tasks', headers=headers, json={
+        'account_id': owned, 'targets': [{'name': '午夜好友'}], 'send_time': '09:30',
+    }).json()['ids'][0]
+    start, end = day_bounds()
+    day = start.astimezone(SHANGHAI).date().isoformat()
+    with session_scope(client.app.state.engine) as db:
+        rows = [(start-timedelta(microseconds=1),'failed'), (end,'failed'),
+                (end-timedelta(microseconds=1),'failed'), (start,'skipped')]
+        rows.extend((start+timedelta(seconds=i),'failed') for i in range(1,82))
+        for i,(scheduled,status) in enumerate(rows):
+            db.add(TaskRun(id=f'day-{i}', task_id=task_id, scheduled_for=scheduled, status=status, stage='complete'))
+    bootstrap = client.get('/api/app/bootstrap').json()
+    assert bootstrap['runs_date'] == day
+    assert bootstrap['daily_run_counts'] == {'failed': 82, 'skipped': 1}
+    assert len(bootstrap['runs']) == 80
+    filters = {'day': day,'status':'failed','q':'午夜'}
+    first = client.get('/api/studio/runs', params=filters).json()
+    assert (first['total'], first['pages'], first['items'][0]['id']) == (82,7,'day-2')
+    last = client.get('/api/studio/runs', params={**filters,'page':7}).json()
+    assert last['items'][-1]['id'] == 'day-4'
+    assert client.get('/api/studio/runs',params={'day':day,'status':'other'}).json()['items'][0]['id'] == 'day-3'
+    assert client.get('/api/studio/runs',params={'status':'failed'}).json()['total'] == 84
+    assert client.get('/api/studio/runs?day=2026-02-30').status_code == 422
+
+
 def test_free_user_can_create_one_task_but_second_and_batch_are_blocked(free_site):
     client, account_id = free_site
     state = client.get('/api/studio').json()

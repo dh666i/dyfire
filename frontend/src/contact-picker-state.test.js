@@ -170,3 +170,69 @@ test('explicit exhaustion retains refresh, and polling stops at the five-minute 
   assert.equal(controller.getState().busy,'');
   assert.equal(controller.getState().selected.has('friend-7'),true);
 });
+
+test('late search and pagination cannot replace the current results, and selections span queries', async () => {
+  const stale = deferred(), stalePage = deferred(), calls = [];
+  const row = id => ({name:'同名',sec_uid:id});
+  const result = (ids,more=false) => ({items:ids.map(row),has_more:more,total:more?5:ids.length,next_offset:ids.length});
+  const controller = createContactPickerController({searchDelayMs:0,request:async url=>{
+    const params = new URL(url,'http://localhost').searchParams;
+    const q = params.get('q'), offset=params.get('offset');
+    calls.push([q,offset]);
+    if (q==='旧') return stale.promise;
+    if (q==='你 & 我') return offset==='0'?result(['one','two'],true):stalePage.promise;
+    if (q==='最后') return result(['three']);
+    return result(['initial']);
+  }});
+  await controller.open('a');
+  controller.select('initial',true);
+  const pending=controller.setQuery('旧');
+  await controller.setQuery('你 & 我');
+  controller.select('two',true);
+  const olderPage=controller.next();
+  await controller.setQuery('最后');
+  stale.resolve(result(['outdated']));
+  stalePage.resolve(result(['outdated-page']));
+  await Promise.all([pending,olderPage]);
+  assert.deepEqual(calls,[[null,'0'],['旧','0'],['你 & 我','0'],['你 & 我','2'],['最后','0']]);
+  assert.deepEqual(controller.getState().items.map(x=>x.sec_uid),['three']);
+  assert.deepEqual(controller.getSelectedItems().map(x=>x.sec_uid),['initial','two']);
+  await controller.setQuery('');
+  assert.deepEqual(controller.getSelectedItems().map(x=>x.sec_uid),['initial','two']);
+});
+
+test('a sync that finishes during a search reloads that query and preserves its selected rows', async () => {
+  const pending=deferred(), queries=[];
+  const controller=createContactPickerController({searchDelayMs:0,request:async (url,options)=>{
+    if(options.method==='POST') return pending.promise;
+    const q=new URL(url,'http://localhost').searchParams.get('q')||'';
+    queries.push(q);
+    return snapshot(1,{items:[{sec_uid:q||'first',name:q||'first'}]});
+  }});
+  await controller.open('a');
+  controller.select('first',true);
+  const sync=controller.next();
+  await controller.setQuery('新好友');
+  controller.select('新好友',true);
+  assert.equal(controller.getState().syncRevision,0);
+  pending.resolve({status:'succeeded'});
+  await sync;
+  assert.deepEqual(queries,['','新好友','新好友']);
+  assert.equal(controller.getState().syncRevision,1);
+  assert.deepEqual(controller.getSelectedItems().map(x=>x.name),['first','新好友']);
+});
+
+test('refreshing a multipage list preserves visible coverage with updated rows', async()=>{
+  const rows=contacts(130);
+  let refreshed=false;
+  const controller=createContactPickerController({request:async(url,options)=>{
+    if(options.method==='POST'){refreshed=true;return {status:'succeeded'};}
+    const offset=Number(new URL(url,'http://localhost').searchParams.get('offset'));
+    const page=rows.slice(offset,offset+100).map(row=>({...row,remark_name:refreshed?'新备注':''}));
+    return {items:page,total:130,has_more:offset+page.length<130,next_offset:offset+page.length};
+  }});
+  await controller.open('a'); await controller.next(); await controller.next();
+  assert.equal(controller.getState().items.length,130);
+  assert.equal(controller.getState().items[129].remark_name,'新备注');
+  assert.equal(controller.getState().syncRevision,1);
+});
